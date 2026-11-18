@@ -1,0 +1,14 @@
+{
+  "name": "vocaleaf",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "api",
+    "web"
+  ],
+  "scripts": {
+    "test": "npm test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p e2e/tsconfig.json",
+    "test:e2e": "vitest run --config e2e/vitest.config.ts"
+  }
+}
