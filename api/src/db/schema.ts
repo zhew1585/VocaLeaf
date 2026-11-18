@@ -82,7 +82,7 @@ export const books = pgTable("books", {
   // Fixed to the default until Voice selection (#19).
   voice: voice("voice").notNull().default(DEFAULT_VOICE),
   parserVersion: text("parser_version"),
-  // User-facing reason shown with parse_failed; the full set of reasons (PRD 4.3.5) comes with #3.
+  // User-facing reason shown with parse_failed (PRD 4.3.5 #4 to #6, #10).
   failureReason: text("failure_reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

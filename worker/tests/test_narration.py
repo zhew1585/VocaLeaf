@@ -79,7 +79,7 @@ class TestAlignWords:
         assert aligned[1][0].word == "eighteen"
 
     def test_matches_a_title_the_tts_spells_out_even_when_it_is_a_sentence_of_its_own(self):
-        # Until #3 keeps "Mr." with the name, the splitter makes it a Sentence; Kokoro reads it as "Mister".
+        # Should a title still end up as a Sentence of its own, Kokoro reads it as "Mister".
         sentences = [
             s("a", "“My dear Mr.", 0),
             s("b", "Bennet,” said his lady.", 0),

@@ -1,6 +1,8 @@
+import itertools
+
 import pytest
 
-from vocaleaf_worker.sentences import TITLES, split_sentences
+from vocaleaf_worker.sentences import MAX_SENTENCE_CHARS, TITLES, split_sentences
 
 
 def test_splits_on_terminal_punctuation():
@@ -152,3 +154,59 @@ def test_a_possessive_is_not_an_initial(text: str, first: str):
 def test_a_title_is_matched_with_its_own_capitalization():
     # "MS." (a manuscript) is not "Ms." (a title).
     assert split_sentences("He found the MS. It was old.") == ["He found the MS.", "It was old."]
+
+
+# PRD 4.2.6 rule 2: a Sentence over MAX_SENTENCE_CHARS splits at semicolons, then colons, then commas.
+def clause(n: int, words: int = 12) -> str:
+    return " ".join(f"w{n}x{i}" for i in range(words))
+
+
+def test_a_short_sentence_with_semicolons_stays_whole():
+    assert split_sentences("He came; she went; they stayed.") == ["He came; she went; they stayed."]
+
+
+def test_an_over_long_sentence_splits_at_semicolons_into_pieces_as_long_as_allowed():
+    sentence = "; ".join(clause(n) for n in range(8)) + "."
+    assert len(sentence) > MAX_SENTENCE_CHARS
+
+    pieces = split_sentences(sentence)
+
+    assert len(pieces) > 1
+    assert all(len(p) <= MAX_SENTENCE_CHARS for p in pieces)
+    assert all(p.endswith(";") for p in pieces[:-1])
+    assert " ".join(pieces) == sentence
+    # Greedy: two neighbouring pieces together would be over the limit, so none could have been merged.
+    assert all(len(a) + 1 + len(b) > MAX_SENTENCE_CHARS for a, b in itertools.pairwise(pieces))
+
+
+def test_falls_back_to_colons_then_commas_when_a_piece_is_still_too_long():
+    long_clause = ", ".join(clause(n, 6) for n in range(10))
+    sentence = f"{long_clause}: {clause(99)}; {clause(98)}."
+
+    pieces = split_sentences(sentence)
+
+    assert all(len(p) <= MAX_SENTENCE_CHARS for p in pieces)
+    assert " ".join(pieces) == sentence
+    # The clause before the colon is still too long on its own, so it breaks at commas.
+    assert all(p.endswith((";", ":", ",")) for p in pieces[:-1])
+    assert any(p.endswith(",") for p in pieces)
+
+
+def test_a_long_run_without_any_punctuation_splits_between_words():
+    sentence = clause(0, 80) + "."
+
+    pieces = split_sentences(sentence)
+
+    assert len(pieces) > 1
+    assert all(len(p) <= MAX_SENTENCE_CHARS for p in pieces)
+    assert " ".join(pieces) == sentence
+
+
+def test_the_length_limit_applies_after_splitting_at_sentence_ends():
+    paragraph = "It rained. The " + "; ".join(clause(n) for n in range(8)) + ". It stopped."
+
+    pieces = split_sentences(paragraph)
+
+    assert pieces[0] == "It rained."
+    assert pieces[-1] == "It stopped."
+    assert all(len(p) <= MAX_SENTENCE_CHARS for p in pieces)

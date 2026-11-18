@@ -4,7 +4,14 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import { createApp } from "../src/app.js";
 import type { Mailer } from "../src/auth/mailer.js";
 import { SESSION_COOKIE } from "../src/auth/session.js";
-import type { BookDetail, ClaimedJob, ClaimedRenderJob, ParseResult, RenderReport } from "../src/contract.js";
+import type {
+  BookDetail,
+  ClaimedJob,
+  ClaimedRenderJob,
+  ParseFailureReason,
+  ParseResult,
+  RenderReport,
+} from "../src/contract.js";
 import { MIGRATIONS_FOLDER, type Db } from "../src/db/client.js";
 import * as schema from "../src/db/schema.js";
 import type { ObjectStorage } from "../src/storage.js";
@@ -157,8 +164,13 @@ export function reportParse(app: TestApp, job: Pick<ClaimedJob, "id" | "attempt"
   return postJson(app, `/api/internal/jobs/${job.id}/parse-result`, { ...result, attempt: job.attempt });
 }
 
-export function reportFailure(app: TestApp, job: Pick<ClaimedJob, "id" | "attempt">, error: string) {
-  return postJson(app, `/api/internal/jobs/${job.id}/failure`, { error, attempt: job.attempt });
+export function reportFailure(
+  app: TestApp,
+  job: Pick<ClaimedJob, "id" | "attempt">,
+  error: string,
+  reason?: ParseFailureReason,
+) {
+  return postJson(app, `/api/internal/jobs/${job.id}/failure`, { error, attempt: job.attempt, reason });
 }
 
 export async function bookDetail(app: TestApp, id: string) {

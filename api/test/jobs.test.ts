@@ -143,6 +143,39 @@ describe("POST /api/internal/jobs/:id/failure", () => {
     const [row] = await db.select().from(jobs).where(eq(jobs.id, job.id));
     expect(row).toMatchObject({ status: "failed", error: "BadZipFile: not a zip" });
   });
+
+  // PRD 4.3.5 #4 to #6, AC-UP-05: the user sees why, and the Book stays 解析失败 for good.
+  it.each([
+    ["drm", "该文件受 DRM 保护，无法转换。请使用无 DRM 的 EPUB"],
+    ["unreadable", "文件无法读取，可能已损坏"],
+    ["no_text", "没有识别到可朗读的正文"],
+  ] as const)("shows the %s reason with the parse_failed Book, and never parses it again", async (reason, message) => {
+    const { app } = await testApp();
+    const { book, job } = await claimedJob(app);
+
+    expect((await reportFailure(app, job, "ParseFailed: details for the log", reason)).status).toBe(204);
+
+    expect(await bookDetail(app, book.id)).toMatchObject({ status: "parse_failed", failureReason: message, chapters: [] });
+    expect((await claim(app)).status).toBe(204);
+  });
+
+  it("tells the user the file could not be read when a parse fails without a reason", async () => {
+    const { app } = await testApp();
+    const { book, job } = await claimedJob(app);
+
+    await reportFailure(app, job, "RuntimeError: boom");
+
+    expect((await bookDetail(app, book.id)).failureReason).toBe("文件无法读取，可能已损坏");
+  });
+
+  it("rejects an unknown reason", async () => {
+    const { app } = await testApp();
+    const { job } = await claimedJob(app);
+
+    const res = await postJson(app, `/api/internal/jobs/${job.id}/failure`, { attempt: job.attempt, error: "x", reason: "bad" });
+
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("worker protocol contract", () => {
