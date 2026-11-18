@@ -1,9 +1,12 @@
 // End-to-end functional tests through the running compose stack, from the user's side:
 // everything goes through the web origin (nginx → API), and the worker runs for real.
 import { execFileSync } from "node:child_process";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import type { Book, BookDetail, Sentence } from "../api/src/contract.js";
-import { api, PRIDE_AND_PREJUDICE, ROOT, upload, waitWhileParsing } from "./support.js";
+import { api, compose, endOpenJobs, PRIDE_AND_PREJUDICE, ROOT, upload, waitWhileParsing } from "./support.js";
+
+// Uploaded Books go on to generate audio for hours; do not leave that queued for the next test file.
+afterAll(() => endOpenJobs());
 
 /** Runs a Python one-liner inside the worker container; returns its exit status. */
 function inWorker(code: string): number {
@@ -71,5 +74,14 @@ describe("the worker only talks to the API", () => {
     const env = execFileSync("docker", ["compose", "exec", "-T", "worker", "env"], { cwd: ROOT }).toString();
     expect(env).not.toMatch(/DATABASE|POSTGRES|PG(HOST|USER|PASSWORD)/);
     expect(env).toMatch(/^API_URL=/m);
+  });
+});
+
+describe("text-to-speech", () => {
+  it("runs the one pinned, unquantized Kokoro model file (ADR 0003)", () => {
+    const sum = compose("exec", "-T", "kokoro", "sha256sum", "/app/api/src/models/v1_0/kokoro-v1_0.pth");
+    // kokoro-v1_0.pth from hexgrad/Kokoro-82M: the full-precision weights, about 327 MB.
+    expect(sum.split(" ")[0]).toBe("496dba118d1a58f5f3db2efc88dbdc216e0483fc89fe6e47ee1f2c53f18ad1e4");
+    expect(compose("exec", "-T", "kokoro", "printenv", "DOWNLOAD_MODEL").trim()).toBe("false");
   });
 });

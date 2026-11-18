@@ -1,8 +1,16 @@
 // End-to-end: a worker that dies holding a parse job must not strand the Book.
 // Needs the stack started with a short lease: `npm run e2e:up` (JOB_LEASE_SECONDS=5).
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { BookDetail, ClaimedJob } from "../api/src/contract.js";
-import { asWorker, compose, LEASE_SECONDS, PRIDE_AND_PREJUDICE, upload, waitWhileParsing } from "./support.js";
+import {
+  asWorker,
+  compose,
+  endOpenJobs,
+  LEASE_SECONDS,
+  PRIDE_AND_PREJUDICE,
+  upload,
+  waitWhileParsing,
+} from "./support.js";
 
 const RECOVERY_MS = (LEASE_SECONDS + 30) * 1000;
 
@@ -18,6 +26,16 @@ async function waitForWorkerLog(line: string, timeoutMs = 15_000) {
     await new Promise((r) => setTimeout(r, 300));
   }
 }
+
+/** What parsing decided; audio fields keep changing while the worker generates the Book. */
+function parsedPart(book: BookDetail) {
+  return { title: book.title, author: book.author, chapters: book.chapters.map((c) => [c.id, c.title, c.sentenceCount]) };
+}
+
+// Each test here uploads Pride and Prejudice, which then generates for hours. Without this, a recovering
+// job would wait behind whatever long Chapter the worker picked up from the previous test.
+beforeEach(() => endOpenJobs());
+afterAll(() => endOpenJobs());
 
 function expectParsed(book: BookDetail) {
   expect(book.status, "is the stack running with a short lease? use `npm run e2e:up`").toBe("generating");
@@ -92,6 +110,6 @@ describe("with the worker stopped", () => {
     });
     expect(late.status).toBe(409);
     const after = await waitWhileParsing(created.body.id);
-    expect(after).toEqual(book);
+    expect(parsedPart(after)).toEqual(parsedPart(book));
   });
 });

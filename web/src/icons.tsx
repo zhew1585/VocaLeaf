@@ -64,3 +64,17 @@ export const CircleAlertIcon = ({ size = 12 }) => (
     <line x1="12" x2="12.01" y1="16" y2="16" />
   </Icon>
 );
+
+// Solid play / pause from the design's player (white on the green button), not Lucide outlines.
+function SolidIcon({ size, d, className }: { size: number; d: string; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
+      <path d={d} />
+    </svg>
+  );
+}
+
+/** The triangle sits 1 px right of center to look centered (design note). */
+export const PlaySolidIcon = ({ size = 16 }) => <SolidIcon size={size} d="M6 3l15 9-15 9z" className="play-glyph" />;
+
+export const PauseSolidIcon = ({ size = 18 }) => <SolidIcon size={size} d="M6 4h4v16h-4z m8 0h4v16h-4z" />;

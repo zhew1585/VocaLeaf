@@ -59,14 +59,16 @@ services:
       retries: 30
     networks: [db, storage, app]
 
-  # Stateless: pulls jobs from the API and reads originals from storage; no database settings.
+  # Stateless: pulls jobs from the API, reads originals from and writes audio to storage; no database settings.
   worker:
     build: { context: worker }
     environment:
       <<: [*s3, *worker-token]
       API_URL: http://api:3000
+      KOKORO_URL: http://kokoro:8880
     depends_on:
       api: { condition: service_healthy }
+      kokoro: { condition: service_healthy }
     restart: on-failure
     networks: [app, storage]
 
@@ -78,9 +80,18 @@ services:
       api: { condition: service_healthy }
     networks: [app]
 
-  # Text-to-speech for audio generation (#2); started here so the stack is complete.
+  # Text-to-speech (Kokoro-FastAPI on CPU). Pinned by digest: the image carries the one unquantized model file
+  # used everywhere (ADR 0003), kokoro-v1_0.pth from hexgrad/Kokoro-82M, sha256 496dba11...c17f.
+  # DOWNLOAD_MODEL=false: never fetch weights at start, only use the ones inside the pinned image.
   kokoro:
-    image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.10.0
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.10.0@sha256:f54c5960c2b9387f6349080a9944f8bc7e8cdb98a4ef9238cb0b0f9ff9795f44
+    environment:
+      DOWNLOAD_MODEL: "false"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8880/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 60
     networks: [app]
 
 networks:

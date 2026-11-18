@@ -1,9 +1,7 @@
-import { useEffect, useState } from "react";
-import { getBook, type BookDetail, type BookStatus } from "../api";
-import { AudioLinesIcon, ChevronLeftIcon, CircleAlertIcon, LoaderIcon } from "../icons";
+import type { BookStatus } from "../api";
+import { AudioLinesIcon, ChevronLeftIcon, CircleAlertIcon, LoaderIcon, PlaySolidIcon } from "../icons";
 import { navigate } from "../router";
-
-const POLL_MS = 1500;
+import { useBook } from "../useBook";
 
 const STATUS_LABEL: Record<BookStatus, string> = {
   parsing: "解析中",
@@ -23,32 +21,12 @@ function StatusBadge({ status }: { status: BookStatus }) {
   );
 }
 
-/** Book detail, design 04-2: the Book's status and its Chapter list with Sentence counts. */
+/**
+ * Book detail, design 04-2: the Book's status, 开始收听 once it is playable, and its Chapter list with Sentence
+ * counts. Polls while the worker is parsing or no audio exists yet.
+ */
 export function BookPage({ id }: { id: string }) {
-  const [book, setBook] = useState<BookDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  // Poll while the worker is parsing; the Chapter list appears once parsing is done.
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let active = true;
-    const load = async () => {
-      try {
-        const next = await getBook(id);
-        if (!active) return;
-        setBook(next);
-        setError(null);
-        if (next.status === "parsing") timer = setTimeout(load, POLL_MS);
-      } catch (err) {
-        if (active) setError(err instanceof Error ? err.message : "加载失败");
-      }
-    };
-    void load();
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [id]);
+  const { book, error } = useBook(id, (b) => !b.playable);
 
   return (
     <div className="book-layout">
@@ -81,6 +59,17 @@ export function BookPage({ id }: { id: string }) {
                 <p className="form-error">{book.failureReason}</p>
               )}
             </div>
+            {book.status !== "parse_failed" && (
+              <button
+                type="button"
+                className="primary-button listen-button"
+                disabled={!book.playable}
+                onClick={() => navigate(`/books/${id}/listen`)}
+              >
+                <PlaySolidIcon size={18} />
+                开始收听
+              </button>
+            )}
           </>
         )}
       </aside>

@@ -2,7 +2,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { createApp } from "../src/app.js";
-import type { BookDetail, ClaimedJob, ParseResult } from "../src/contract.js";
+import type { BookDetail, ClaimedJob, ClaimedRenderJob, ParseResult, RenderReport } from "../src/contract.js";
 import { MIGRATIONS_FOLDER, type Db } from "../src/db/client.js";
 import * as schema from "../src/db/schema.js";
 import type { ObjectStorage } from "../src/storage.js";
@@ -17,6 +17,9 @@ export function memoryStorage(): ObjectStorage & { objects: Map<string, Uint8Arr
     objects,
     async putObject(key, body) {
       objects.set(key, body);
+    },
+    async getObject(key) {
+      return objects.get(key);
     },
   };
 }
@@ -87,4 +90,46 @@ export function reportFailure(app: TestApp, job: Pick<ClaimedJob, "id" | "attemp
 
 export async function bookDetail(app: TestApp, id: string) {
   return (await (await app.request(`/api/books/${id}`)).json()) as BookDetail;
+}
+
+/** Sends a heartbeat for a claimed job, keeping its lease. */
+export function heartbeat(app: TestApp, job: Pick<ClaimedJob, "id" | "attempt">) {
+  return postJson(app, `/api/internal/jobs/${job.id}/heartbeat`, { attempt: job.attempt });
+}
+
+type Report = Omit<RenderReport, "attempt">;
+
+/** Reports segments and Sentences rendered so far, with the Chapter still generating. */
+export function reportRenderProgress(app: TestApp, job: Pick<ClaimedJob, "id" | "attempt">, report: Report) {
+  return postJson(app, `/api/internal/jobs/${job.id}/render-progress`, { ...report, attempt: job.attempt });
+}
+
+/** Reports the last segments and Sentences of a Chapter and finishes it. */
+export function reportRenderResult(app: TestApp, job: Pick<ClaimedJob, "id" | "attempt">, report: Report) {
+  return postJson(app, `/api/internal/jobs/${job.id}/render-result`, { ...report, attempt: job.attempt });
+}
+
+/**
+ * Plays the worker's part for one claimed render job: writes one segment per Sentence into storage
+ * (each Sentence lasts `sentenceMs`) and returns the matching report.
+ */
+export async function renderAll(
+  storage: ObjectStorage,
+  job: ClaimedRenderJob,
+  sentenceMs = 4000,
+): Promise<Report> {
+  const segments = [];
+  const sentences = [];
+  for (const [i, s] of job.sentences.entries()) {
+    const key = `${job.audioPrefix}seg-${String(i).padStart(5, "0")}.ts`;
+    await storage.putObject(key, new TextEncoder().encode(`audio of ${s.id}`), "video/mp2t");
+    segments.push({ index: i, key, durationMs: sentenceMs });
+    sentences.push({
+      id: s.id,
+      startMs: i * sentenceMs,
+      endMs: (i + 1) * sentenceMs - 300,
+      wordTimings: [{ word: s.spokenText.split(" ")[0]!, startMs: 0, endMs: 400 }],
+    });
+  }
+  return { segments, sentences };
 }

@@ -9,10 +9,12 @@ import {
   UploadBookSchema,
   type Book,
 } from "../contract.js";
-import { books, chapters, jobs, sentences } from "../db/schema.js";
+import type { Db } from "../db/client.js";
+import { audioSegments, books, chapters, jobs, sentences } from "../db/schema.js";
 import { currentUser, type UserEnv } from "../dev-identity.js";
 import { sourceKey } from "../storage.js";
 import { validationHook } from "../validation.js";
+import { hasAudio, loadTimeline, loadTimelines, toM3u8, type Timeline } from "./timeline.js";
 
 const uploadRoute = createRoute({
   method: "post",
@@ -58,19 +60,54 @@ const getRoute = createRoute({
   },
 });
 
+const playlistRoute = createRoute({
+  method: "get",
+  path: "/books/{id}/audio.m3u8",
+  summary: "The Book's audio as one HLS playlist of its narrated Chapters (PRD 4.4.1)",
+  request: { params: z.object({ id: z.uuid() }) },
+  responses: {
+    200: { description: "HLS media playlist", content: { "application/vnd.apple.mpegurl": { schema: z.string() } } },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+/** A segment's file name in the playlist: its ID plus the extension players expect. */
+const SEGMENT_FILE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.ts$/;
+
+const segmentRoute = createRoute({
+  method: "get",
+  path: "/books/{id}/segments/{segment}",
+  summary: "One HLS segment of the Book's audio (AAC in MPEG-TS), as listed in its playlist: `{segmentId}.ts`",
+  request: { params: z.object({ id: z.uuid(), segment: z.string().regex(SEGMENT_FILE) }) },
+  responses: {
+    200: { description: "Segment", content: { "video/mp2t": { schema: z.string().openapi({ format: "binary" }) } } },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
 const notFound = { error: { code: "not_found", message: "书不存在" } } as const;
 
 type BookRow = typeof books.$inferSelect;
 
-function toBook(row: BookRow): Book {
+function toBook(row: BookRow, timeline: Timeline | undefined): Book {
   return {
     id: row.id,
     title: row.title,
     author: row.author,
     status: row.status,
+    playable: timeline ? hasAudio(timeline) : false,
     failureReason: row.failureReason,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+/** The current user's Book, or undefined. */
+async function ownBook(db: Db, id: string, userId: string) {
+  const [book] = await db
+    .select()
+    .from(books)
+    .where(and(eq(books.id, id), eq(books.ownerId, userId)));
+  return book;
 }
 
 /** Title before parsing: the file name without its extension (PRD 4.2.1). */
@@ -100,15 +137,12 @@ export function bookRoutes({ db, storage }: AppDeps) {
       await tx.insert(jobs).values({ bookId: id, type: "parse" });
       return book!;
     });
-    return c.json(toBook(row), 201);
+    return c.json(toBook(row, undefined), 201);
   });
 
   app.openapi(getRoute, async (c) => {
     const { id } = c.req.valid("param");
-    const [book] = await db
-      .select()
-      .from(books)
-      .where(and(eq(books.id, id), eq(books.ownerId, c.get("userId"))));
+    const book = await ownBook(db, id, c.get("userId"));
     if (!book) return c.json(notFound, 404);
 
     const rows = await db
@@ -119,6 +153,7 @@ export function bookRoutes({ db, storage }: AppDeps) {
         skipped: chapters.skipped,
         audioStatus: chapters.audioStatus,
         sentenceCount: count(sentences.id),
+        durationMs: chapters.durationMs,
       })
       .from(chapters)
       .leftJoin(sentences, eq(sentences.chapterId, chapters.id))
@@ -126,7 +161,7 @@ export function bookRoutes({ db, storage }: AppDeps) {
       .groupBy(chapters.id)
       .orderBy(asc(chapters.index));
 
-    return c.json({ ...toBook(book), chapters: rows }, 200);
+    return c.json({ ...toBook(book, await loadTimeline(db, id)), chapters: rows }, 200);
   });
 
   app.openapi(listRoute, async (c) => {
@@ -135,13 +170,14 @@ export function bookRoutes({ db, storage }: AppDeps) {
       .from(books)
       .where(eq(books.ownerId, c.get("userId")))
       .orderBy(desc(books.createdAt));
-    return c.json(rows.map(toBook), 200);
+    const timelines = await loadTimelines(db, rows.map((b) => b.id));
+    return c.json(rows.map((b) => toBook(b, timelines.get(b.id))), 200);
   });
 
   app.openapi(sentencesRoute, async (c) => {
     const { id } = c.req.valid("param");
     const [chapter] = await db
-      .select({ id: chapters.id })
+      .select({ id: chapters.id, bookId: chapters.bookId })
       .from(chapters)
       .innerJoin(books, eq(books.id, chapters.bookId))
       .where(and(eq(chapters.id, id), eq(books.ownerId, c.get("userId"))));
@@ -154,11 +190,43 @@ export function bookRoutes({ db, storage }: AppDeps) {
         paragraphIndex: sentences.paragraphIndex,
         text: sentences.text,
         spokenText: sentences.spokenText,
+        startMs: sentences.startMs,
+        endMs: sentences.endMs,
+        wordTimings: sentences.wordTimings,
       })
       .from(sentences)
       .where(eq(sentences.chapterId, id))
       .orderBy(asc(sentences.index));
-    return c.json(rows, 200);
+    // Stored times count from the Chapter's start; the Book's audio places the Chapter after the ones before it.
+    const entry = (await loadTimeline(db, chapter.bookId)).entries.find((e) => e.chapterId === id);
+    const offset = (ms: number | null) => (entry && ms !== null ? entry.offsetMs + ms : null);
+    return c.json(
+      rows.map((s) => ({ ...s, startMs: offset(s.startMs), endMs: offset(s.endMs), wordTimings: entry ? s.wordTimings : null })),
+      200,
+    );
+  });
+
+  app.openapi(playlistRoute, async (c) => {
+    const { id } = c.req.valid("param");
+    if (!(await ownBook(db, id, c.get("userId")))) return c.json(notFound, 404);
+    const body = toM3u8(await loadTimeline(db, id));
+    // Players reload the playlist while the Book is generating, so it must never be cached.
+    return c.body(body, 200, { "Content-Type": "application/vnd.apple.mpegurl", "Cache-Control": "no-cache" });
+  });
+
+  app.openapi(segmentRoute, async (c) => {
+    const { id, segment: file } = c.req.valid("param");
+    const segmentId = file.slice(0, -".ts".length);
+    if (!(await ownBook(db, id, c.get("userId")))) return c.json(notFound, 404);
+    const [segment] = await db
+      .select({ key: audioSegments.key })
+      .from(audioSegments)
+      .innerJoin(chapters, eq(chapters.id, audioSegments.chapterId))
+      .where(and(eq(audioSegments.id, segmentId), eq(chapters.bookId, id)));
+    const bytes = segment && (await storage.getObject(segment.key));
+    if (!bytes) return c.json(notFound, 404);
+    // A segment never changes once written; a re-rendered Chapter gets new segment IDs.
+    return c.body(new Uint8Array(bytes).buffer, 200, { "Content-Type": "video/mp2t", "Cache-Control": "private, max-age=31536000, immutable" });
   });
 
   return app;

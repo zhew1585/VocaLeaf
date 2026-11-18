@@ -31,7 +31,7 @@ testpaths = ["tests"]
 line-length = 120
 
 [tool.ruff.lint.isort]
-known-first-party = ["vocaleaf_worker", "epub_factory"]
+known-first-party = ["vocaleaf_worker", "epub_factory", "fakes"]
 
 [tool.pyright]
 include = ["src"]

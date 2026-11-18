@@ -65,6 +65,11 @@ describe("GET /api/openapi.json", () => {
         "/api/internal/jobs/claim",
         "/api/internal/jobs/{id}/parse-result",
         "/api/internal/jobs/{id}/failure",
+        "/api/internal/jobs/{id}/heartbeat",
+        "/api/internal/jobs/{id}/render-progress",
+        "/api/internal/jobs/{id}/render-result",
+        "/api/books/{id}/audio.m3u8",
+        "/api/books/{id}/segments/{segment}",
       ]),
     );
   });
