@@ -47,6 +47,6 @@ def _run(api: ApiClient, storage: ObjectStorage, tts: Tts, pauses: Pauses, job: 
                 render_chapter(api, storage, tts, job, pauses, heartbeat.check)
     except JobSuperseded:
         raise
-    except Exception as exc:  # reasons per PRD 4.3.5 come with #3, automatic retries with #5
+    except Exception as exc:  # reasons per PRD 4.3.5 come with #3; the API queues a Chapter again (PRD 4.3.5 #8)
         log.exception("job %s failed", job.id)
         api.report_failure(job, f"{type(exc).__name__}: {exc}")

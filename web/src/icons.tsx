@@ -92,3 +92,10 @@ function SolidIcon({ size, d, className }: { size: number; d: string; className?
 export const PlaySolidIcon = ({ size = 16 }) => <SolidIcon size={size} d="M6 3l15 9-15 9z" className="play-glyph" />;
 
 export const PauseSolidIcon = ({ size = 18 }) => <SolidIcon size={size} d="M6 4h4v16h-4z m8 0h4v16h-4z" />;
+
+export const RotateCwIcon = ({ size = 12 }) => (
+  <Icon size={size}>
+    <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+    <path d="M21 3v5h-5" />
+  </Icon>
+);

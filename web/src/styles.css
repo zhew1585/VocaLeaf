@@ -235,9 +235,108 @@ button {
 }
 
 .chapter-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 13px;
   color: var(--ink-3);
   white-space: nowrap;
+}
+
+button.chapter-title {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.chapter-title:hover {
+  color: var(--leaf);
+}
+
+.chapter-row.is-skipped .chapter-title {
+  color: var(--ink-3);
+}
+
+.chapter-generating {
+  color: var(--leaf);
+}
+
+.chapter-generating svg {
+  animation: spin 1.2s linear infinite;
+}
+
+.chapter-failed {
+  color: var(--danger);
+}
+
+.retry-button {
+  height: 30px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.retry-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.chapter-row:has(.chapter-error) {
+  flex-wrap: wrap;
+}
+
+.chapter-error {
+  flex-basis: 100%;
+  margin: 0 0 12px;
+}
+
+/* 生成中 n / N with its bar, in place of the status badge while generating. */
+.generation {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.generation-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.generation-label .status {
+  font-weight: 500;
+}
+
+.generation-count {
+  font-family: var(--font-num);
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.generation-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--sunken);
+  overflow: hidden;
+}
+
+.generation-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--leaf);
+  transition: width 0.3s ease;
 }
 
 .listen-button {
@@ -268,6 +367,24 @@ button {
   margin: 0;
   font-size: 14px;
   color: var(--ink-2);
+}
+
+/* 【该章节生成中，预计约 N 秒】 above the player while the wanted audio is not generated yet. */
+.player-notice {
+  margin: 0;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 16px;
+  background: var(--leaf-soft);
+  color: var(--leaf);
+  font-size: 13px;
+}
+
+.player-notice svg {
+  animation: spin 1.2s linear infinite;
 }
 
 /* The paper fades out under the player, as in the design. */

@@ -1,15 +1,15 @@
 // Job claims, leases and endings, shared by every job type.
-import { and, asc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { books, chapters, jobs } from "../db/schema.js";
 
 export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 export type Job = typeof jobs.$inferSelect;
 
-/** PRD 4.3.1 and 4.7.2: a job is attempted at most 3 times. */
-const MAX_JOB_ATTEMPTS = 3;
+/** PRD 4.3.1 and 4.7.2: a job is attempted at most 3 times, whether its attempts fail or time out. */
+export const MAX_JOB_ATTEMPTS = 3;
 
-// Temporary user-facing text until #5 brings the full timeout and retry handling (PRD 4.3.5 #10).
+/** Shown with parse_failed when every parse attempt timed out (PRD 4.3.5 #10). */
 const LEASE_EXHAUSTED_REASON = "解析超时，请删除后重新上传";
 
 /**
@@ -40,8 +40,25 @@ export async function succeedJob(tx: Tx, job: Job, now: Date) {
 }
 
 /**
+ * A worker reports that its attempt failed. A render job with attempts left goes back to the queue and its
+ * Chapter back to 待生成 (PRD 4.3.5 #8); the next claim is its next attempt. Otherwise the job fails. A parse
+ * failure is final at once: a file that cannot be parsed (DRM, broken) fails the same way every time.
+ */
+export async function failAttempt(tx: Tx, job: Job, error: string, now: Date) {
+  if (job.type === "render_chapter" && job.attempt < MAX_JOB_ATTEMPTS) {
+    await tx
+      .update(jobs)
+      .set({ status: "queued", error, leaseExpiresAt: null, updatedAt: now })
+      .where(eq(jobs.id, job.id));
+    await tx.update(chapters).set({ audioStatus: "pending" }).where(eq(chapters.id, job.chapterId!));
+    return;
+  }
+  await failJob(tx, job, error, now);
+}
+
+/**
  * Marks a job failed. A failed parse job leaves its Book parse_failed; a failed render job leaves its
- * Chapter 生成失败 and the Book carries on (PRD 4.3.5 #9). Retrying a failed Chapter comes with #5.
+ * Chapter 生成失败 and the Book carries on (PRD 4.3.5 #9) until the user retries it (books/retry.ts).
  */
 export async function failJob(tx: Tx, job: Job, error: string, now: Date, reason: string | null = null) {
   await tx.update(jobs).set({ status: "failed", error, leaseExpiresAt: null, updatedAt: now }).where(eq(jobs.id, job.id));
@@ -51,6 +68,29 @@ export async function failJob(tx: Tx, job: Job, error: string, now: Date, reason
     await tx.update(chapters).set({ audioStatus: "failed" }).where(eq(chapters.id, job.chapterId!));
     await finishBookIfDone(tx, job.bookId);
   }
+}
+
+/**
+ * The user retries a 生成失败 Chapter (PRD 4.3.5 #9): it goes back to 待生成 with a new job, which again gets
+ * every attempt, at the failed job's place in the queue. The Book's status stays: 已就绪 is final (PRD 4.3.3),
+ * and a generating Book finishes once this Chapter and the others are done. False when the Chapter is not
+ * failed, for example because it was already retried.
+ */
+export async function retryFailedChapter(tx: Tx, chapterId: string): Promise<boolean> {
+  const [chapter] = await tx
+    .update(chapters)
+    .set({ audioStatus: "pending" })
+    .where(and(eq(chapters.id, chapterId), eq(chapters.audioStatus, "failed")))
+    .returning({ bookId: chapters.bookId });
+  if (!chapter) return false;
+  const [failed] = await tx
+    .select({ position: jobs.position })
+    .from(jobs)
+    .where(and(eq(jobs.chapterId, chapterId), eq(jobs.status, "failed")))
+    .orderBy(desc(jobs.updatedAt))
+    .limit(1);
+  await tx.insert(jobs).values({ bookId: chapter.bookId, type: "render_chapter", chapterId, position: failed?.position ?? 1 });
+  return true;
 }
 
 /**
@@ -115,6 +155,7 @@ export async function claimNextJob(tx: Tx, now: Date, leaseMs: number): Promise<
     .set({
       status: "running",
       attempt: sql`${jobs.attempt} + 1`,
+      startedAt: now,
       leaseExpiresAt: new Date(now.getTime() + leaseMs),
       updatedAt: now,
     })

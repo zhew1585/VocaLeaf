@@ -1,5 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, asc, count, desc, eq, sql, sum } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, sql, sum } from "drizzle-orm";
 import type { AppDeps } from "../app.js";
 import type { UserEnv } from "../auth/session.js";
 import {
@@ -8,6 +8,7 @@ import {
   ErrorSchema,
   SentenceSchema,
   UploadBookSchema,
+  type AudioStatus,
   type Book,
 } from "../contract.js";
 import type { Db } from "../db/client.js";
@@ -15,7 +16,16 @@ import { books, chapters, jobs, sentences } from "../db/schema.js";
 import { sourceKey } from "../storage.js";
 import { validationHook } from "../validation.js";
 import { notFound, ownBook } from "./own-book.js";
-import { estimateDurationMs, hasAudio, loadTimeline, loadTimelines, type Timeline } from "./timeline.js";
+import { retryFailedChapter } from "../jobs/lifecycle.js";
+import {
+  chapterStartMs,
+  estimateDurationMs,
+  hasAudio,
+  loadTimeline,
+  loadTimelines,
+  type Timeline,
+} from "./timeline.js";
+import { loadChapterWaits } from "./wait.js";
 
 const uploadRoute = createRoute({
   method: "post",
@@ -50,6 +60,18 @@ const sentencesRoute = createRoute({
   },
 });
 
+const retryRoute = createRoute({
+  method: "post",
+  path: "/chapters/{id}/retry",
+  summary: "Generate a 生成失败 Chapter again (PRD 4.3.5 #9); it goes back to 待生成",
+  request: { params: z.object({ id: z.uuid() }) },
+  responses: {
+    204: { description: "Chapter queued again" },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "The Chapter is not 生成失败", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
 const getRoute = createRoute({
   method: "get",
   path: "/books/{id}",
@@ -64,8 +86,26 @@ const getRoute = createRoute({
 
 
 type BookRow = typeof books.$inferSelect;
+type Progress = Book["progress"];
 
-function toBook(row: BookRow, timeline: Timeline | undefined): Book {
+const NO_PROGRESS: Progress = { generated: 0, narrated: 0 };
+
+/** Generated narrated Chapters out of all narrated ones (PRD 4.3.3 进度展示). */
+function progressOf(chapterRows: { skipped: boolean; audioStatus: AudioStatus }[]): Progress {
+  const narrated = chapterRows.filter((c) => !c.skipped);
+  return { generated: narrated.filter((c) => c.audioStatus === "generated").length, narrated: narrated.length };
+}
+
+async function loadProgress(db: Db, bookIds: string[]): Promise<Map<string, Progress>> {
+  if (bookIds.length === 0) return new Map();
+  const rows = await db
+    .select({ bookId: chapters.bookId, skipped: chapters.skipped, audioStatus: chapters.audioStatus })
+    .from(chapters)
+    .where(inArray(chapters.bookId, bookIds));
+  return new Map([...Map.groupBy(rows, (r) => r.bookId)].map(([id, rs]) => [id, progressOf(rs)]));
+}
+
+function toBook(row: BookRow, timeline: Timeline | undefined, progress: Progress): Book {
   return {
     id: row.id,
     title: row.title,
@@ -73,6 +113,7 @@ function toBook(row: BookRow, timeline: Timeline | undefined): Book {
     status: row.status,
     playable: timeline ? hasAudio(timeline) : false,
     failureReason: row.failureReason,
+    progress,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -104,7 +145,7 @@ export function bookRoutes({ db, storage }: AppDeps) {
       await tx.insert(jobs).values({ bookId: id, type: "parse" });
       return book!;
     });
-    return c.json(toBook(row, undefined), 201);
+    return c.json(toBook(row, undefined, NO_PROGRESS), 201);
   });
 
   app.openapi(getRoute, async (c) => {
@@ -129,10 +170,17 @@ export function bookRoutes({ db, storage }: AppDeps) {
       .groupBy(chapters.id)
       .orderBy(asc(chapters.index));
 
+    const timeline = await loadTimeline(db, id);
+    const waiting = rows.some((r) => !r.skipped && (r.audioStatus === "pending" || r.audioStatus === "generating"));
+    const waits = waiting ? await loadChapterWaits(db) : new Map<string, number>();
+    const chapterSummaries = rows.map(({ spokenChars: _, ...chapter }) => {
+      const startMs = chapterStartMs(timeline, chapter.id);
+      return { ...chapter, startMs, waitSeconds: startMs === null ? (waits.get(chapter.id) ?? null) : null };
+    });
     return c.json(
       {
-        ...toBook(book, await loadTimeline(db, id)),
-        chapters: rows.map(({ spokenChars: _, ...chapter }) => chapter),
+        ...toBook(book, timeline, progressOf(rows)),
+        chapters: chapterSummaries,
         durationMs: estimateDurationMs(rows.map((r) => ({ ...r, spokenChars: r.spokenChars ?? 0 }))),
       },
       200,
@@ -145,8 +193,27 @@ export function bookRoutes({ db, storage }: AppDeps) {
       .from(books)
       .where(eq(books.ownerId, c.get("userId")))
       .orderBy(desc(books.createdAt));
-    const timelines = await loadTimelines(db, rows.map((b) => b.id));
-    return c.json(rows.map((b) => toBook(b, timelines.get(b.id))), 200);
+    const ids = rows.map((b) => b.id);
+    const [timelines, progress] = await Promise.all([loadTimelines(db, ids), loadProgress(db, ids)]);
+    return c.json(rows.map((b) => toBook(b, timelines.get(b.id), progress.get(b.id) ?? NO_PROGRESS)), 200);
+  });
+
+  app.openapi(retryRoute, async (c) => {
+    const { id } = c.req.valid("param");
+    const outcome = await db.transaction(async (tx) => {
+      const [chapter] = await tx
+        .select({ id: chapters.id })
+        .from(chapters)
+        .innerJoin(books, eq(books.id, chapters.bookId))
+        .where(and(eq(chapters.id, id), eq(books.ownerId, c.get("userId"))));
+      if (!chapter) return "not_found";
+      return (await retryFailedChapter(tx, id)) ? "retried" : "not_failed";
+    });
+    if (outcome === "not_found") return c.json(notFound, 404);
+    if (outcome === "not_failed") {
+      return c.json({ error: { code: "chapter_not_failed", message: "该章节没有生成失败，无需重试" } }, 409);
+    }
+    return c.body(null, 204);
   });
 
   app.openapi(sentencesRoute, async (c) => {
