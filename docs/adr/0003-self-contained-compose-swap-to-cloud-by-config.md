@@ -1,6 +1,6 @@
 # Self-contained Docker Compose stack; cloud services swapped in by configuration
 
-Development and testing run the whole system from one `docker compose up` with no third-party paid service except the LLM provider: Postgres, MinIO for S3-compatible object storage, Kokoro-FastAPI on CPU, the Python worker, the TypeScript API, the web SPA, and Mailpit to catch outgoing email.
+Development and testing run the whole system from one `docker compose up` with no third-party paid service except the LLM provider: Postgres, an S3-compatible object store (RustFS, see the amendment below), Kokoro-FastAPI on CPU, the Python worker, the TypeScript API, the web SPA, and Mailpit to catch outgoing email.
 Before launch the same compose file is deployed to a server and each external dependency is switched by environment variables only: object storage to Cloudflare R2, SMTP to a transactional email service, optionally Postgres to a managed instance, and the worker to GPU hardware when throughput needs it.
 We chose this so that the core flow (upload, parse, narrate) can be built and verified offline and cheaply, and so that moving to the cloud is a configuration change rather than a rewrite.
 
@@ -17,3 +17,8 @@ We chose this so that the core flow (upload, parse, narrate) can be built and ve
 - Object storage, email, TTS endpoint and analytics are each reached through one configuration point (S3 endpoint and keys, SMTP settings, Kokoro URL, optional PostHog key). Analytics is a no-op when no key is set.
 - Keep one Kokoro model file and precision (unquantized) across environments, so development and production audio are identical.
 - Production adds a TLS-terminating reverse proxy (Caddy) to the same compose file.
+
+## Amendment (2026-11, #1)
+
+The local object store is RustFS (Apache-2.0, S3-compatible) instead of MinIO, because MinIO no longer publishes community container images.
+Nothing outside compose depends on the choice: the API and worker only see the S3 environment variables.

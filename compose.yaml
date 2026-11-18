@@ -1,0 +1,93 @@
+# Self-contained development stack (ADR 0003): `docker compose up`, then open http://localhost:8080.
+# Images come from public.ecr.aws (Docker official image mirror) and ghcr.io, so no Docker Hub access is needed.
+# Every external dependency is reached through environment variables only; to use Cloudflare R2,
+# point the S3_* values at R2 and drop the `storage` service.
+name: vocaleaf
+
+x-s3: &s3
+  S3_ENDPOINT: http://storage:9000
+  S3_REGION: us-east-1
+  S3_BUCKET: vocaleaf
+  S3_ACCESS_KEY_ID: vocaleaf
+  S3_SECRET_ACCESS_KEY: vocaleaf-dev-secret
+
+x-worker-token: &worker-token
+  WORKER_TOKEN: ${WORKER_TOKEN:-dev-worker-token-change-me}
+
+services:
+  postgres:
+    image: public.ecr.aws/docker/library/postgres:17-alpine
+    environment:
+      POSTGRES_USER: vocaleaf
+      POSTGRES_PASSWORD: vocaleaf
+      POSTGRES_DB: vocaleaf
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vocaleaf"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    # Only the API shares this network: the worker cannot reach the database at all (ADR 0002).
+    networks: [db]
+
+  # S3-compatible object storage (RustFS; MinIO no longer publishes community images).
+  storage:
+    image: ghcr.io/rustfs/rustfs:1.0.6
+    environment:
+      RUSTFS_ACCESS_KEY: vocaleaf
+      RUSTFS_SECRET_KEY: vocaleaf-dev-secret
+    volumes:
+      - objects:/data
+    networks: [storage]
+
+  api:
+    build: { context: ., dockerfile: api/Dockerfile }
+    environment:
+      <<: [*s3, *worker-token]
+      DATABASE_URL: postgres://vocaleaf:vocaleaf@postgres:5432/vocaleaf
+      # How long a worker holds a claimed job before another worker may take it over.
+      JOB_LEASE_SECONDS: ${JOB_LEASE_SECONDS:-600}
+    depends_on:
+      postgres: { condition: service_healthy }
+      storage: { condition: service_started }
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [db, storage, app]
+
+  # Stateless: pulls jobs from the API and reads originals from storage; no database settings.
+  worker:
+    build: { context: worker }
+    environment:
+      <<: [*s3, *worker-token]
+      API_URL: http://api:3000
+    depends_on:
+      api: { condition: service_healthy }
+    restart: on-failure
+    networks: [app, storage]
+
+  web:
+    build: { context: ., dockerfile: web/Dockerfile }
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      api: { condition: service_healthy }
+    networks: [app]
+
+  # Text-to-speech for audio generation (#2); started here so the stack is complete.
+  kokoro:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.10.0
+    networks: [app]
+
+networks:
+  db: { internal: true }
+  storage: {}
+  app: {}
+
+volumes:
+  pgdata: {}
+  objects: {}
