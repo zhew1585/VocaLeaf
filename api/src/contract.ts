@@ -70,6 +70,11 @@ export const ChapterSummarySchema = z
     sentenceCount: z.int(),
     /** Length of the Chapter's audio once generated, null before. */
     durationMs: z.int().nullable(),
+    /**
+     * Where the Chapter starts in the Book's continuous audio, in milliseconds from the start of the playlist.
+     * Null while none of its audio is in the playlist: Skipped, not generated yet, or failed without audio.
+     */
+    startMs: z.int().nullable(),
   })
   .openapi("ChapterSummary");
 

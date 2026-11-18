@@ -129,10 +129,12 @@ export function bookRoutes({ db, storage }: AppDeps) {
       .groupBy(chapters.id)
       .orderBy(asc(chapters.index));
 
+    const timeline = await loadTimeline(db, id);
+    const startMs = new Map(timeline.entries.filter((e) => e.segments.length > 0).map((e) => [e.chapterId, e.offsetMs]));
     return c.json(
       {
-        ...toBook(book, await loadTimeline(db, id)),
-        chapters: rows.map(({ spokenChars: _, ...chapter }) => chapter),
+        ...toBook(book, timeline),
+        chapters: rows.map(({ spokenChars: _, ...chapter }) => ({ ...chapter, startMs: startMs.get(chapter.id) ?? null })),
         durationMs: estimateDurationMs(rows.map((r) => ({ ...r, spokenChars: r.spokenChars ?? 0 }))),
       },
       200,

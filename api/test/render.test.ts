@@ -245,6 +245,25 @@ describe("the Book's playlist", () => {
     expect(two.every((s) => s.startMs === null)).toBe(true);
   });
 
+  it("tells where each Chapter starts in it, so a player can jump to a Chapter; null while the Chapter is not placed", async () => {
+    const t = await testApp();
+    const book = await parsedBook(t);
+    const first = await claimRender(t.app);
+    const second = await claimRender(t.app);
+    const starts = async () => (await bookDetail(t.app, book.id)).chapters.map((c) => [c.title, c.startMs]);
+
+    expect(await starts()).toEqual([["I", null], ["Imprint", null], ["II", null]]);
+
+    const firstReport = await renderAll(t.storage, first);
+    await reportRenderProgress(t.app, first, { segments: firstReport.segments.slice(0, 1), sentences: [] });
+    expect(await starts()).toEqual([["I", 0], ["Imprint", null], ["II", null]]);
+
+    await reportRenderResult(t.app, first, { segments: firstReport.segments.slice(1), sentences: firstReport.sentences });
+    await reportRenderResult(t.app, second, await renderAll(t.storage, second));
+    // The Skipped Chapter is not in the audio; Chapter II follows Chapter I's 8 s.
+    expect(await starts()).toEqual([["I", 0], ["Imprint", null], ["II", 8000]]);
+  });
+
   it("is empty and the Book not playable before any segment is written", async () => {
     const t = await testApp();
     const book = await parsedBook(t);

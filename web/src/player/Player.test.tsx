@@ -1,58 +1,18 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { audio, hlsInstances, stubMediaPlayback, timeUpdate } from "../test-media";
 import { formatElapsed, formatRemaining, Player } from "./Player";
+import { ListeningProvider, useListening } from "./session";
 
-// hls.js needs MediaSource, which jsdom lacks: a stand-in records what the player asks of it.
-const hls = vi.hoisted(() => ({
-  instances: [] as {
-    config: unknown;
-    source?: string;
-    media?: HTMLMediaElement;
-    destroyed: boolean;
-    handlers: Record<string, (event: string, data: { fatal: boolean }) => void>;
-  }[],
-}));
-vi.mock("hls.js", () => ({
-  default: class {
-    static isSupported = () => true;
-    static Events = { ERROR: "hlsError" };
-    record: (typeof hls.instances)[number];
-    constructor(config: unknown) {
-      this.record = { config, destroyed: false, handlers: {} };
-      hls.instances.push(this.record);
-    }
-    on(event: string, handler: (event: string, data: { fatal: boolean }) => void) {
-      this.record.handlers[event] = handler;
-    }
-    loadSource(src: string) {
-      this.record.source = src;
-    }
-    attachMedia(media: HTMLMediaElement) {
-      this.record.media = media;
-    }
-    destroy() {
-      this.record.destroyed = true;
-    }
-  },
-}));
+vi.mock("hls.js", async () => ({ default: (await import("../test-media")).FakeHls }));
 
 let play: ReturnType<typeof vi.fn>;
 let pause: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
-  hls.instances.length = 0;
-  // jsdom does not implement media playback; play and pause fire the events a browser would.
-  play = vi.fn(function (this: HTMLMediaElement) {
-    Object.defineProperty(this, "paused", { value: false, configurable: true });
-    this.dispatchEvent(new Event("play"));
-    return Promise.resolve();
-  });
-  pause = vi.fn(function (this: HTMLMediaElement) {
-    Object.defineProperty(this, "paused", { value: true, configurable: true });
-    this.dispatchEvent(new Event("pause"));
-  });
-  vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(play as never);
-  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(pause as never);
+  hlsInstances.length = 0;
+  ({ play, pause } = stubMediaPlayback());
 });
 
 afterEach(() => {
@@ -60,31 +20,32 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function audio() {
-  return document.querySelector("audio")!;
+/** A player for Book b1's session, as the 专注页 opens it. */
+function OpenedPlayer({ id = "b1", totalSeconds }: { id?: string; totalSeconds?: number }) {
+  const { open } = useListening();
+  useEffect(() => open(id), [open, id]);
+  return <Player totalSeconds={totalSeconds} />;
 }
 
-function timeUpdate(currentTime: number, duration: number) {
-  const el = audio();
-  Object.defineProperty(el, "currentTime", { value: currentTime, configurable: true });
-  Object.defineProperty(el, "duration", { value: duration, configurable: true });
-  act(() => {
-    el.dispatchEvent(new Event("durationchange"));
-    el.dispatchEvent(new Event("timeupdate"));
-  });
+function renderPlayer(props: { id?: string; totalSeconds?: number } = {}) {
+  return render(
+    <ListeningProvider>
+      <OpenedPlayer {...props} />
+    </ListeningProvider>,
+  );
 }
 
 describe("Player", () => {
   it("loads the Book's HLS playlist from the beginning, not from the live edge", () => {
-    render(<Player src="/api/books/b1/audio.m3u8" />);
+    renderPlayer();
 
-    expect(hls.instances).toHaveLength(1);
-    expect(hls.instances[0]).toMatchObject({ source: "/api/books/b1/audio.m3u8", media: audio() });
-    expect(hls.instances[0]!.config).toMatchObject({ startPosition: 0 });
+    expect(hlsInstances.map((h) => h.source)).toEqual(["/api/books/b1/audio.m3u8"]);
+    expect(hlsInstances[0]!.media).toBe(audio());
+    expect(hlsInstances[0]!.config).toMatchObject({ startPosition: 0 });
   });
 
   it("plays and pauses with the one button, which says what it will do", () => {
-    render(<Player src="/api/books/b1/audio.m3u8" />);
+    renderPlayer();
 
     fireEvent.click(screen.getByRole("button", { name: "播放" }));
     expect(play).toHaveBeenCalledTimes(1);
@@ -95,7 +56,7 @@ describe("Player", () => {
   });
 
   it("shows how far into the whole Book playback is, with time listened and time left", () => {
-    render(<Player src="/api/books/b1/audio.m3u8" />);
+    renderPlayer();
 
     timeUpdate(252, 41_752);
 
@@ -107,7 +68,7 @@ describe("Player", () => {
   });
 
   it("uses what is seekable as the length while the Book is still generating", () => {
-    render(<Player src="/api/books/b1/audio.m3u8" />);
+    renderPlayer();
     Object.defineProperty(audio(), "seekable", { value: { length: 1, end: () => 120 }, configurable: true });
 
     timeUpdate(30, Number.POSITIVE_INFINITY);
@@ -117,7 +78,7 @@ describe("Player", () => {
   });
 
   it("measures progress against the whole Book's length when it is known", () => {
-    render(<Player src="/api/books/b1/audio.m3u8" totalSeconds={41_752} />);
+    renderPlayer({ totalSeconds: 41_752 });
 
     timeUpdate(252, 600); // only 10 minutes are generated so far
 
@@ -126,8 +87,8 @@ describe("Player", () => {
   });
 
   it("says so when the stream cannot be played, but not for errors hls.js recovers from", () => {
-    render(<Player src="/api/books/b1/audio.m3u8" />);
-    const onError = hls.instances[0]!.handlers.hlsError!;
+    renderPlayer();
+    const onError = hlsInstances[0]!.handlers.hlsError!;
 
     act(() => onError("hlsError", { fatal: false }));
     expect(screen.queryByRole("alert")).toBeNull();
@@ -137,9 +98,9 @@ describe("Player", () => {
   });
 
   it("stops loading when it goes away", () => {
-    const { unmount } = render(<Player src="/api/books/b1/audio.m3u8" />);
+    const { unmount } = renderPlayer();
     unmount();
-    expect(hls.instances[0]!.destroyed).toBe(true);
+    expect(hlsInstances[0]!.destroyed).toBe(true);
   });
 });
 
