@@ -12,6 +12,6 @@ We chose this over Next.js server actions or direct Supabase access from clients
 
 ## Consequences
 
-- The book pipeline is a stateless Python worker (serverless GPU) that takes an ebook and a Voice and returns Chapters, Sentences with timings, and HLS audio in object storage. It never touches the database; it reports results back to the API.
+- The book pipeline is a stateless Python worker that takes an ebook and a Voice and returns Chapters, Sentences with timings, and HLS audio in object storage. It never touches the database; it pulls jobs from the API and reports results back to it. Where it runs (beside the stack, on GPU hardware, on Modal) is a deployment choice, see ADR 0003.
 - The web client is a plain SPA (Vite + React), not an SSR framework, so it can be wrapped as a desktop app with little change.
-- Supabase is used only for Postgres and Auth (JWT usable from every platform).
+- The database is plain Postgres and authentication is the API's own email one-time code with a session token usable from every platform (amended by ADR 0003; originally Supabase Postgres and Auth).
