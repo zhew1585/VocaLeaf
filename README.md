@@ -72,12 +72,23 @@ If the worker crashes or restarts, its heartbeats stop, any worker can claim the
 Workers can claim a job at most 3 times (PRD 4.7.2).
 A worker that reports a failed generation attempt sends the chapter back to 待生成 (waiting) and its job back to the queue, so the next claim is its next attempt.
 A timed-out attempt counts the same (PRD 4.3.5 #8, #10): the next claim by any worker puts jobs whose lease expired back in the queue before it picks one.
-A parse job fails at once when the worker reports a failure, since a file that cannot be parsed fails the same way every time.
-When the third attempt also fails or times out, the job fails: a parse job moves the book to 解析失败 (parsing failed), a generation job moves its chapter to 生成失败 (generation failed) and the book carries on.
+A parse job fails at once when the worker reports a reason that lies in the file (`drm`, `unreadable`, `no_text`), since such a file fails the same way every time; the book moves to 解析失败 (parsing failed) and shows that reason's message (PRD 4.3.5 #4 to #6).
+Any other failure, such as object storage being unreachable, is retried like a generation attempt.
+When the third attempt also fails or times out, the job fails: a parse job moves the book to 解析失败, a generation job moves its chapter to 生成失败 (generation failed) and the book carries on.
 The user can retry a 生成失败 chapter from the book detail page (`POST /api/chapters/{id}/retry`): it goes back to 待生成 with a new job that again gets 3 attempts, and the book keeps its status.
 Every callback and heartbeat must send back its `attempt`.
 The API answers 409 when the job was claimed again or has already finished, so a late callback never overwrites a newer result; a worker whose heartbeat gets 409 drops the job.
 Jobs are claimed by their position in their book first (parse = 0, the nth narrated chapter = n), then by age, so a newly uploaded book never waits behind other books' later chapters.
+
+### Parsing
+
+The worker turns an EPUB into chapters (top-level table of contents entries) and sentences (PRD 4.2.5, 4.2.6).
+A chapter is Skipped (kept, not narrated) when its `epub:type`, the landmarks or the EPUB 2 guide mark it as a cover, title page, copyright page, contents, index, colophon, imprint, list of illustrations or tables, or endnotes; when its title starts with Copyright, Contents, Index, Acknowledgments, About the Author or Publisher, or Also by; or when it has under 200 characters and no complete sentence.
+Preface, Foreword, Introduction, Prologue, Epilogue and Afterword are Skipped only by that last rule.
+Sentences end at `.`, `!`, `?` or `…`, but not after titles such as Mr. or Dr.; a sentence over 300 characters is split again at semicolons, then colons, then commas.
+Note reference marks and footnotes are left out of the text; `spoken_text` reads numbers, ordinals, years, dates, money, percentages and clock times as words while `text` keeps them as written.
+A book fails to parse when its `META-INF/encryption.xml` encrypts anything but fonts (DRM), when the file cannot be read, or when no narrated chapter has any text.
+`fixtures/` holds a sample EPUB for each rule, built by `worker/tests/sample_epubs.py`.
 
 ### Audio
 
