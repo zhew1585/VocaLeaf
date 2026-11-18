@@ -1,5 +1,6 @@
 // Job claims, leases and endings, shared by every job type.
 import { and, asc, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import type { ParseFailureReason } from "../contract.js";
 import type { Db } from "../db/client.js";
 import { books, chapters, jobs } from "../db/schema.js";
 
@@ -11,6 +12,13 @@ export const MAX_JOB_ATTEMPTS = 3;
 
 /** Shown with parse_failed when every parse attempt timed out (PRD 4.3.5 #10). */
 const LEASE_EXHAUSTED_REASON = "解析超时，请删除后重新上传";
+
+/** Shown with parse_failed for each reason the worker reports (PRD 4.3.5 #4 to #6). */
+const PARSE_FAILURE_MESSAGES: Record<ParseFailureReason, string> = {
+  drm: "该文件受 DRM 保护，无法转换。请使用无 DRM 的 EPUB",
+  unreadable: "文件无法读取，可能已损坏",
+  no_text: "没有识别到可朗读的正文",
+};
 
 /**
  * Locks the job if it is still running under the given attempt. `attempt` is the fencing token:
@@ -40,13 +48,15 @@ export async function succeedJob(tx: Tx, job: Job, now: Date) {
 }
 
 /**
- * A worker reports that its attempt failed. A render job with attempts left goes back to the queue and its
- * Chapter back to 待生成 (PRD 4.3.5 #8); the next claim is its next attempt. Otherwise the job fails. A parse
- * failure is final at once: a file that cannot be parsed (DRM, broken) fails the same way every time.
+ * A worker reports that its attempt failed. A parse failure with a `reason` is the file's fault (DRM, broken, no
+ * text): it fails the same way every time, so the Book is 解析失败 at once and shows why (PRD 4.3.5 #4 to #6).
+ * Any other failure (storage, TTS, a bug) goes back to the queue while attempts are left, a Chapter back to
+ * 待生成 (PRD 4.3.5 #8); on the last attempt the job fails, and a Book still parsing shows it as unreadable.
  */
-export async function failAttempt(tx: Tx, job: Job, error: string, now: Date) {
-  if (job.type === "render_chapter" && job.attempt < MAX_JOB_ATTEMPTS) await requeue(tx, job, error, now);
-  else await failJob(tx, job, error, now);
+export async function failAttempt(tx: Tx, job: Job, error: string, now: Date, reason?: ParseFailureReason) {
+  if (job.type === "parse" && reason) await failJob(tx, job, error, now, PARSE_FAILURE_MESSAGES[reason]);
+  else if (job.attempt < MAX_JOB_ATTEMPTS) await requeue(tx, job, error, now);
+  else await failJob(tx, job, error, now, job.type === "parse" ? PARSE_FAILURE_MESSAGES.unreadable : null);
 }
 
 /** Puts a job back in the queue for its next attempt; a Chapter goes back to 待生成. */

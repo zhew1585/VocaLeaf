@@ -136,9 +136,8 @@ export function jobRoutes({ db, workerToken, jobLeaseMs, now = () => new Date() 
 
   app.openapi(failureRoute, async (c) => {
     const { id } = c.req.valid("param");
-    const { attempt, error } = c.req.valid("json");
-    // Failure reasons and their messages (PRD 4.3.5 #4 to #6) come with #3.
-    const recorded = await withCurrentJob(id, attempt, null, (tx, job) => failAttempt(tx, job, error, now()));
+    const { attempt, error, reason } = c.req.valid("json");
+    const recorded = await withCurrentJob(id, attempt, null, (tx, job) => failAttempt(tx, job, error, now(), reason));
     return recorded ? c.body(null, 204) : c.json(jobNotRunning, 409);
   });
 

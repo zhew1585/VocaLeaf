@@ -13,6 +13,8 @@ export const LEASE_SECONDS = Number(process.env.E2E_JOB_LEASE_SECONDS ?? 5);
 export const PRIDE_AND_PREJUDICE = new Uint8Array(
   readFileSync(new URL("../fixtures/pride-and-prejudice.epub", import.meta.url)),
 );
+/** The parsing rules sample (worker/tests/sample_epubs.py): Skipped front and back matter, a Preface, Chapter I. */
+export const PARSE_RULES = new Uint8Array(readFileSync(new URL("../fixtures/parse-rules.epub", import.meta.url)));
 /** Two short Chapters, about 20 s of audio: small enough to generate completely in a test. */
 export const SHORT_WALK = new Uint8Array(readFileSync(new URL("../fixtures/short-walk.epub", import.meta.url)));
 

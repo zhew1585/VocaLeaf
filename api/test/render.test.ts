@@ -20,7 +20,7 @@ import {
 
 const sentence = (text: string, paragraphIndex = 0) => ({ paragraphIndex, text, spokenText: text });
 
-/** A Book whose Imprint is Skipped (as #3 will report it) and whose two other Chapters are narrated. */
+/** A Book whose Imprint is Skipped (as the worker reports it) and whose two other Chapters are narrated. */
 const parsed: Omit<ParseResult, "attempt"> = {
   parserVersion: "test-1",
   title: "Pride and Prejudice",
