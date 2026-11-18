@@ -1,64 +1,72 @@
-# VocaLeaf（拾页）
+# VocaLeaf (拾页)
 
-把自己的英文电子书变成有声书，边听边拾起想学的句子。
-领域词汇见 [CONTEXT.md](CONTEXT.md)，需求见 [docs/prd-mvp.md](docs/prd-mvp.md)，架构决策见 [docs/adr/](docs/adr/)。
+VocaLeaf turns your own English ebooks into audiobooks and lets you mark the sentences you want to study while you listen.
+The domain glossary is in [CONTEXT.md](CONTEXT.md), the product requirements are in [docs/prd-mvp.md](docs/prd-mvp.md), and the architecture decisions are in [docs/adr/](docs/adr/).
 
-## 起栈
+## Run the stack
 
-前提：装好 Docker（Docker Desktop 或 Docker Engine + Compose v2）。
-不需要任何云账号。
+You need Docker (Docker Desktop, or Docker Engine with Compose v2).
+You do not need any cloud account.
 
 ```sh
 docker compose up --build
 ```
 
-首次启动会构建三个镜像并拉取 Kokoro（约 4.5GB），之后几秒即可就绪。
-打开 http://localhost:8080 ，选择一本无 DRM 的 EPUB（例如 [Standard Ebooks 的 Pride and Prejudice](https://standardebooks.org/ebooks/jane-austen/pride-and-prejudice)）并上传。
-页面跳到书籍详情，书先显示【解析中】，解析完成后变为【生成中】并列出全部章节和每章句子数。
+The first start builds three images and pulls the Kokoro image (about 4.5 GB).
+Later starts take a few seconds.
 
-停止：`docker compose down`；连数据一起清空：`docker compose down -v`。
+Open http://localhost:8080 and upload an EPUB without DRM, for example [Pride and Prejudice from Standard Ebooks](https://standardebooks.org/ebooks/jane-austen/pride-and-prejudice).
+The page then opens the book detail view.
+The book shows 解析中 (parsing) first, then 生成中 (generating) once parsing finishes, with every chapter and its sentence count.
 
-可用环境变量：
+To stop the stack, run `docker compose down`.
+To also delete all data, run `docker compose down -v`.
 
-| 变量 | 默认值 | 说明 |
+Environment variables:
+
+| Variable | Default | Meaning |
 | --- | --- | --- |
-| `WEB_PORT` | `8080` | 网页端口 |
-| `WORKER_TOKEN` | `dev-worker-token-change-me` | worker 调用 `/api/internal` 的共享密钥，上线必须改 |
-| `JOB_LEASE_SECONDS` | `600` | worker 领取任务后的租约时长；到期未回调的任务可被其他 worker 重新领取 |
+| `WEB_PORT` | `8080` | Port for the web app |
+| `WORKER_TOKEN` | `dev-worker-token-change-me` | Shared secret the worker sends to `/api/internal`. Change it before any public deployment. |
+| `JOB_LEASE_SECONDS` | `600` | How long a worker holds a claimed job. When the lease expires without a callback, another worker can claim the job. |
 
-## 组成
+## Services
 
-| 服务 | 说明 |
+| Service | What it does |
 | --- | --- |
-| `web` | Vite + React SPA，由 nginx 提供，并把 `/api` 反向代理到 API |
-| `api` | TypeScript（Hono），唯一读写数据库的组件；OpenAPI 文档在 `/api/openapi.json` |
-| `worker` | Python，无状态；向 API 领取任务、从对象存储读原文件、把结果回调给 API，不连数据库 |
-| `postgres` | 数据库，只与 API 在同一网络 |
-| `storage` | S3 兼容对象存储（RustFS） |
-| `kokoro` | Kokoro-FastAPI（CPU），音频生成在 #2 接入 |
+| `web` | Vite and React single-page app served by nginx, which also proxies `/api` to the API |
+| `api` | TypeScript service on Hono and the only component that reads or writes the database. The OpenAPI document is at `/api/openapi.json`. |
+| `worker` | Stateless Python process. It claims jobs from the API, reads the uploaded file from object storage, and reports results back to the API. It has no database connection. |
+| `postgres` | Database. Only the API shares its network. |
+| `storage` | S3-compatible object storage (RustFS) |
+| `kokoro` | Kokoro-FastAPI on CPU. Audio generation starts using it in [#2](https://github.com/zhew1585/VocaLeaf/issues/2). |
 
-对象存储只通过 `S3_ENDPOINT`、`S3_REGION`、`S3_BUCKET`、`S3_ACCESS_KEY_ID`、`S3_SECRET_ACCESS_KEY` 访问。
-换成 Cloudflare R2：把这五个变量改成 R2 的值（`S3_REGION=auto`），并去掉 `storage` 服务。
+The API and the worker reach object storage only through `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`.
+To use Cloudflare R2, set these five variables to your R2 values (with `S3_REGION=auto`) and remove the `storage` service.
 
-### 任务租约
+### Job leases
 
-worker 领取任务时拿到一个租约（`JOB_LEASE_SECONDS`）和本次领取的序号 `attempt`。
-worker 崩溃或重启后，租约到期的任务会被重新领取，`attempt` 加 1；同一任务最多领取 3 次（PRD 4.7.2），第 3 次仍超时则任务失败，书进入【解析失败】。
-回调必须带回 `attempt`，任务已被重新领取或已结束时回调返回 409，不会覆盖新结果。
+When a worker claims a job, it gets a lease of `JOB_LEASE_SECONDS` and the claim number `attempt`.
+If the worker crashes or restarts, any worker can claim the job again once the lease expires, and each new claim increases `attempt` by one.
+Workers can claim a job at most 3 times (PRD 4.7.2).
+If the third claim also times out, the job fails and the book moves to 解析失败 (parsing failed).
+Every callback must send back its `attempt`.
+The API answers 409 when the job was claimed again or has already finished, so a late callback never overwrites a newer result.
 
-登录在 #6 实现。
-目前所有请求都以一个固定的开发身份进行，见 [api/src/dev-identity.ts](api/src/dev-identity.ts)。
+Sign-in comes in [#6](https://github.com/zhew1585/VocaLeaf/issues/6).
+Until then every request runs as one fixed development user, defined in [api/src/dev-identity.ts](api/src/dev-identity.ts).
 
-## 开发与测试
+## Develop and test
 
 ```sh
-npm ci                     # api 与 web 的依赖（npm workspaces）
-npm test                   # api（PGlite 内存 Postgres）与 web 的测试
+npm ci                     # dependencies for api and web (npm workspaces)
+npm test                   # api tests (in-memory Postgres via PGlite) and web tests
 npm run typecheck
 (cd worker && uv sync && uv run pytest && uv run ruff check && uv run pyright)
 
-npm run e2e:up             # 以 5 秒租约起栈（租约相关的端到端测试需要）
-npm run test:e2e           # 针对运行中的栈的端到端功能测试
+npm run e2e:up             # start the stack with a 5-second lease, which the lease tests need
+npm run test:e2e           # end-to-end tests against the running stack
 ```
 
-改了 `api/src/db/schema.ts` 之后运行 `npm run db:generate -w api` 生成迁移；API 启动时自动执行迁移。
+After you change `api/src/db/schema.ts`, run `npm run db:generate -w api` to generate a migration.
+The API applies pending migrations when it starts.
