@@ -100,13 +100,14 @@ def parse_epub(data: bytes) -> ParsedBook:
 
 
 def _comparable(text: str) -> str:
+    """Text reduced to its letters and digits, lowercased, for comparing a heading with a title."""
     return re.sub(r"[\W_]", "", text.lower())
 
 
 def _without_title(paragraphs: list[str], title: str | None) -> list[str]:
     """Drops the Chapter's opening heading when it only repeats the Chapter's title (ignoring case, spacing and
     punctuation): the title is shown as the Chapter's name, so it is not read as a Sentence."""
-    if title and paragraphs and _comparable(paragraphs[0]) == _comparable(title):
+    if title and paragraphs and _comparable(title) and _comparable(paragraphs[0]) == _comparable(title):
         return paragraphs[1:]
     return paragraphs
 

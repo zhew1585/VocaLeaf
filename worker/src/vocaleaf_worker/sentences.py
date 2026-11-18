@@ -1,21 +1,26 @@
 """Sentence splitting (PRD 4.2.6 rule 1).
 
 Splits after . ! ? or … (plus any closing quotes or brackets) when whitespace and the start of a new sentence
-follow. A period that belongs to an abbreviation does not end a Sentence (AC-UP-08); the lists below follow
-ebook2audiobook's English abbreviations (ADR 0001). Over-long Sentences, footnote numbers and number spelling
-(the rest of PRD 4.2.6) come with #3.
+follow. A period that belongs to an abbreviation does not end a Sentence (AC-UP-08). The abbreviation lists
+start from ebook2audiobook's English list (ADR 0001); SENTENCE_OPENERS is our own heuristic for the
+abbreviations that can end a Sentence too. Over-long Sentences, footnote numbers and number spelling (the rest
+of PRD 4.2.6) come with #3.
 """
 
 import re
 
 # Titles stand before a name, so a Sentence never ends on one unless the paragraph or a quotation ends there.
+# Matched with their own capitalization: "MS." (a manuscript) is not "Ms.".
 TITLES = ("Mr", "Mrs", "Ms", "Messrs", "Dr", "St", "Mt", "Prof", "Rev", "Capt", "Col", "Gen", "Lt", "Gov")
 
 # Abbreviations that introduce what follows them.
 LEADING = ("vs", "e.g", "i.e", "cf", "viz")
 
-# Abbreviations that may also end a Sentence, as may an initial ("J.") or an acronym ("U.S."): they end one only
-# when the next word is one that clearly opens a Sentence.
+# Abbreviations that stand before a number ("No. 4", "Vol. II"), and do not end a Sentence there.
+NUMBERING = ("No", "Vol", "Ch", "Fig", "p", "pp")
+
+# Abbreviations that may also end a Sentence, as may an initial ("J.", "É.") or an acronym ("U.S."): they end one
+# only before a title or a word that clearly opens a Sentence.
 TRAILING = ("Jr", "Sr", "etc", "Esq")
 
 # Words that open Sentences far more often than they continue a name or a list after an abbreviation.
@@ -28,20 +33,33 @@ SENTENCE_OPENERS = frozenset((
 ))
 # fmt: on
 
-_NEVER_END = {a.lower() for a in (*TITLES, *LEADING)}
-_MAY_END = {a.lower() for a in TRAILING}
-# One letter, or letters each followed by a period: J, U.S, e.g (without the final period).
-_INITIALS = re.compile(r"^(?:[A-Za-z]\.)*[A-Za-z]$")
-_LAST_TOKEN = re.compile(r"(?<![^\W\d_])([^\W\d_](?:[^\W\d_.]|\.(?=[^\W\d_]))*)\.$")
+_OPENING_QUOTES = "“‘\"'(["
+_CLOSING_QUOTES = "”’\"')]"
+
+_TITLES = frozenset(TITLES)
+_LEADING = frozenset(LEADING)
+_NUMBERING = frozenset(NUMBERING)
+_TRAILING = frozenset(a.lower() for a in TRAILING)
+
+_LETTER = r"[^\W\d_]"
+# The abbreviation right before the final period: letters, with inner periods ("U.S"), not part of a longer
+# word or a possessive ("Anne’s"). Read across dashes and invisible joiners: "drily—“Mr." gives "Mr".
+_LAST_TOKEN = re.compile(rf"(?<![^\W\d_’'])({_LETTER}(?:{_LETTER}|\.(?={_LETTER}))*)\.$")
+_NUMBER = re.compile(r"^(?:\d|[IVXLC]+\b)")
 
 _BOUNDARY = re.compile(
-    r"""(?<=[.!?…])        # sentence-ending punctuation
-        [”’"')\]]*          # closing quotes or brackets stay with the sentence
-        \s+                 # the gap between sentences
-        (?=[“‘"'(\[]?[A-Z0-9])  # next sentence starts with a capital or digit, maybe quoted
+    rf"""(?<=[.!?…])                  # sentence-ending punctuation
+        [{re.escape(_CLOSING_QUOTES)}]*  # closing quotes or brackets stay with the sentence
+        \s+                           # the gap between sentences
+        (?=[{re.escape(_OPENING_QUOTES)}]?[A-Z0-9])  # next sentence starts with a capital or digit, maybe quoted
     """,
     re.VERBOSE,
 )
+
+
+def _is_initials(token: str) -> bool:
+    """Capital letters each followed by a period, in any script: "J", "É", "U.S". The pronoun "I" is not one."""
+    return token != "I" and all(len(x) == 1 and x.isupper() for x in token.split("."))
 
 
 def _ends_sentence(before: str, closers: str, after: str) -> bool:
@@ -50,16 +68,16 @@ def _ends_sentence(before: str, closers: str, after: str) -> bool:
     if not before.endswith(".") or closers:
         # Only a bare period can belong to an abbreviation; one that closes a quotation ends the Sentence.
         return True
-    # The letters (and inner periods) right before the period, however the word is joined to what precedes it:
-    # "drily—“Mr." gives "Mr", "the U.S." gives "U.S".
     found = _LAST_TOKEN.search(before)
     token = found.group(1) if found else ""
-    if token.lower() in _NEVER_END:
+    next_word = after.split(maxsplit=1)[0].lstrip(_OPENING_QUOTES) if after.strip() else ""
+    if token in _TITLES or token.lower() in _LEADING:
         return False
-    if token.lower() in _MAY_END or _INITIALS.match(token):
-        next_word = after.split()[0].lstrip("“‘\"'([") if after.split() else ""
-        is_initial = re.match(r"^[A-Z]\.", next_word) is not None
-        return not is_initial and next_word.rstrip(".,;:!?”’\"')]") in SENTENCE_OPENERS
+    if token in _NUMBERING and _NUMBER.match(next_word):
+        return False
+    if token.lower() in _TRAILING or (token and _is_initials(token)):
+        bare = next_word.rstrip(".,;:!?" + _CLOSING_QUOTES)
+        return bare in SENTENCE_OPENERS or bare in _TITLES
     return True
 
 

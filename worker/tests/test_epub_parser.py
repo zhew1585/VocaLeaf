@@ -98,6 +98,12 @@ def test_a_heading_that_repeats_the_chapter_title_is_not_a_sentence():
     assert texts(parse_epub(epub).chapters[0]) == [(0, "It is a truth."), (1, "Chapter I")]
 
 
+def test_a_heading_of_only_punctuation_is_not_taken_for_a_punctuation_title():
+    epub = make_epub([Doc("c1.xhtml", "<p>* * *</p><p>Body.</p>")], [TocEntry("…", "c1.xhtml")])
+
+    assert texts(parse_epub(epub).chapters[0]) == [(0, "* * *"), (1, "Body.")]
+
+
 def test_a_heading_that_differs_from_the_chapter_title_stays():
     epub = make_epub([Doc("c1.xhtml", "<h2>One</h2><p>Body.</p>")], [TocEntry("Chapter One", "c1.xhtml")])
 

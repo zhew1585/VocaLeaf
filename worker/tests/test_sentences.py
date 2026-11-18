@@ -1,4 +1,6 @@
-from vocaleaf_worker.sentences import split_sentences
+import pytest
+
+from vocaleaf_worker.sentences import TITLES, split_sentences
 
 
 def test_splits_on_terminal_punctuation():
@@ -39,10 +41,6 @@ def test_empty_and_blank_paragraphs_yield_nothing():
 
 # ---- Abbreviations (PRD 4.2.6 rule 1, AC-UP-08) ----
 
-import pytest
-
-from vocaleaf_worker.sentences import TITLES
-
 
 @pytest.mark.parametrize("title", TITLES)
 def test_never_ends_a_sentence_on_a_title_before_a_name(title: str):
@@ -74,7 +72,7 @@ def test_keeps_each_title_with_the_name_it_belongs_to(text: str):
 
 
 def test_finds_a_title_joined_to_the_word_before_by_a_dash():
-    text = "“Oh! yes,” said Elizabeth drily\ufeff—“Mr. Darcy is all politeness.”"
+    text = "“Oh! yes,” said Elizabeth drily\ufeff\u2014“Mr. Darcy is all politeness.”"
     assert split_sentences(text) == [text]
 
 
@@ -106,6 +104,9 @@ def test_never_ends_a_sentence_on_an_abbreviation_that_introduces_what_follows(t
         "The book by J. K. Rowling sold well.",
         "It was signed by E. Darcy himself.",
         "The U.S. Army marched.",
+        "The novel by É. Zola sold well.",
+        "See No. 4 for details.",
+        "It is in Vol. II of the letters.",
     ],
 )
 def test_keeps_names_initials_and_trailing_abbreviations_with_what_follows(text: str):
@@ -119,6 +120,9 @@ def test_keeps_names_initials_and_trailing_abbreviations_with_what_follows(text:
         ("We bought apples, pears, etc. Then we went home.", "We bought apples, pears, etc."),
         ("The letter was from John Smith Jr. He wrote it at night.", "The letter was from John Smith Jr."),
         ("The answer is plan B. It always is.", "The answer is plan B."),
+        ("They sent their thanks, etc. Mrs. Bennet was quite disconcerted.", "They sent their thanks, etc."),
+        ("It was not I. Jane did it.", "It was not I."),
+        ("He lives at No. 4. The house is big.", "He lives at No. 4."),
     ],
 )
 def test_ends_a_sentence_on_a_trailing_abbreviation_when_a_new_sentence_clearly_starts(text: str, first: str):
@@ -132,3 +136,19 @@ def test_ends_a_sentence_on_an_abbreviation_at_the_end_of_a_paragraph():
 
 def test_ends_a_sentence_when_the_abbreviation_closes_a_quotation():
     assert split_sentences("“Good morning, Mrs.” She left.") == ["“Good morning, Mrs.”", "She left."]
+
+
+@pytest.mark.parametrize(
+    ("text", "first"),
+    [
+        ("It was not equal to Anne’s. Anne would have been a delight.", "It was not equal to Anne’s."),
+        ("He preferred her husband's. Mr. Collins did not.", "He preferred her husband's."),
+    ],
+)
+def test_a_possessive_is_not_an_initial(text: str, first: str):
+    assert split_sentences(text) == [first, text[len(first) + 1 :]]
+
+
+def test_a_title_is_matched_with_its_own_capitalization():
+    # "MS." (a manuscript) is not "Ms." (a title).
+    assert split_sentences("He found the MS. It was old.") == ["He found the MS.", "It was old."]

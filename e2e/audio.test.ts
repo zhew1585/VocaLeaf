@@ -198,8 +198,8 @@ describe("narration with pauses, spoken a paragraph at a time", () => {
   });
 });
 
-/** Titles that stand before a name (AC-UP-08): no Sentence may end on one. */
-const TITLES = ["Mr", "Mrs", "Ms", "Dr", "St", "Prof", "Rev", "Capt", "Col", "Gen", "Lt", "Gov"];
+/** Titles that stand before a name (AC-UP-08): no Sentence may end on one. Same list as TITLES in sentences.py. */
+const TITLES = ["Mr", "Mrs", "Ms", "Messrs", "Dr", "St", "Mt", "Prof", "Rev", "Capt", "Col", "Gen", "Lt", "Gov"];
 
 describe("Sentences split around abbreviations and Chapter headings (AC-UP-08)", () => {
   it("keeps Mr. with Bennet in text and in audio, and starts Chapter I with its opening line", async () => {
@@ -207,7 +207,7 @@ describe("Sentences split around abbreviations and Chapter headings (AC-UP-08)",
     const parsed = await waitForBook(created.body.id, (b) => b.status !== "parsing", 60_000);
 
     const all = await sentencesOf(parsed);
-    const endsOnTitle = all.filter((s) => TITLES.some((t) => new RegExp(`(^|[\\s“‘"'(])${t}\\.$`).test(s.text)));
+    const endsOnTitle = all.filter((s) => TITLES.some((t) => new RegExp(`(?<![\\p{L}’'])${t}\\.$`, "u").test(s.text)));
     expect(endsOnTitle.map((s) => s.text)).toEqual([]);
 
     const chapterOne = parsed.chapters.find((c) => c.title === "I")!;
