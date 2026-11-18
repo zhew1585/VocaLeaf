@@ -90,10 +90,10 @@ describe("generating a Book's audio after parsing", () => {
     const ready = await bookDetail(app, book.id);
     expect(state(ready)).toEqual(["ready", true]);
     expect(ready.durationMs).toBe(20_000);
-    expect(ready.chapters.map((c) => [c.title, c.audioStatus, c.durationMs])).toEqual([
-      ["I", "generated", 8000],
-      ["Imprint", "pending", null],
-      ["II", "generated", 12000],
+    expect(ready.chapters.map((c) => [c.title, c.audioStatus, c.durationMs, c.startMs])).toEqual([
+      ["I", "generated", 8000, 0],
+      ["Imprint", "pending", null, null],
+      ["II", "generated", 12000, 8000],
     ]);
 
     // Times are positions in the Book's continuous audio: Chapter II starts where Chapter I ends.
@@ -240,7 +240,9 @@ describe("the Book's playlist", () => {
     expect(segmentUrls(m3u8, book.id)).toHaveLength(1);
     expect(m3u8).not.toContain("#EXT-X-ENDLIST");
     // Chapter II's place in the Book is not known yet, so neither are its Sentences' times.
-    const two = await sentencesOf(t.app, (await bookDetail(t.app, book.id)).chapters[2]!.id);
+    const detail = await bookDetail(t.app, book.id);
+    expect(detail.chapters.map((c) => c.startMs)).toEqual([0, null, null]);
+    const two = await sentencesOf(t.app, detail.chapters[2]!.id);
     expect(two.every((s) => s.startMs === null)).toBe(true);
   });
 

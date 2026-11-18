@@ -18,8 +18,8 @@ const book: BookDetail = {
   failureReason: null,
   createdAt: "2026-11-18T00:00:00.000Z",
   chapters: [
-    { id: "c0", index: 0, title: "Titlepage", skipped: false, audioStatus: "pending", sentenceCount: 3, durationMs: null },
-    { id: "c1", index: 1, title: "I", skipped: false, audioStatus: "pending", sentenceCount: 42, durationMs: null },
+    { id: "c0", index: 0, title: "Titlepage", skipped: false, audioStatus: "pending", sentenceCount: 3, durationMs: null, startMs: null },
+    { id: "c1", index: 1, title: "I", skipped: false, audioStatus: "pending", sentenceCount: 42, durationMs: null, startMs: null },
   ],
   durationMs: null,
 };

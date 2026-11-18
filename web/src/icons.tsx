@@ -78,3 +78,50 @@ function SolidIcon({ size, d, className }: { size: number; d: string; className?
 export const PlaySolidIcon = ({ size = 16 }) => <SolidIcon size={size} d="M6 3l15 9-15 9z" className="play-glyph" />;
 
 export const PauseSolidIcon = ({ size = 18 }) => <SolidIcon size={size} d="M6 4h4v16h-4z m8 0h4v16h-4z" />;
+
+export const ArrowLeftIcon = ({ size = 16 }) => (
+  <Icon size={size}>
+    <path d="m12 19-7-7 7-7" />
+    <path d="M19 12H5" />
+  </Icon>
+);
+
+/** Sentence sidebar collapsed: the plain split-panel icon; it opens the sidebar. */
+export const PanelRightIcon = ({ size = 18 }) => (
+  <Icon size={size}>
+    <rect width="18" height="18" x="3" y="3" rx="2" />
+    <path d="M15 3v18" />
+  </Icon>
+);
+
+/** Sentence sidebar open: the split-panel icon with an arrow to the right; it collapses the sidebar. */
+export const PanelRightCloseIcon = ({ size = 18 }) => (
+  <Icon size={size}>
+    <rect width="18" height="18" x="3" y="3" rx="2" />
+    <path d="M15 3v18" />
+    <path d="m8 9 3 3-3 3" />
+  </Icon>
+);
+
+export const LocateFixedIcon = ({ size = 14 }) => (
+  <Icon size={size}>
+    <line x1="2" x2="5" y1="12" y2="12" />
+    <line x1="19" x2="22" y1="12" y2="12" />
+    <line x1="12" x2="12" y1="2" y2="5" />
+    <line x1="12" x2="12" y1="19" y2="22" />
+    <circle cx="12" cy="12" r="7" />
+    <circle cx="12" cy="12" r="3" />
+  </Icon>
+);
+
+/**
+ * The playing Chapter's sound wave (design 01 ①): four 1.5 px round-capped lines in ink, rising and falling while
+ * playing and still while paused. 18 px.
+ */
+export const PlayingWave = ({ playing }: { playing: boolean }) => (
+  <svg width={18} height={18} viewBox="0 0 16 16" aria-hidden="true" className={`wave${playing ? " is-playing" : ""}`}>
+    {[3.2, 6.4, 9.6, 12.8].map((x) => (
+      <line key={x} x1={x} x2={x} y1={2.5} y2={13.5} />
+    ))}
+  </svg>
+);

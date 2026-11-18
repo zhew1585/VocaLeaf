@@ -1,7 +1,7 @@
 // Typed calls to the VocaLeaf API. Types come straight from the API's zod contract (ADR 0002).
-import type { ApiError, Book, BookDetail } from "@vocaleaf/api/contract";
+import type { ApiError, Book, BookDetail, Sentence } from "@vocaleaf/api/contract";
 
-export type { Book, BookDetail, BookStatus, ChapterSummary } from "@vocaleaf/api/contract";
+export type { Book, BookDetail, BookStatus, ChapterSummary, Sentence } from "@vocaleaf/api/contract";
 
 export class ApiRequestError extends Error {}
 
@@ -27,4 +27,9 @@ export function uploadBook(file: File): Promise<Book> {
 
 export function getBook(id: string): Promise<BookDetail> {
   return request<BookDetail>(`/books/${id}`);
+}
+
+/** A Chapter's Sentences in reading order, with their place in the Book's audio once generated. */
+export function getSentences(chapterId: string): Promise<Sentence[]> {
+  return request<Sentence[]>(`/chapters/${chapterId}/sentences`);
 }

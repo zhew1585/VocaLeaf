@@ -1,5 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useEffect, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PlaybackProvider, usePlayback, type Playback } from "./playback";
 import { formatElapsed, formatRemaining, Player } from "./Player";
 
 // hls.js needs MediaSource, which jsdom lacks: a stand-in records what the player asks of it.
@@ -60,6 +62,27 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const SRC = "/api/books/b1/audio.m3u8";
+
+/** Opens `src` in the session, as the 专注页 does, and hands the session out for the test to drive. */
+function Open({ src, children, onSession }: { src: string; children?: ReactNode; onSession?: (p: Playback) => void }) {
+  const playback = usePlayback();
+  const { load } = playback;
+  useEffect(() => load(src), [load, src]);
+  onSession?.(playback);
+  return children;
+}
+
+function renderPlayer(totalSeconds?: number) {
+  return render(
+    <PlaybackProvider>
+      <Open src={SRC}>
+        <Player totalSeconds={totalSeconds} />
+      </Open>
+    </PlaybackProvider>,
+  );
+}
+
 function audio() {
   return document.querySelector("audio")!;
 }
@@ -76,15 +99,15 @@ function timeUpdate(currentTime: number, duration: number) {
 
 describe("Player", () => {
   it("loads the Book's HLS playlist from the beginning, not from the live edge", () => {
-    render(<Player src="/api/books/b1/audio.m3u8" />);
+    renderPlayer();
 
     expect(hls.instances).toHaveLength(1);
-    expect(hls.instances[0]).toMatchObject({ source: "/api/books/b1/audio.m3u8", media: audio() });
+    expect(hls.instances[0]).toMatchObject({ source: SRC, media: audio() });
     expect(hls.instances[0]!.config).toMatchObject({ startPosition: 0 });
   });
 
   it("plays and pauses with the one button, which says what it will do", () => {
-    render(<Player src="/api/books/b1/audio.m3u8" />);
+    renderPlayer();
 
     fireEvent.click(screen.getByRole("button", { name: "播放" }));
     expect(play).toHaveBeenCalledTimes(1);
@@ -95,7 +118,7 @@ describe("Player", () => {
   });
 
   it("shows how far into the whole Book playback is, with time listened and time left", () => {
-    render(<Player src="/api/books/b1/audio.m3u8" />);
+    renderPlayer();
 
     timeUpdate(252, 41_752);
 
@@ -107,7 +130,7 @@ describe("Player", () => {
   });
 
   it("uses what is seekable as the length while the Book is still generating", () => {
-    render(<Player src="/api/books/b1/audio.m3u8" />);
+    renderPlayer();
     Object.defineProperty(audio(), "seekable", { value: { length: 1, end: () => 120 }, configurable: true });
 
     timeUpdate(30, Number.POSITIVE_INFINITY);
@@ -117,7 +140,7 @@ describe("Player", () => {
   });
 
   it("measures progress against the whole Book's length when it is known", () => {
-    render(<Player src="/api/books/b1/audio.m3u8" totalSeconds={41_752} />);
+    renderPlayer(41_752);
 
     timeUpdate(252, 600); // only 10 minutes are generated so far
 
@@ -126,7 +149,7 @@ describe("Player", () => {
   });
 
   it("says so when the stream cannot be played, but not for errors hls.js recovers from", () => {
-    render(<Player src="/api/books/b1/audio.m3u8" />);
+    renderPlayer();
     const onError = hls.instances[0]!.handlers.hlsError!;
 
     act(() => onError("hlsError", { fatal: false }));
@@ -136,10 +159,50 @@ describe("Player", () => {
     expect(screen.getByRole("alert").textContent).toBe("播放失败，请刷新页面重试");
   });
 
-  it("stops loading when it goes away", () => {
-    const { unmount } = render(<Player src="/api/books/b1/audio.m3u8" />);
-    unmount();
-    expect(hls.instances[0]!.destroyed).toBe(true);
+  it("keeps playing when the player goes away, as when the user leaves the 专注页", () => {
+    const { rerender } = renderPlayer();
+    fireEvent.click(screen.getByRole("button", { name: "播放" }));
+
+    rerender(<PlaybackProvider>{null}</PlaybackProvider>);
+
+    expect(hls.instances).toHaveLength(1);
+    expect(hls.instances[0]!.destroyed).toBe(false);
+    expect(pause).not.toHaveBeenCalled();
+  });
+
+  it("loads a Book once however often it is opened, and drops it for another Book", () => {
+    const { rerender } = render(
+      <PlaybackProvider>
+        <Open src={SRC} />
+        <Open src={SRC} />
+      </PlaybackProvider>,
+    );
+    expect(hls.instances).toHaveLength(1);
+
+    rerender(
+      <PlaybackProvider>
+        <Open src="/api/books/b2/audio.m3u8" />
+      </PlaybackProvider>,
+    );
+    expect(hls.instances.map((h) => [h.source, h.destroyed])).toEqual([
+      [SRC, true],
+      ["/api/books/b2/audio.m3u8", false],
+    ]);
+  });
+
+  it("plays from a given point of the Book, even when paused before", () => {
+    let session!: Playback;
+    render(
+      <PlaybackProvider>
+        <Open src={SRC} onSession={(p) => (session = p)} />
+      </PlaybackProvider>,
+    );
+
+    act(() => session.playFrom(8));
+
+    expect(audio().currentTime).toBe(8);
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(session.position).toBe(8);
   });
 });
 
