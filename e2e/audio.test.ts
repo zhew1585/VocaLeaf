@@ -11,6 +11,7 @@ import {
   fetchBytes,
   PRIDE_AND_PREJUDICE,
   ROOT,
+  sessionCookie,
   SHORT_WALK,
   sql,
   upload,
@@ -63,12 +64,17 @@ function chapterStarts(book: BookDetail): Set<number> {
   return starts;
 }
 
-/** The Book's whole playlist decoded to 24 kHz mono PCM, by ffmpeg inside the worker container. */
-function decodeBook(bookId: string): Int16Array {
+/**
+ * The Book's whole playlist decoded to 24 kHz mono PCM, by ffmpeg inside the worker container.
+ * ffmpeg sends the user's session cookie, and passes it on to every segment request, as a browser would.
+ */
+async function decodeBook(bookId: string): Promise<Int16Array> {
+  const cookie = await sessionCookie();
   const pcm = execFileSync(
     "docker",
     [
       ...["compose", "exec", "-T", "worker", "ffmpeg", "-loglevel", "error", "-allowed_extensions", "ALL"],
+      ...["-headers", `Cookie: ${cookie}\r\n`],
       ...["-i", `http://api:3000/api/books/${bookId}/audio.m3u8`, "-f", "s16le", "-ac", "1", "-ar", "24000", "pipe:1"],
     ],
     { cwd: ROOT, maxBuffer: 64 * 1024 * 1024 },
@@ -185,7 +191,7 @@ describe("narration with pauses, spoken a paragraph at a time", () => {
     }
 
     // In the audio a player decodes, the pauses are silent and the Sentences are not.
-    const audio = decodeBook(book.id);
+    const audio = await decodeBook(book.id);
     const level = (from: number, to: number) => rms(audio, from, to);
     expect(level(100, 1300), "chapter start").toBeLessThan(150);
     for (let i = 0; i < sentences.length; i++) {
