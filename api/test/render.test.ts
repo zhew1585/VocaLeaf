@@ -79,13 +79,17 @@ describe("generating a Book's audio after parsing", () => {
     expect(state(await bookDetail(app, book.id))).toEqual(["generating", true]);
 
     expect((await reportRenderResult(app, first, { segments: firstReport.segments.slice(1), sentences: firstReport.sentences.slice(1) })).status).toBe(204);
-    expect(state(await bookDetail(app, book.id))).toEqual(["generating", true]);
+    const halfway = await bookDetail(app, book.id);
+    expect(state(halfway)).toEqual(["generating", true]);
+    // Chapter I took 8 s for 60 characters; Chapter II has 87 more to go.
+    expect(halfway.durationMs).toBe(8000 + (87 * 8000) / 60);
 
     const second = await claimRender(app);
     expect((await reportRenderResult(app, second, await renderAll(storage, second))).status).toBe(204);
 
     const ready = await bookDetail(app, book.id);
     expect(state(ready)).toEqual(["ready", true]);
+    expect(ready.durationMs).toBe(20_000);
     expect(ready.chapters.map((c) => [c.title, c.audioStatus, c.durationMs])).toEqual([
       ["I", "generated", 8000],
       ["Imprint", "pending", null],
@@ -293,21 +297,44 @@ describe("a render job that runs longer than the lease", () => {
     expect((await heartbeat(t.app, job)).status).toBe(409);
   });
 
-  it("starts its Chapter over when claimed again: segments of the dead claim leave the playlist", async () => {
+  it("keeps what the dead claim published when claimed again: the Book stays playable and the playlist only grows", async () => {
     const t = await testApp();
     const book = await parsedBook(t);
     const dead = await claimRender(t.app);
-    const report = await renderAll(t.storage, dead);
-    await reportRenderProgress(t.app, dead, { segments: report.segments.slice(0, 1), sentences: report.sentences.slice(0, 1) });
+    const deadReport = await renderAll(t.storage, dead);
+    await reportRenderProgress(t.app, dead, { segments: deadReport.segments.slice(0, 1), sentences: deadReport.sentences.slice(0, 1) });
     await claimRender(t.app);
+    const before = segmentUrls(await playlist(t.app, book.id), book.id);
 
     t.clock.advance(TEST_LEASE_MS + 1);
     const retry = await claimRender(t.app);
 
-    expect(segmentUrls(await playlist(t.app, book.id), book.id)).toEqual([]);
-    expect((await bookDetail(t.app, book.id)).playable).toBe(false);
+    expect(segmentUrls(await playlist(t.app, book.id), book.id)).toEqual(before);
+    expect((await bookDetail(t.app, book.id)).playable).toBe(true);
+    // The new claim renders the whole Chapter again; only what comes after the published segment is added.
     expect((await reportRenderResult(t.app, retry, await renderAll(t.storage, retry))).status).toBe(204);
-    expect(segmentUrls(await playlist(t.app, book.id), book.id)).toHaveLength(2);
+    const after = segmentUrls(await playlist(t.app, book.id), book.id);
+    expect(after).toHaveLength(2);
+    expect(after[0]).toBe(before[0]);
+    expect(await (await t.app.request(after[0]!)).text()).toBe(`audio of ${dead.sentences[0]!.id}`);
+  });
+
+  it("keeps the segments a Chapter published before it failed, and the Chapters after it follow on", async () => {
+    const t = await testApp();
+    const book = await parsedBook(t);
+    const first = await claimRender(t.app);
+    const second = await claimRender(t.app);
+    const firstReport = await renderAll(t.storage, first);
+    await reportRenderProgress(t.app, first, { segments: firstReport.segments.slice(0, 1), sentences: [] });
+    const before = segmentUrls(await playlist(t.app, book.id), book.id);
+
+    await reportFailure(t.app, first, "kokoro crashed");
+    await reportRenderResult(t.app, second, await renderAll(t.storage, second));
+
+    const after = segmentUrls(await playlist(t.app, book.id), book.id);
+    expect(after.slice(0, 1)).toEqual(before);
+    expect(after).toHaveLength(4);
+    expect(await bookDetail(t.app, book.id)).toMatchObject({ status: "ready", playable: true });
   });
 
   it("fails only its Chapter after 3 expired leases; the Book is not parse_failed", async () => {

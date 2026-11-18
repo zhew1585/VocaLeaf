@@ -6,6 +6,8 @@ import { ListenPage } from "./ListenPage";
 vi.mock("hls.js", () => ({
   default: class {
     static isSupported = () => true;
+    static Events = { ERROR: "hlsError" };
+    on() {}
     loadSource() {}
     attachMedia() {}
     destroy() {}
@@ -27,6 +29,7 @@ const book: BookDetail = {
   failureReason: null,
   createdAt: "2026-11-18T00:00:00.000Z",
   chapters: [],
+  durationMs: 41_752_000,
 };
 
 describe("ListenPage (专注页)", () => {
@@ -50,5 +53,17 @@ describe("ListenPage (专注页)", () => {
 
     expect(await screen.findByRole("button", { name: "播放" }, { timeout: 5000 })).toBeTruthy();
     expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("shows the whole Book's length, even while only its start is generated", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json(book)));
+    render(<ListenPage id="b1" />);
+    expect(await screen.findByText("−11:35:52")).toBeTruthy();
+  });
+
+  it("says there is nothing to play when the Book finished without audio", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ ...book, status: "ready", playable: false, durationMs: null })));
+    render(<ListenPage id="b1" />);
+    expect(await screen.findByText("这本书没有可播放的音频")).toBeTruthy();
   });
 });

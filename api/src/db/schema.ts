@@ -1,8 +1,10 @@
 // Database schema. The API is the only component that reads or writes it (ADR 0002).
 // Field names follow PRD 4.2 and 4.3.1. Fields that only later tickets read or write
 // (cover, Skipped reason) are added by those tickets.
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   integer,
   jsonb,
   pgEnum,
@@ -77,26 +79,32 @@ export const sentences = pgTable(
   (t) => [unique().on(t.chapterId, t.index)],
 );
 
-export const jobs = pgTable("jobs", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  bookId: uuid("book_id")
-    .notNull()
-    .references(() => books.id, { onDelete: "cascade" }),
-  type: jobType("type").notNull(),
-  // The Chapter a render_chapter job generates.
-  chapterId: uuid("chapter_id").references(() => chapters.id, { onDelete: "cascade" }),
-  // Place of the job in its Book's pipeline: 0 = parse, n = the nth narrated Chapter. Claims take the lowest
-  // first, so a newly uploaded Book's first Chapter is never stuck behind another Book's later Chapters.
-  position: integer("position").notNull().default(0),
-  status: jobStatus("status").notNull().default("queued"),
-  // Incremented on every claim, and the fencing token callbacks must echo (see jobs/routes.ts).
-  attempt: integer("attempt").notNull().default(0),
-  // While running: when the claiming worker's lease ends and the job may be claimed again.
-  leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
-  error: text("error"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const jobs = pgTable(
+  "jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    bookId: uuid("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    type: jobType("type").notNull(),
+    // The Chapter a render_chapter job generates.
+    chapterId: uuid("chapter_id").references(() => chapters.id, { onDelete: "cascade" }),
+    // Place of the job in its Book's pipeline: 0 = parse, n = the nth narrated Chapter. Claims take the lowest
+    // first, so a newly uploaded Book's first Chapter is never stuck behind another Book's later Chapters.
+    position: integer("position").notNull().default(0),
+    status: jobStatus("status").notNull().default("queued"),
+    // Incremented on every claim, and the fencing token callbacks must echo (see jobs/routes.ts).
+    attempt: integer("attempt").notNull().default(0),
+    // While running: when the claiming worker's lease ends and the job may be claimed again.
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  // A render_chapter job always names its Chapter; a parse job never does. Compared as text because the
+  // migration that adds the enum value cannot use it in the same transaction.
+  (t) => [check("jobs_chapter_matches_type", sql`(${t.type}::text = 'render_chapter') = (${t.chapterId} is not null)`)],
+);
 
 /** HLS segments of a Chapter's audio, about 10 seconds each (PRD 4.7.2), as the worker reported them. */
 export const audioSegments = pgTable(

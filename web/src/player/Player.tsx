@@ -29,7 +29,7 @@ function playableLength(audio: HTMLAudioElement): number {
  * own HLS (Safari on iOS) otherwise. The playlist is an EVENT playlist while the Book is generating, which
  * hls.js would otherwise start at the live edge; listening always starts at the Book's beginning.
  */
-function useHls(audio: React.RefObject<HTMLAudioElement | null>, src: string) {
+function useHls(audio: React.RefObject<HTMLAudioElement | null>, src: string, onFatal: () => void) {
   useEffect(() => {
     const el = audio.current!;
     if (!Hls.isSupported()) {
@@ -40,36 +40,53 @@ function useHls(audio: React.RefObject<HTMLAudioElement | null>, src: string) {
       };
     }
     const hls = new Hls({ startPosition: 0 });
+    // hls.js retries network and media errors itself; a fatal one means playback cannot go on.
+    hls.on(Hls.Events.ERROR, (_event, data) => {
+      if (data.fatal) onFatal();
+    });
     hls.loadSource(src);
     hls.attachMedia(el);
     return () => hls.destroy();
+    // onFatal only reports; a new function each render must not reload the stream.
   }, [audio, src]);
 }
+
+const PLAYBACK_FAILED = "播放失败，请刷新页面重试";
 
 /**
  * The floating player of the 专注页 (design 01, ④): play / pause and the whole Book's progress.
  * Playback runs through the Book's one continuous HLS stream, so it moves from Chapter to Chapter on its own
  * and never meets a Skipped Chapter. Speed, sleep timer, ⏮ / ⏭ and Mark come with #9 and #13.
+ * `totalSeconds` is the whole Book's length (estimated while generating); without it the bar measures what is
+ * generated so far.
  */
-export function Player({ src }: { src: string }) {
+export function Player({ src, totalSeconds = null }: { src: string; totalSeconds?: number | null }) {
   const audio = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0);
-  const [length, setLength] = useState(0);
-  useHls(audio, src);
+  const [playable, setPlayable] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  useHls(audio, src, () => setError(PLAYBACK_FAILED));
 
   const sync = () => {
     const el = audio.current!;
     setPosition(el.currentTime);
-    setLength(playableLength(el));
+    setPlayable(playableLength(el));
   };
 
   const toggle = () => {
     const el = audio.current!;
-    if (el.paused) void el.play().catch(() => setPlaying(false));
-    else el.pause();
+    if (el.paused) {
+      setError(null);
+      el.play().catch((err: unknown) => {
+        setPlaying(false);
+        // AbortError: a pause or reload interrupted the start, which is not a failure.
+        if (!(err instanceof DOMException && err.name === "AbortError")) setError(PLAYBACK_FAILED);
+      });
+    } else el.pause();
   };
 
+  const length = Math.max(playable, totalSeconds ?? 0);
   const progress = length > 0 ? Math.min(position / length, 1) : 0;
 
   return (
@@ -103,6 +120,11 @@ export function Player({ src }: { src: string }) {
         </div>
         <span className="player-time">{formatRemaining(length - position)}</span>
       </div>
+      {error && (
+        <p className="form-error player-error" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

@@ -23,10 +23,10 @@ function StatusBadge({ status }: { status: BookStatus }) {
 
 /**
  * Book detail, design 04-2: the Book's status, 开始收听 once it is playable, and its Chapter list with Sentence
- * counts. Polls while the worker is parsing or no audio exists yet.
+ * counts. Kept current while the worker parses and generates.
  */
 export function BookPage({ id }: { id: string }) {
-  const { book, error } = useBook(id, (b) => !b.playable);
+  const { book, error } = useBook(id);
 
   return (
     <div className="book-layout">

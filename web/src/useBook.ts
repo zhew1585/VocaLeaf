@@ -1,13 +1,20 @@
 import { useEffect, useState } from "react";
 import { getBook, type BookDetail } from "./api";
 
-const POLL_MS = 1500;
+/** While parsing, or until the first segment exists: the page is waiting on something the user is watching. */
+const WAITING_POLL_MS = 1500;
+/** Playable but still generating: status, Chapters and the Book's length change slowly. */
+const GENERATING_POLL_MS = 15_000;
 
-/**
- * Loads a Book, and loads it again every 1.5 s while `keepPolling` says the worker is still changing
- * something the page shows (parsing, or no audio yet).
- */
-export function useBook(id: string, keepPolling: (book: BookDetail) => boolean) {
+/** How soon to load the Book again, or null once nothing about it changes any more (已就绪 or 解析失败). */
+export function nextPollMs(book: BookDetail): number | null {
+  if (book.status === "parsing") return WAITING_POLL_MS;
+  if (book.status !== "generating") return null;
+  return book.playable ? GENERATING_POLL_MS : WAITING_POLL_MS;
+}
+
+/** Loads a Book and keeps it current while the worker is still working on it. */
+export function useBook(id: string) {
   const [book, setBook] = useState<BookDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,7 +27,8 @@ export function useBook(id: string, keepPolling: (book: BookDetail) => boolean) 
         if (!active) return;
         setBook(next);
         setError(null);
-        if (next.status !== "parse_failed" && keepPolling(next)) timer = setTimeout(load, POLL_MS);
+        const delay = nextPollMs(next);
+        if (delay !== null) timer = setTimeout(load, delay);
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : "加载失败");
       }
@@ -30,7 +38,6 @@ export function useBook(id: string, keepPolling: (book: BookDetail) => boolean) 
       active = false;
       clearTimeout(timer);
     };
-    // keepPolling is a per-page rule, not data: a new function on each render must not restart loading.
   }, [id]);
 
   return { book, error };

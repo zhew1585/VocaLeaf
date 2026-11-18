@@ -58,7 +58,7 @@ class Tts(Protocol):
 
 
 class KokoroTts:
-    def __init__(self, http: httpx.Client):
+    def __init__(self, http: httpx.Client) -> None:
         self._http = http
 
     def synthesize(self, text: str, voice: Voice) -> Speech:

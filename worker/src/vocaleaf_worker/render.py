@@ -8,7 +8,7 @@ its first Chapter is finished.
 import logging
 from collections.abc import Callable
 
-from vocaleaf_worker.api_client import ApiClient, RenderJob, TimedSentence, TimedWord, WrittenSegment
+from vocaleaf_worker.api_client import ApiClient, RenderJob, TimedSentence, WrittenSegment
 from vocaleaf_worker.hls import HlsEncoder, Segment
 from vocaleaf_worker.storage import ObjectStorage
 from vocaleaf_worker.tts import BYTES_PER_SAMPLE, Tts, samples_to_ms
@@ -48,15 +48,15 @@ def render_chapter(
                     id=sentence.id,
                     start_ms=start_ms,
                     end_ms=samples_to_ms(samples_so_far),
-                    words=tuple(TimedWord(w.word, w.start_ms, w.end_ms) for w in speech.words),
+                    words=speech.words,
                 )
             )
             encoder.write(speech.pcm)
             if fresh := encoder.new_segments():
-                api.report_render_progress(job, upload(fresh), unreported)
+                api.report_render(job, upload(fresh), unreported, finished=False)
                 unreported = []
         check_alive()
-        api.report_render_result(job, upload(encoder.finish()), unreported)
+        api.report_render(job, upload(encoder.finish()), unreported, finished=True)
     log.info(
         "job %s: chapter %s, %d sentences, %d ms",
         job.id,

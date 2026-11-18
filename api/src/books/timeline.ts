@@ -27,22 +27,47 @@ export interface Timeline {
 }
 
 /**
- * Lays the narrated Chapters (given in Chapter order) end to end. Skipped Chapters are left out and failed
- * ones passed over. The timeline stops at the first narrated Chapter still pending, after the segments a
- * generating one has so far: later Chapters cannot be placed before it, and a player must only ever see
- * segments appended at the end.
+ * Lays the narrated Chapters (given in Chapter order) end to end. Skipped Chapters are left out. A failed
+ * Chapter keeps only what it published before failing (usually nothing). The timeline stops at the first
+ * narrated Chapter still pending, after the segments a generating one has so far: later Chapters cannot be
+ * placed before it. Since published segments are never taken back, a player only ever sees segments appended
+ * at the end, as an HLS EVENT playlist requires.
  */
 export function buildTimeline(chaptersInOrder: TimelineChapterInput[]): Timeline {
   const entries: TimelineEntry[] = [];
   let offsetMs = 0;
   for (const ch of chaptersInOrder) {
-    if (ch.skipped || ch.audioStatus === "failed") continue;
+    if (ch.skipped || (ch.audioStatus === "failed" && ch.segments.length === 0)) continue;
     if (ch.audioStatus === "pending") return { entries, complete: false };
     entries.push({ chapterId: ch.id, offsetMs, segments: ch.segments });
     offsetMs += ch.segments.reduce((sum, s) => sum + s.durationMs, 0);
     if (ch.audioStatus === "generating") return { entries, complete: false };
   }
   return { entries, complete: true };
+}
+
+export interface DurationChapterInput {
+  skipped: boolean;
+  audioStatus: AudioStatus;
+  durationMs: number | null;
+  /** Characters of the Chapter's spoken text. */
+  spokenChars: number;
+}
+
+/**
+ * The Book's audio length: generated Chapters count as they are, Chapters still to generate are estimated at the
+ * generated ones' milliseconds per character. Null while no Chapter with text is generated. Failed Chapters
+ * count as nothing.
+ */
+export function estimateDurationMs(chaptersInOrder: DurationChapterInput[]): number | null {
+  const narrated = chaptersInOrder.filter((c) => !c.skipped);
+  const generated = narrated.filter((c) => c.audioStatus === "generated");
+  const generatedMs = generated.reduce((sum, c) => sum + (c.durationMs ?? 0), 0);
+  const generatedChars = generated.reduce((sum, c) => sum + c.spokenChars, 0);
+  if (generatedChars === 0) return null;
+  const toGenerate = narrated.filter((c) => c.audioStatus === "pending" || c.audioStatus === "generating");
+  const restChars = toGenerate.reduce((sum, c) => sum + c.spokenChars, 0);
+  return Math.round(generatedMs + (restChars * generatedMs) / generatedChars);
 }
 
 /** Whether the timeline has any audio to play (PRD 4.3.3 invariant 3). */

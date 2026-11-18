@@ -10,18 +10,14 @@ import { finishBookIfDone, succeedJob, type Job, type Tx } from "./lifecycle.js"
 type RenderClaim = Omit<ClaimedRenderJob, "id" | "type" | "bookId" | "attempt" | "leaseMs">;
 
 /**
- * Starts (or, after a lost lease, restarts) a Chapter: it becomes 生成中 and whatever an earlier claim
- * already reported is dropped, since the new claim renders the whole Chapter again under its own prefix.
+ * Starts a Chapter: it becomes 生成中. After a lost lease the new claim renders the whole Chapter again, but
+ * segments the earlier claim already published stay: a player may hold them, and the playlist only ever grows.
+ * The new claim's reports for those indices are ignored (see storeRenderReport); Kokoro is not bit-exact
+ * between runs, so the seam can be off by a few milliseconds.
  */
 export async function startRender(tx: Tx, job: Job): Promise<RenderClaim> {
   const chapterId = job.chapterId!;
   await tx.update(chapters).set({ audioStatus: "generating" }).where(eq(chapters.id, chapterId));
-  await tx.delete(audioSegments).where(eq(audioSegments.chapterId, chapterId));
-  await tx
-    .update(sentences)
-    .set({ startMs: null, endMs: null, wordTimings: null })
-    .where(eq(sentences.chapterId, chapterId));
-
   const [book] = await tx.select({ voice: books.voice }).from(books).where(eq(books.id, job.bookId));
   const rows = await tx
     .select({ id: sentences.id, spokenText: sentences.spokenText })
@@ -40,7 +36,10 @@ function invalid(message: string): never {
   throw new HTTPException(400, { res: Response.json({ error: { code: "invalid_request", message } }, { status: 400 }) });
 }
 
-/** Stores the segments and Sentence timings of one report. Rejects anything outside the claimed Chapter. */
+/**
+ * Stores the segments and Sentence timings of one report. Rejects anything outside the claimed Chapter.
+ * A segment index already published (by an earlier claim of this Chapter) keeps its first segment.
+ */
 export async function storeRenderReport(tx: Tx, job: Job, report: Omit<RenderReport, "attempt">) {
   const chapterId = job.chapterId!;
   const prefix = audioPrefix(job.bookId, chapterId, job.id, job.attempt);

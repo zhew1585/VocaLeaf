@@ -13,7 +13,7 @@ class ObjectStorage(Protocol):
 
 
 class S3Storage:
-    def __init__(self, endpoint: str, region: str, bucket: str, access_key_id: str, secret_access_key: str):
+    def __init__(self, endpoint: str, region: str, bucket: str, access_key_id: str, secret_access_key: str) -> None:
         self._bucket = bucket
         self._client = boto3.client(
             "s3",

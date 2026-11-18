@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTimeline, hasAudio, toM3u8, type TimelineChapterInput } from "../src/books/timeline.js";
+import { buildTimeline, estimateDurationMs, hasAudio, toM3u8, type TimelineChapterInput } from "../src/books/timeline.js";
 
 const seg = (id: string, durationMs = 10_000) => ({ id, durationMs });
 const ch = (id: string, audioStatus: TimelineChapterInput["audioStatus"], segments = [seg(`${id}-0`)], skipped = false) => ({
@@ -10,16 +10,18 @@ const ch = (id: string, audioStatus: TimelineChapterInput["audioStatus"], segmen
 });
 
 describe("buildTimeline", () => {
-  it("lays generated Chapters end to end, leaving out Skipped and passing over failed ones", () => {
+  it("lays generated Chapters end to end, leaving out Skipped ones and failed ones that published nothing", () => {
     const t = buildTimeline([
       ch("a", "generated", [seg("a0"), seg("a1", 4_000)]),
       ch("skip", "pending", [], true),
-      ch("fail", "failed", [seg("f0")]),
+      ch("fail", "failed", []),
+      ch("partly", "failed", [seg("p0", 5_000)]),
       ch("b", "generated"),
     ]);
     expect(t.entries.map((e) => [e.chapterId, e.offsetMs])).toEqual([
       ["a", 0],
-      ["b", 14_000],
+      ["partly", 14_000],
+      ["b", 19_000],
     ]);
     expect(t.complete).toBe(true);
   });
@@ -56,5 +58,26 @@ describe("toM3u8", () => {
   it("puts no discontinuity before the first Chapter with audio", () => {
     const m3u8 = toM3u8(buildTimeline([ch("empty", "generated", []), ch("a", "generated")]));
     expect(m3u8).not.toContain("DISCONTINUITY");
+  });
+});
+
+describe("estimateDurationMs", () => {
+  const c = (audioStatus: TimelineChapterInput["audioStatus"], spokenChars: number, durationMs: number | null = null, skipped = false) => ({
+    audioStatus,
+    spokenChars,
+    durationMs,
+    skipped,
+  });
+
+  it("is unknown until a Chapter with text is generated", () => {
+    expect(estimateDurationMs([c("generated", 0, 0), c("generating", 1000)])).toBeNull();
+  });
+
+  it("is exact once everything is generated, Skipped Chapters left out", () => {
+    expect(estimateDurationMs([c("generated", 100, 7000), c("pending", 500, null, true), c("generated", 50, 4000)])).toBe(11_000);
+  });
+
+  it("estimates the Chapters still to generate at the generated ones' pace, failed ones counting as nothing", () => {
+    expect(estimateDurationMs([c("generated", 100, 6000), c("generating", 200), c("pending", 100), c("failed", 900)])).toBe(24_000);
   });
 });

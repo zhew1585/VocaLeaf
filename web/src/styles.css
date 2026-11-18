@@ -292,6 +292,10 @@ button {
   pointer-events: auto;
 }
 
+.player-error {
+  text-align: center;
+}
+
 .player-controls {
   height: 44px;
   display: flex;

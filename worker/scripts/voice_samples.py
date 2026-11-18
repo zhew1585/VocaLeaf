@@ -12,7 +12,8 @@ import time
 
 import httpx
 
-from vocaleaf_worker.tts import KOKORO_VOICES, SAMPLE_RATE, KokoroTts
+from vocaleaf_worker.hls import AUDIO_BITRATE
+from vocaleaf_worker.tts import BYTES_PER_SAMPLE, KOKORO_VOICES, SAMPLE_RATE, KokoroTts
 
 # The opening of Pride and Prejudice, Chapter I.
 TEXT = [
@@ -35,7 +36,7 @@ def main(out_dir: str) -> None:
         started = time.monotonic()
         pcm = b"".join(tts.synthesize(sentence, voice).pcm for sentence in TEXT)
         elapsed = time.monotonic() - started
-        audio_seconds = len(pcm) / 2 / SAMPLE_RATE
+        audio_seconds = len(pcm) / BYTES_PER_SAMPLE / SAMPLE_RATE
         path = os.path.join(out_dir, f"{voice}-{kokoro}.m4a")
         subprocess.run(
             [
@@ -54,7 +55,7 @@ def main(out_dir: str) -> None:
                 "-c:a",
                 "aac",
                 "-b:a",
-                "48k",
+                AUDIO_BITRATE,
                 path,
             ],
             input=pcm,

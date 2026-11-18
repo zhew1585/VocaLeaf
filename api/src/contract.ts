@@ -54,6 +54,11 @@ export const ChapterSummarySchema = z
 
 export const BookDetailSchema = BookSchema.extend({
   chapters: z.array(ChapterSummarySchema),
+  /**
+   * Length of the Book's whole audio. Exact once ready; while generating, the Chapters not generated yet are
+   * estimated from how long the generated ones take per character. Null until a Chapter is generated.
+   */
+  durationMs: z.int().nullable(),
 }).openapi("BookDetail");
 
 /** When one word is spoken, in milliseconds from the start of its own Sentence's audio. */

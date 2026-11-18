@@ -4,15 +4,25 @@ import { formatElapsed, formatRemaining, Player } from "./Player";
 
 // hls.js needs MediaSource, which jsdom lacks: a stand-in records what the player asks of it.
 const hls = vi.hoisted(() => ({
-  instances: [] as { config: unknown; source?: string; media?: HTMLMediaElement; destroyed: boolean }[],
+  instances: [] as {
+    config: unknown;
+    source?: string;
+    media?: HTMLMediaElement;
+    destroyed: boolean;
+    handlers: Record<string, (event: string, data: { fatal: boolean }) => void>;
+  }[],
 }));
 vi.mock("hls.js", () => ({
   default: class {
     static isSupported = () => true;
+    static Events = { ERROR: "hlsError" };
     record: (typeof hls.instances)[number];
     constructor(config: unknown) {
-      this.record = { config, destroyed: false };
+      this.record = { config, destroyed: false, handlers: {} };
       hls.instances.push(this.record);
+    }
+    on(event: string, handler: (event: string, data: { fatal: boolean }) => void) {
+      this.record.handlers[event] = handler;
     }
     loadSource(src: string) {
       this.record.source = src;
@@ -104,6 +114,26 @@ describe("Player", () => {
 
     expect(screen.getByRole("progressbar").getAttribute("aria-valuemax")).toBe("120");
     expect(screen.getByText("−0:01:30")).toBeTruthy();
+  });
+
+  it("measures progress against the whole Book's length when it is known", () => {
+    render(<Player src="/api/books/b1/audio.m3u8" totalSeconds={41_752} />);
+
+    timeUpdate(252, 600); // only 10 minutes are generated so far
+
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuemax")).toBe("41752");
+    expect(screen.getByText("−11:31:40")).toBeTruthy();
+  });
+
+  it("says so when the stream cannot be played, but not for errors hls.js recovers from", () => {
+    render(<Player src="/api/books/b1/audio.m3u8" />);
+    const onError = hls.instances[0]!.handlers.hlsError!;
+
+    act(() => onError("hlsError", { fatal: false }));
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    act(() => onError("hlsError", { fatal: true }));
+    expect(screen.getByRole("alert").textContent).toBe("播放失败，请刷新页面重试");
   });
 
   it("stops loading when it goes away", () => {

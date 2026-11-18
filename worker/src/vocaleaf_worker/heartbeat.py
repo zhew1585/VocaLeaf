@@ -21,7 +21,7 @@ BEATS_PER_LEASE = 3
 class Heartbeat:
     """Context manager: sends heartbeats from a background thread for as long as the block runs."""
 
-    def __init__(self, api: ApiClient, job: Job, interval_seconds: float | None = None):
+    def __init__(self, api: ApiClient, job: Job, interval_seconds: float | None = None) -> None:
         self._api = api
         self._job = job
         self._interval = interval_seconds if interval_seconds is not None else job.lease_ms / 1000 / BEATS_PER_LEASE
@@ -48,6 +48,8 @@ class Heartbeat:
         self._thread.start()
         return self
 
-    def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None):
+    def __exit__(
+        self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None
+    ) -> None:
         self._stop.set()
         self._thread.join()
