@@ -130,7 +130,7 @@ describe("a Book generated to the end", () => {
     ]);
 
     const sentences = await sentencesOf(book);
-    expect(sentences.length).toBeGreaterThanOrEqual(6);
+    expect(sentences.length).toBe(5); // the two headings repeat the Chapter titles and are not Sentences
     for (const s of sentences) {
       expect(s.startMs).not.toBeNull();
       expect(s.endMs!).toBeGreaterThan(s.startMs!);
@@ -196,6 +196,42 @@ describe("narration with pauses, spoken a paragraph at a time", () => {
       }
     }
   });
+});
+
+/** Titles that stand before a name (AC-UP-08): no Sentence may end on one. */
+const TITLES = ["Mr", "Mrs", "Ms", "Dr", "St", "Prof", "Rev", "Capt", "Col", "Gen", "Lt", "Gov"];
+
+describe("Sentences split around abbreviations and Chapter headings (AC-UP-08)", () => {
+  it("keeps Mr. with Bennet in text and in audio, and starts Chapter I with its opening line", async () => {
+    const created = await upload("pride-and-prejudice.epub", PRIDE_AND_PREJUDICE);
+    const parsed = await waitForBook(created.body.id, (b) => b.status !== "parsing", 60_000);
+
+    const all = await sentencesOf(parsed);
+    const endsOnTitle = all.filter((s) => TITLES.some((t) => new RegExp(`(^|[\\s“‘"'(])${t}\\.$`).test(s.text)));
+    expect(endsOnTitle.map((s) => s.text)).toEqual([]);
+
+    const chapterOne = parsed.chapters.find((c) => c.title === "I")!;
+    const one = (await api<Sentence[]>(`/chapters/${chapterOne.id}/sentences`)).body;
+    expect(one[0]!.text).toMatch(/^It is a truth universally acknowledged/);
+    expect(one[2]!.text).toMatch(/^“My dear Mr\. Bennet,” said his lady to him one day/);
+    expect(one[3]!.text).toBe("Mr. Bennet replied that he had not.");
+
+    // Once Chapter I is narrated, nothing is inserted between "Mr." and "Bennet": they are one Sentence, and the
+    // TTS reads them on without a break.
+    const book = await waitForBook(
+      created.body.id,
+      (b) => b.chapters.find((c) => c.id === chapterOne.id)!.audioStatus === "generated",
+      300_000,
+    );
+    const timed = (await api<Sentence[]>(`/chapters/${chapterOne.id}/sentences`)).body;
+    for (const s of [timed[2]!, timed[3]!]) {
+      const words = s.wordTimings!;
+      const mister = words.findIndex((w) => w.word === "Mister");
+      expect(words[mister + 1]?.word, s.text).toBe("Bennet");
+      expect(words[mister + 1]!.startMs - words[mister]!.endMs).toBeLessThan(150);
+    }
+    expect(book.chapters.find((c) => c.id === chapterOne.id)!.durationMs).toBeGreaterThan(0);
+  }, 360_000); // Imprint and Chapter I are narrated first: about two minutes on a laptop CPU
 });
 
 describe("a Chapter that takes longer to generate than the job lease", () => {

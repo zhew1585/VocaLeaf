@@ -32,7 +32,8 @@ describe("upload a Standard Ebooks EPUB through the stack", () => {
     expect(book.chapters.map((c) => c.title).slice(-3)).toEqual(["LXI", "Colophon", "Uncopyright"]);
     const body = book.chapters.slice(2, 63);
     expect(body.every((c) => c.sentenceCount > 0)).toBe(true);
-    expect(body.reduce((n, c) => n + c.sentenceCount, 0)).toBeGreaterThan(6000);
+    // About 5800 once "Mr." and other titles stay inside their Sentence (AC-UP-08).
+    expect(body.reduce((n, c) => n + c.sentenceCount, 0)).toBeGreaterThan(5500);
   });
 
   it("stores text and spoken_text per Sentence, and Sentence IDs stay the same on every read", async () => {
@@ -42,7 +43,8 @@ describe("upload a Standard Ebooks EPUB through the stack", () => {
     const first = await api<Sentence[]>(`/chapters/${chapterOne.id}/sentences`);
     expect(first.status).toBe(200);
     expect(first.body).toHaveLength(chapterOne.sentenceCount);
-    expect(first.body[1]).toMatchObject({
+    // The heading "I" is the Chapter title, so the first Sentence is the opening line.
+    expect(first.body[0]).toMatchObject({
       text: "It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.",
       spokenText:
         "It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.",

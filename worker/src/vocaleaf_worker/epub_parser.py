@@ -16,7 +16,9 @@ from lxml import etree
 
 from vocaleaf_worker.sentences import split_sentences
 
-PARSER_VERSION = "0.1.0"
+# 0.2.0: abbreviations do not end Sentences; a heading repeating the Chapter title is not a Sentence.
+# Books are parsed once (PRD 4.2.6), so Books parsed by an older version keep their Sentences.
+PARSER_VERSION = "0.2.0"
 
 NS = {
     "c": "urn:oasis:names:tc:opendocument:xmlns:container",
@@ -86,12 +88,27 @@ def parse_epub(data: bytes) -> ParsedBook:
             raise ValueError("EPUB has no table of contents and no spine documents")
         paragraphs = _paragraphs_by_chapter(z, spine, targets)
 
-    chapters = tuple(ParsedChapter(title=t.title, sentences=_sentences(paragraphs[i])) for i, t in enumerate(targets))
+    chapters = tuple(
+        ParsedChapter(title=t.title, sentences=_sentences(_without_title(paragraphs[i], t.title)))
+        for i, t in enumerate(targets)
+    )
     return ParsedBook(
         title=_text(opf.find("opf:metadata/dc:title", NS)),
         author=_text(opf.find("opf:metadata/dc:creator", NS)),
         chapters=chapters,
     )
+
+
+def _comparable(text: str) -> str:
+    return re.sub(r"[\W_]", "", text.lower())
+
+
+def _without_title(paragraphs: list[str], title: str | None) -> list[str]:
+    """Drops the Chapter's opening heading when it only repeats the Chapter's title (ignoring case, spacing and
+    punctuation): the title is shown as the Chapter's name, so it is not read as a Sentence."""
+    if title and paragraphs and _comparable(paragraphs[0]) == _comparable(title):
+        return paragraphs[1:]
+    return paragraphs
 
 
 def _sentences(paragraphs: list[str]) -> tuple[ParsedSentence, ...]:
