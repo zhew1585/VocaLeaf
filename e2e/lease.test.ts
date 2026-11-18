@@ -6,6 +6,11 @@ import { asWorker, compose, LEASE_SECONDS, PRIDE_AND_PREJUDICE, upload, waitWhil
 
 const RECOVERY_MS = (LEASE_SECONDS + 30) * 1000;
 
+/** Starts only the worker; `compose start` would also start its dependencies, which fails while storage is paused. */
+function startWorker() {
+  compose("up", "-d", "--no-deps", "worker");
+}
+
 async function waitForWorkerLog(line: string, timeoutMs = 15_000) {
   const deadline = Date.now() + timeoutMs;
   while (!compose("logs", "worker").includes(line)) {
@@ -27,10 +32,13 @@ describe("restarting the worker while it parses", () => {
   });
 
   it("re-claims the job after the lease and still ends with the Book parsed", async () => {
+    // Upload with the worker stopped, then freeze object storage before it starts:
+    // the worker claims the job and hangs fetching the EPUB, so the restart lands mid-job.
+    compose("stop", "-t", "0", "worker");
     const created = await upload("pride-and-prejudice.epub", PRIDE_AND_PREJUDICE);
     const claimedBy = (attempt: number) => `parse book ${created.body.id} (attempt ${attempt})`;
-    // Freeze object storage so the worker that claims the job hangs while fetching the EPUB.
     compose("pause", "storage");
+    startWorker();
     await waitForWorkerLog(claimedBy(1));
 
     compose("restart", "-t", "0", "worker");
@@ -46,18 +54,22 @@ describe("with the worker stopped", () => {
     compose("stop", "-t", "0", "worker");
   });
   afterAll(() => {
-    compose("start", "worker");
+    startWorker();
   });
 
   it("hands a job to exactly one of many concurrent claimers (real Postgres)", async () => {
     const created = await upload("pride-and-prejudice.epub", PRIDE_AND_PREJUDICE);
 
     const claims = await Promise.all(Array.from({ length: 10 }, () => asWorker<ClaimedJob | null>("/jobs/claim")));
-    const won = claims.filter((c) => c.status === 200);
+    const won = claims.filter((c) => c.status === 200).map((c) => c.body!);
 
-    expect(won).toHaveLength(1);
-    expect(won[0]!.body).toMatchObject({ bookId: created.body.id, attempt: 1 });
-    expect(claims.filter((c) => c.status === 204)).toHaveLength(9);
+    expect(new Set(won.map((j) => j.id)).size).toBe(won.length);
+    expect(won.filter((j) => j.bookId === created.body.id)).toMatchObject([{ attempt: 1 }]);
+
+    // Close every claimed job so no lease expires into the next test's claim.
+    for (const job of won) {
+      expect((await asWorker(`/jobs/${job.id}/failure`, { attempt: job.attempt, error: "e2e cleanup" })).status).toBe(204);
+    }
   });
 
   it("recovers a job whose worker died: the next worker re-claims it after the lease and finishes the Book", async () => {
@@ -66,7 +78,7 @@ describe("with the worker stopped", () => {
     const dead = (await asWorker<ClaimedJob>("/jobs/claim")).body;
     expect(dead.bookId).toBe(created.body.id);
 
-    compose("start", "worker");
+    startWorker();
     const book = await waitWhileParsing(created.body.id, RECOVERY_MS);
     expectParsed(book);
 

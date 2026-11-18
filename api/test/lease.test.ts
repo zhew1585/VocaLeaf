@@ -1,7 +1,9 @@
 // Functional tests for job leases: a worker that claims a job and dies must not strand the Book.
 import { describe, expect, it } from "vitest";
-import type { BookDetail, ParseResult, Sentence } from "../src/contract.js";
+import { jobs } from "../src/db/schema.js";
+import type { ParseResult, Sentence } from "../src/contract.js";
 import {
+  bookDetail,
   claimJob,
   reportFailure,
   reportParse,
@@ -26,9 +28,6 @@ const parsed: Omit<ParseResult, "attempt"> = {
   ],
 };
 
-async function detail(app: TestApp, id: string) {
-  return (await (await app.request(`/api/books/${id}`)).json()) as BookDetail;
-}
 
 async function sentencesOf(app: TestApp, chapterId: string) {
   return (await (await app.request(`/api/chapters/${chapterId}/sentences`)).json()) as Sentence[];
@@ -56,7 +55,7 @@ describe("a worker that dies after claiming a parse job", () => {
 
     expect(retry).toMatchObject({ id: crashed.id, bookId: book.id, attempt: 2 });
     expect((await reportParse(app, retry, parsed)).status).toBe(204);
-    const d = await detail(app, book.id);
+    const d = await bookDetail(app, book.id);
     expect(d).toMatchObject({ status: "generating", failureReason: null });
     expect(d.chapters.map((c) => [c.title, c.sentenceCount])).toEqual([["Chapter 1", 2]]);
     expect((await sentencesOf(app, d.chapters[0]!.id)).map((s) => s.text)).toEqual([
@@ -75,7 +74,7 @@ describe("a worker that dies after claiming a parse job", () => {
     }
 
     expect(await claimJob(app)).toBeUndefined();
-    expect(await detail(app, book.id)).toMatchObject({
+    expect(await bookDetail(app, book.id)).toMatchObject({
       status: "parse_failed",
       failureReason: "解析超时，请删除后重新上传",
       chapters: [],
@@ -105,10 +104,10 @@ describe("late reports from a worker whose lease was taken over", () => {
 
     expect((await reportParse(app, late, { ...parsed, title: "Stale" })).status).toBe(409);
     expect((await reportFailure(app, late, "stale failure")).status).toBe(409);
-    expect((await detail(app, book.id)).status).toBe("parsing");
+    expect((await bookDetail(app, book.id)).status).toBe("parsing");
 
     expect((await reportParse(app, current, parsed)).status).toBe(204);
-    expect((await detail(app, book.id)).title).toBe("Pride and Prejudice");
+    expect((await bookDetail(app, book.id)).title).toBe("Pride and Prejudice");
   });
 
   it("are refused after the new worker has finished, leaving its result untouched", async () => {
@@ -118,14 +117,14 @@ describe("late reports from a worker whose lease was taken over", () => {
     clock.advance(TEST_LEASE_MS + 1);
     const current = (await claimJob(app))!;
     await reportParse(app, current, parsed);
-    const before = await detail(app, book.id);
+    const before = await bookDetail(app, book.id);
     const sentenceIds = (await sentencesOf(app, before.chapters[0]!.id)).map((s) => s.id);
 
     const stale = { ...parsed, title: "Stale", chapters: [{ title: "Stale", sentences: [] }] };
     expect((await reportParse(app, late, stale)).status).toBe(409);
     expect((await reportFailure(app, late, "stale failure")).status).toBe(409);
 
-    expect(await detail(app, book.id)).toEqual(before);
+    expect(await bookDetail(app, book.id)).toEqual(before);
     expect((await sentencesOf(app, before.chapters[0]!.id)).map((s) => s.id)).toEqual(sentenceIds);
   });
 
@@ -136,18 +135,31 @@ describe("late reports from a worker whose lease was taken over", () => {
     clock.advance(TEST_LEASE_MS + 1);
 
     expect((await reportParse(app, slow, parsed)).status).toBe(204);
-    expect((await detail(app, book.id)).status).toBe("generating");
+    expect((await bookDetail(app, book.id)).status).toBe("generating");
     expect(await claimJob(app)).toBeUndefined();
   });
 });
 
-describe("concurrent claims", () => {
-  it("hand one job to exactly one worker", async () => {
+describe("back-to-back claims", () => {
+  // PGlite runs transactions one at a time; truly concurrent claims on Postgres are covered in e2e/lease.test.ts.
+  it("never hand one job to two workers", async () => {
     const { app } = await testApp();
     await uploadBook(app);
 
     const results = await Promise.all(Array.from({ length: 5 }, () => claimJob(app)));
 
     expect(results.filter(Boolean)).toHaveLength(1);
+  });
+});
+
+describe("jobs stranded before leases existed", () => {
+  it("are recovered: a running job without a lease counts as expired", async () => {
+    const { app, db } = await testApp();
+    const book = await uploadBook(app);
+    await db.update(jobs).set({ status: "running", attempt: 1, leaseExpiresAt: null });
+
+    const job = await claimJob(app);
+
+    expect(job).toMatchObject({ bookId: book.id, attempt: 2 });
   });
 });

@@ -44,15 +44,22 @@ class ApiClient:
 
     def report_parse_result(self, job: ClaimedJob, book: ParsedBook, parser_version: str) -> None:
         payload = {"attempt": job.attempt, **parse_result_payload(book, parser_version)}
-        self._post(f"/api/internal/jobs/{job.id}/parse-result", json=payload)
+        self._report(f"/api/internal/jobs/{job.id}/parse-result", payload)
 
     def report_failure(self, job: ClaimedJob, error: str) -> None:
-        self._post(f"/api/internal/jobs/{job.id}/failure", json={"attempt": job.attempt, "error": error})
+        self._report(f"/api/internal/jobs/{job.id}/failure", {"attempt": job.attempt, "error": error})
+
+    def _report(self, path: str, payload: dict) -> None:
+        """Posts a job report; a 409 means this claim was superseded and raises JobSuperseded."""
+        try:
+            self._post(path, json=payload)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 409:
+                raise JobSuperseded(path) from exc
+            raise
 
     def _post(self, path: str, json: dict | None = None) -> httpx.Response:
         res = self._http.post(path, json=json, headers=self._headers)
-        if res.status_code == 409:
-            raise JobSuperseded(path)
         res.raise_for_status()
         return res
 

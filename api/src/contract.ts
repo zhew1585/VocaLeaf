@@ -20,7 +20,7 @@ export const BookSchema = z
     title: z.string(),
     author: z.string().nullable(),
     status: BookStatusSchema,
-    /** Why parsing failed, shown with parse_failed; null otherwise. */
+    /** Why parsing failed, shown with parse_failed. Null otherwise, and for most failures until #3 adds reasons. */
     failureReason: z.string().nullable(),
     createdAt: z.iso.datetime(),
   })
@@ -57,6 +57,12 @@ export const UploadBookSchema = z.object({
 
 // ---- Worker protocol (/internal), bearer-token protected ----
 
+/**
+ * Which claim of a job this is. Handed out with ClaimedJob and echoed on every report;
+ * a report from a claim that has since been superseded is refused.
+ */
+const AttemptSchema = z.int().min(1);
+
 export const ClaimedJobSchema = z
   .object({
     id: z.uuid(),
@@ -64,8 +70,7 @@ export const ClaimedJobSchema = z
     bookId: z.uuid(),
     /** Object key of the original EPUB in the bucket. */
     sourceKey: z.string(),
-    /** Which claim of this job this is; every callback must send it back unchanged. */
-    attempt: z.int().min(1),
+    attempt: AttemptSchema,
   })
   .openapi("ClaimedJob");
 
@@ -80,9 +85,6 @@ export const ParsedChapterSchema = z.object({
   title: z.string().nullable(),
   sentences: z.array(ParsedSentenceSchema),
 });
-
-/** Echo of ClaimedJob.attempt. A report from a claim that has since been superseded is refused. */
-const AttemptSchema = z.int().min(1);
 
 export const ParseResultSchema = z
   .object({

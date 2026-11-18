@@ -23,8 +23,10 @@ JOB = {
 class FakeApi:
     """Records every request the worker makes and answers like the real /internal routes."""
 
-    def __init__(self, job: dict | None):
+    def __init__(self, job: dict | None, refuse_reports: bool = False):
         self.job = job
+        # Answer reports with 409, as the API does once another worker has claimed the job again.
+        self.refuse_reports = refuse_reports
         self.requests: list[httpx.Request] = []
 
     def handler(self, request: httpx.Request) -> httpx.Response:
@@ -32,7 +34,7 @@ class FakeApi:
         assert request.headers["Authorization"] == f"Bearer {TOKEN}"
         if request.url.path == "/api/internal/jobs/claim":
             return httpx.Response(200, json=self.job) if self.job else httpx.Response(204)
-        return httpx.Response(204)
+        return httpx.Response(409 if self.refuse_reports else 204)
 
     def calls(self) -> list[tuple[str, str]]:
         return [(r.method, r.url.path) for r in self.requests]
@@ -103,10 +105,11 @@ def test_reports_a_failure_when_the_file_cannot_be_parsed():
     assert api.body(1)["attempt"] == 2
 
 
-def test_moves_on_when_the_api_says_the_job_was_claimed_again():
+def test_moves_on_when_the_api_says_the_job_was_claimed_again(caplog):
     epub = make_epub([Doc("c1.xhtml", "<p>Body.</p>")], [TocEntry("Chapter", "c1.xhtml")])
-    api = FakeApi(job=JOB)
-    real_handler = api.handler
-    api.handler = lambda r: httpx.Response(409) if r.url.path.endswith("/parse-result") else real_handler(r)
+    api = FakeApi(job=JOB, refuse_reports=True)
 
     assert run_once(client(api), FakeStorage({"books/b/source.epub": epub})) is True
+
+    assert api.calls()[1] == ("POST", f"/api/internal/jobs/{JOB['id']}/parse-result")
+    assert "superseded" in caplog.text

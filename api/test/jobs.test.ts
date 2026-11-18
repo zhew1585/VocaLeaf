@@ -1,8 +1,17 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import type { BookDetail, ClaimedJob, ParseResult } from "../src/contract.js";
+import type { ClaimedJob, ParseResult } from "../src/contract.js";
 import { jobs } from "../src/db/schema.js";
-import { claim, postJson, reportFailure, reportParse, testApp, uploadBook, type TestApp } from "./helpers.js";
+import {
+  bookDetail,
+  claim,
+  postJson,
+  reportFailure,
+  reportParse,
+  testApp,
+  uploadBook,
+  type TestApp,
+} from "./helpers.js";
 
 const result: Omit<ParseResult, "attempt"> = {
   parserVersion: "test-1",
@@ -26,9 +35,6 @@ async function claimedJob(app: TestApp) {
   return { book, job };
 }
 
-async function detail(app: TestApp, id: string) {
-  return (await (await app.request(`/api/books/${id}`)).json()) as BookDetail;
-}
 
 describe("worker auth", () => {
   it("rejects /internal calls without the worker token", async () => {
@@ -75,7 +81,7 @@ describe("POST /api/internal/jobs/:id/parse-result", () => {
     const res = await reportParse(app, job, result);
     expect(res.status).toBe(204);
 
-    const d = await detail(app, book.id);
+    const d = await bookDetail(app, book.id);
     expect(d).toMatchObject({ title: "Pride and Prejudice", author: "Jane Austen", status: "generating" });
     expect(d.chapters.map((c) => [c.index, c.title, c.sentenceCount, c.skipped, c.audioStatus])).toEqual([
       [0, "Chapter 1", 2, false, "pending"],
@@ -92,14 +98,14 @@ describe("POST /api/internal/jobs/:id/parse-result", () => {
       chapters: [{ title: "Long", sentences: many }],
     });
     expect(res.status).toBe(204);
-    expect((await detail(app, book.id)).chapters[0]!.sentenceCount).toBe(12_001);
+    expect((await bookDetail(app, book.id)).chapters[0]!.sentenceCount).toBe(12_001);
   });
 
   it("keeps the file-name title when the EPUB has no title", async () => {
     const { app } = await testApp();
     const { book, job } = await claimedJob(app);
     await reportParse(app, job, { ...result, title: null, author: null });
-    expect(await detail(app, book.id)).toMatchObject({ title: "Pride and Prejudice", author: null });
+    expect(await bookDetail(app, book.id)).toMatchObject({ title: "Pride and Prejudice", author: null });
   });
 
   it("refuses a second report for the same job", async () => {
@@ -133,7 +139,7 @@ describe("POST /api/internal/jobs/:id/failure", () => {
 
     const res = await reportFailure(app, job, "BadZipFile: not a zip");
     expect(res.status).toBe(204);
-    expect((await detail(app, book.id)).status).toBe("parse_failed");
+    expect((await bookDetail(app, book.id)).status).toBe("parse_failed");
     const [row] = await db.select().from(jobs).where(eq(jobs.id, job.id));
     expect(row).toMatchObject({ status: "failed", error: "BadZipFile: not a zip" });
   });

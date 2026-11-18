@@ -1,5 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, asc, eq, gte, lt, or, sql } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
 import { bearerAuth } from "hono/bearer-auth";
 import type { AppDeps } from "../app.js";
 import {
@@ -63,7 +63,7 @@ type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type Job = typeof jobs.$inferSelect;
 
 /** PRD 4.3.1 and 4.7.2: a job is attempted at most 3 times. */
-export const MAX_JOB_ATTEMPTS = 3;
+const MAX_JOB_ATTEMPTS = 3;
 
 // Temporary user-facing text until #5 brings the full timeout and retry handling (PRD 4.3.5 #10).
 const LEASE_EXHAUSTED_REASON = "解析超时，请删除后重新上传";
@@ -93,12 +93,20 @@ async function failJob(tx: Tx, job: Job, error: string, reason: string | null, n
   }
 }
 
-/** Running jobs whose lease ran out on their last allowed attempt are failed instead of handed out again. */
+/** A running job whose worker may be gone. A missing lease (jobs claimed before leases existed) counts as expired. */
+function leaseExpired(now: Date) {
+  return and(eq(jobs.status, "running"), or(isNull(jobs.leaseExpiresAt), lt(jobs.leaseExpiresAt, now)));
+}
+
+/**
+ * Running jobs whose lease ran out on their last allowed attempt are failed instead of handed out again.
+ * This happens lazily inside a claim: with no worker polling, nothing could recover the job anyway.
+ */
 async function failExhaustedJobs(tx: Tx, now: Date) {
   const exhausted = await tx
     .select()
     .from(jobs)
-    .where(and(eq(jobs.status, "running"), lt(jobs.leaseExpiresAt, now), gte(jobs.attempt, MAX_JOB_ATTEMPTS)))
+    .where(and(leaseExpired(now), gte(jobs.attempt, MAX_JOB_ATTEMPTS)))
     .for("update", { skipLocked: true });
   for (const job of exhausted) {
     await failJob(tx, job, `lease expired on attempt ${job.attempt} of ${MAX_JOB_ATTEMPTS}`, LEASE_EXHAUSTED_REASON, now);
@@ -115,10 +123,7 @@ async function claimNextJob(tx: Tx, now: Date, leaseMs: number): Promise<Job | u
     .select({ id: jobs.id })
     .from(jobs)
     .where(
-      or(
-        eq(jobs.status, "queued"),
-        and(eq(jobs.status, "running"), lt(jobs.leaseExpiresAt, now), lt(jobs.attempt, MAX_JOB_ATTEMPTS)),
-      ),
+      or(eq(jobs.status, "queued"), and(leaseExpired(now), lt(jobs.attempt, MAX_JOB_ATTEMPTS))),
     )
     .orderBy(asc(jobs.createdAt))
     .limit(1)
@@ -138,7 +143,7 @@ async function claimNextJob(tx: Tx, now: Date, leaseMs: number): Promise<Job | u
 }
 
 /** Saves a parse result; the Book then moves from parsing to generating (PRD 4.3.4 step 3). */
-async function storeParseResult(tx: Tx, bookId: string, result: ParseResult) {
+async function storeParseResult(tx: Tx, bookId: string, result: Omit<ParseResult, "attempt">) {
   const inserted = await tx
     .insert(chapters)
     .values(
@@ -189,7 +194,7 @@ export function jobRoutes({ db, workerToken, jobLeaseMs, now = () => new Date() 
     const stored = await db.transaction(async (tx) => {
       const job = await lockCurrentAttempt(tx, id, attempt);
       if (!job || job.type !== "parse") return false;
-      await storeParseResult(tx, job.bookId, { attempt, ...result });
+      await storeParseResult(tx, job.bookId, result);
       await tx
         .update(jobs)
         .set({ status: "succeeded", leaseExpiresAt: null, updatedAt: now() })
