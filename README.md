@@ -70,7 +70,11 @@ When a worker claims a job, it gets a lease of `JOB_LEASE_SECONDS` and the claim
 While the job runs, the worker sends a heartbeat every third of the lease, so a chapter that takes longer than the lease to generate on CPU is never claimed by a second worker.
 If the worker crashes or restarts, its heartbeats stop, any worker can claim the job again once the lease expires, and each new claim increases `attempt` by one.
 Workers can claim a job at most 3 times (PRD 4.7.2).
-If the third claim also times out, the job fails: a parse job moves the book to 解析失败 (parsing failed), a generation job moves its chapter to 生成失败 (generation failed) and the book carries on.
+A worker that reports a failed generation attempt sends the chapter back to 待生成 (waiting) and its job back to the queue, so the next claim is its next attempt.
+A timed-out attempt counts the same (PRD 4.3.5 #8, #10): the next claim by any worker puts jobs whose lease expired back in the queue before it picks one.
+A parse job fails at once when the worker reports a failure, since a file that cannot be parsed fails the same way every time.
+When the third attempt also fails or times out, the job fails: a parse job moves the book to 解析失败 (parsing failed), a generation job moves its chapter to 生成失败 (generation failed) and the book carries on.
+The user can retry a 生成失败 chapter from the book detail page (`POST /api/chapters/{id}/retry`): it goes back to 待生成 with a new job that again gets 3 attempts, and the book keeps its status.
 Every callback and heartbeat must send back its `attempt`.
 The API answers 409 when the job was claimed again or has already finished, so a late callback never overwrites a newer result; a worker whose heartbeat gets 409 drops the job.
 Jobs are claimed by their position in their book first (parse = 0, the nth narrated chapter = n), then by age, so a newly uploaded book never waits behind other books' later chapters.
@@ -85,10 +89,17 @@ The chapter is streamed through one ffmpeg process into HLS: AAC mono 48 kbps, s
 It writes each segment to object storage and reports it as soon as it is complete, so a book is playable after its first segment.
 The book's playlist is `GET /api/books/{id}/audio.m3u8`: the segments of every narrated chapter in chapter order, with `EXT-X-DISCONTINUITY` between chapters.
 While the book generates it is an EVENT playlist that players reload as it grows; `EXT-X-ENDLIST` is added once the book is ready.
+A chapter whose generation failed holds nothing back: the chapters after it follow on.
+When the user retries it, it stays out of the playlist until it is generated and then comes in whole, in its place: the one case where the playlist changes before its end.
+The 专注页 notices it from the chapters' `startMs`, loads the playlist again and resumes at the same offset into the same chapter.
 Segments are served from object storage through `GET /api/books/{id}/segments/{segmentId}.ts`, with the same ownership check as the book.
 Published segments are never taken back: a re-claimed chapter is generated again but only appends the segments the earlier claim had not written, and a chapter that fails halfway keeps what it published.
 A sentence's `start_ms` and `end_ms` cover exactly its voiced span (the pauses around it belong to no sentence); they are stored relative to its chapter and returned as positions in the whole book's audio. `word_timings` are relative to the sentence's own start.
 The book's `durationMs` is exact once it is ready; while it generates, the remaining chapters are estimated at the generated chapters' pace per character, and the player shows whole-book progress against it.
+Every book carries `progress` (generated narrated chapters out of all narrated ones), shown as 生成中 n / N.
+Each chapter of the book detail carries `startMs`, where its audio starts in the playlist, and, while it waits for audio, `waitSeconds`: the characters of every open generation job ahead of it plus its first segment, at the pace of the last 20 generated chapters (20 ms per character before any), assuming one worker.
+Clicking a chapter opens the 专注页 at it; one without audio yet shows 该章节生成中，预计约 N 秒 and starts playing by itself once it is in the playlist (PRD 4.3.4).
+Playback that catches up with the generated audio waits, shows the same notice for the next chapter and goes on by itself.
 
 The Kokoro model is pinned to the unquantized `kokoro-v1_0.pth` (hexgrad/Kokoro-82M, sha256 `496dba11…c17f`).
 It ships inside the `kokoro-fastapi-cpu:v0.10.0` image, which compose pins by digest, and `DOWNLOAD_MODEL=false` stops it from fetching weights at start, so development and production run the same model file (ADR 0003).

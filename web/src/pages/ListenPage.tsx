@@ -2,22 +2,37 @@ import { useState } from "react";
 import type { BookDetail, ChapterSummary } from "../api";
 import { isPlayableChapter, waitMessage } from "../chapters";
 import { ChevronLeftIcon } from "../icons";
-import { Player } from "../player/Player";
+import { Player, type StartRequest } from "../player/Player";
 import { navigate } from "../router";
 import { useBook } from "../useBook";
+import { usePlaylist } from "./usePlaylist";
 
-/** The Chapter the 专注页 was opened to play (`?chapter=`), if the URL names one. */
-function chapterInUrl(): string | null {
-  return new URLSearchParams(window.location.search).get("chapter");
+/**
+ * The Chapter the 专注页 was opened to play (`?chapter=`), until it has started or the user took over;
+ * `settle` then forgets it, in the URL too, so a reload does not jump there again.
+ */
+function useRequestedChapter() {
+  const [id, setId] = useState(() => new URLSearchParams(window.location.search).get("chapter"));
+  const settle = () => {
+    setId(null);
+    window.history.replaceState(null, "", window.location.pathname);
+  };
+  /** The Chapter if the Book has it and it can be played. */
+  const find = (book: BookDetail | null) => {
+    const chapter = book?.chapters.find((c) => c.id === id);
+    return chapter && isPlayableChapter(chapter) ? chapter : undefined;
+  };
+  return { requested: id !== null, find, settle };
 }
 
 /**
- * The next Chapter playback will reach that has no audio yet: the first one with a wait estimate after the
- * last Chapter in the playlist.
+ * The Chapter playback waits for once it catches up with the generated audio: the last one in the playlist
+ * while it is still generating, otherwise the next one with a wait estimate.
  */
 function nextToGenerate(book: BookDetail): Pick<ChapterSummary, "waitSeconds"> {
-  const lastPlaced = book.chapters.findLast((c) => c.startMs !== null)?.index ?? -1;
-  return book.chapters.find((c) => c.index > lastPlaced && c.waitSeconds !== null) ?? { waitSeconds: null };
+  const last = book.chapters.findLast((c) => c.startMs !== null);
+  if (last && (last.audioStatus === "pending" || last.audioStatus === "generating")) return last;
+  return book.chapters.find((c) => c.index > (last?.index ?? -1) && c.waitSeconds !== null) ?? { waitSeconds: null };
 }
 
 /**
@@ -29,24 +44,22 @@ function nextToGenerate(book: BookDetail): Pick<ChapterSummary, "waitSeconds"> {
  * that catches up with the generated audio waits the same way and goes on by itself.
  */
 export function ListenPage({ id }: { id: string }) {
-  const [requested, setRequested] = useState(chapterInUrl);
+  const request = useRequestedChapter();
   const [waitingForAudio, setWaitingForAudio] = useState(false);
-  const { book, error } = useBook(id, { eager: requested !== null || waitingForAudio });
+  const { book, error } = useBook(id, { eager: request.requested || waitingForAudio });
+  const playlist = usePlaylist(book);
   const detailPath = `/books/${id}`;
 
-  const chapter = book?.chapters.find((c) => c.id === requested);
-  const target = chapter && isPlayableChapter(chapter) ? chapter : undefined;
+  const target = request.find(book);
   const targetPending = target !== undefined && target.startMs === null;
-
-  /** The Chapter has started, or the user took over: the page no longer waits for it, nor does a reload. */
-  const settleRequest = () => {
-    setRequested(null);
-    window.history.replaceState(null, "", window.location.pathname);
-  };
-
-  let notice: string | null = null;
-  if (targetPending) notice = waitMessage(target);
-  else if (book && waitingForAudio) notice = waitMessage(nextToGenerate(book));
+  const startAt: StartRequest | null = target
+    ? { id: target.id, seconds: target.startMs === null ? null : target.startMs / 1000, autoplay: true }
+    : playlist.resume;
+  const notice = targetPending
+    ? waitMessage(target)
+    : book && waitingForAudio
+      ? waitMessage(nextToGenerate(book))
+      : null;
 
   return (
     <div className="listen-layout">
@@ -75,11 +88,17 @@ export function ListenPage({ id }: { id: string }) {
           {book.playable ? (
             <div className="player-dock">
               <Player
+                key={playlist.revision}
                 src={`/api/books/${id}/audio.m3u8`}
                 totalSeconds={book.durationMs === null ? null : book.durationMs / 1000}
-                startAt={target ? { id: target.id, seconds: target.startMs === null ? null : target.startMs / 1000 } : null}
-                onStartSettled={settleRequest}
+                startAt={startAt}
+                onStartSettled={() => {
+                  // A Chapter picked to listen to replaces any resume still waiting.
+                  if (target) request.settle();
+                  playlist.clearResume();
+                }}
                 onWaitingForAudio={setWaitingForAudio}
+                onPosition={playlist.onPosition}
                 notice={notice}
               />
             </div>

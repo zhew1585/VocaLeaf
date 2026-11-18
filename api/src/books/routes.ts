@@ -85,6 +85,8 @@ const getRoute = createRoute({
 
 
 
+const chapterNotFailed = { error: { code: "chapter_not_failed", message: "该章节没有生成失败，无需重试" } } as const;
+
 type BookRow = typeof books.$inferSelect;
 type Progress = Book["progress"];
 
@@ -211,7 +213,7 @@ export function bookRoutes({ db, storage }: AppDeps) {
     });
     if (outcome === "not_found") return c.json(notFound, 404);
     if (outcome === "not_failed") {
-      return c.json({ error: { code: "chapter_not_failed", message: "该章节没有生成失败，无需重试" } }, 409);
+      return c.json(chapterNotFailed, 409);
     }
     return c.body(null, 204);
   });

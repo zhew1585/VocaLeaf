@@ -96,11 +96,17 @@ describe("a Chapter whose generation fails", () => {
     expect(statuses(await bookDetail(t.app, book.id))[1]).toEqual(["I", "generated"]);
   });
 
-  it("counts a timed-out attempt (lease expired) like a failed one: 3 attempts in all, then 生成失败", async () => {
+  it("puts a timed-out attempt (lease expired) back to 待生成 and counts it like a failed one: 3 attempts in all", async () => {
     const t = await testApp();
     const book = await parsedBook(t);
     const first = await claimRender(t.app);
     t.clock.advance(TEST_LEASE_MS + 1);
+
+    // The next claim finds the lease expired; it takes a newly uploaded Book's parse, which comes first.
+    await uploadBook(t.app, "other.epub");
+    expect((await claimJob(t.app))?.type).toBe("parse");
+    expect(statuses(await bookDetail(t.app, book.id))[1]).toEqual(["I", "pending"]);
+    expect((await reportFailure(t.app, first, "late report")).status).toBe(409);
 
     const second = await claimRender(t.app);
     expect([second.chapterId, second.attempt]).toEqual([first.chapterId, 2]);
@@ -183,7 +189,12 @@ describe("retrying a 生成失败 Chapter (AC-BOOK-04)", () => {
     const again = await claimRender(t.app);
     expect([again.chapterId, again.attempt]).toEqual([two.id, 1]);
     expect(chapterNamed(await bookDetail(t.app, book.id), "II").audioStatus).toBe("generating");
-    await renderFully(t, again);
+    // Out of order, so it comes into the playlist only whole: no position after it moves while it generates.
+    const report = await renderAll(t.storage, again);
+    await reportRenderProgress(t.app, again, { segments: report.segments.slice(0, 1), sentences: report.sentences.slice(0, 1) });
+    expect(await playlistSegments(t.app, book.id)).toEqual(before);
+    expect(chapterNamed(await bookDetail(t.app, book.id), "II").startMs).toBeNull();
+    await reportRenderResult(t.app, again, { segments: report.segments.slice(1), sentences: report.sentences.slice(1) });
 
     d = await bookDetail(t.app, book.id);
     expect(d).toMatchObject({ status: "ready", progress: { generated: 3, narrated: 3 } });

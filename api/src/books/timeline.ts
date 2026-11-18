@@ -41,8 +41,10 @@ export interface Timeline {
  * published segments are never taken back, a player only ever sees segments appended at the end, as an HLS
  * EVENT playlist requires.
  * A failed Chapter keeps only what it published before failing (usually nothing) and holds nothing back.
- * Neither does one the user retried: its audio is inserted in its place as it is generated, which is the one
- * case where the playlist changes before its end.
+ * Neither does one the user retried: it is generated out of order, so it is left out until it is generated
+ * and then inserted in its place whole. That is the one case where the playlist changes before its end, at
+ * most twice per retry (a failed Chapter's earlier audio drops out, then all of it comes in); the 专注页
+ * notices and reloads the playlist (web/src/pages/usePlaylist.ts).
  */
 export function buildTimeline(chaptersInOrder: TimelineChapterInput[]): Timeline {
   const entries: TimelineEntry[] = [];
@@ -54,7 +56,8 @@ export function buildTimeline(chaptersInOrder: TimelineChapterInput[]): Timeline
   for (const ch of chaptersInOrder) {
     if (ch.skipped) continue;
     const hasAudio = ch.segments.length > 0;
-    if (ch.audioStatus === "failed" || (ch.retried && ch.audioStatus !== "generated")) {
+    if (ch.retried && ch.audioStatus !== "generated") continue;
+    if (ch.audioStatus === "failed") {
       if (hasAudio) place(ch);
       continue;
     }

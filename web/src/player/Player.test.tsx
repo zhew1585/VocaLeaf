@@ -160,7 +160,7 @@ describe("Player", () => {
 
     it("seeks there and plays once the playlist reaches it, then reports the request done", () => {
       const onStartSettled = vi.fn();
-      render(<Player src="/api/books/b1/audio.m3u8" startAt={{ id: "c3", seconds: 600 }} onStartSettled={onStartSettled} />);
+      render(<Player src="/api/books/b1/audio.m3u8" startAt={{ id: "c3", seconds: 600, autoplay: true }} onStartSettled={onStartSettled} />);
       const seeks = loaded(300);
       expect(play).not.toHaveBeenCalled();
 
@@ -174,12 +174,12 @@ describe("Player", () => {
     });
 
     it("keeps waiting while the position is not known yet, and plays once it is", () => {
-      const { rerender } = render(<Player src="/api/books/b1/audio.m3u8" startAt={{ id: "c3", seconds: null }} />);
+      const { rerender } = render(<Player src="/api/books/b1/audio.m3u8" startAt={{ id: "c3", seconds: null, autoplay: true }} />);
       const seeks = loaded(300);
       grow(900);
       expect(play).not.toHaveBeenCalled();
 
-      rerender(<Player src="/api/books/b1/audio.m3u8" startAt={{ id: "c3", seconds: 600 }} />);
+      rerender(<Player src="/api/books/b1/audio.m3u8" startAt={{ id: "c3", seconds: 600, autoplay: true }} />);
 
       expect(seeks).toEqual([600]);
       expect(play).toHaveBeenCalledTimes(1);
@@ -187,7 +187,7 @@ describe("Player", () => {
 
     it("is dropped when the user plays or pauses by hand meanwhile", () => {
       const onStartSettled = vi.fn();
-      render(<Player src="/api/books/b1/audio.m3u8" startAt={{ id: "c3", seconds: 600 }} onStartSettled={onStartSettled} />);
+      render(<Player src="/api/books/b1/audio.m3u8" startAt={{ id: "c3", seconds: 600, autoplay: true }} onStartSettled={onStartSettled} />);
       const seeks = loaded(300);
 
       fireEvent.click(screen.getByRole("button", { name: "播放" }));
@@ -200,7 +200,7 @@ describe("Player", () => {
 
     it("shows no error when the browser wants a tap before playing on its own", async () => {
       play.mockImplementationOnce(() => Promise.reject(new DOMException("autoplay", "NotAllowedError")));
-      render(<Player src="/api/books/b1/audio.m3u8" startAt={{ id: "c3", seconds: 10 }} />);
+      render(<Player src="/api/books/b1/audio.m3u8" startAt={{ id: "c3", seconds: 10, autoplay: true }} />);
       loaded(60);
       await act(async () => {});
 

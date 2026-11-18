@@ -48,7 +48,7 @@ describe("buildTimeline", () => {
     expect(t.complete).toBe(false);
   });
 
-  it("does not let a Chapter the user retried hold back the Chapters after it, and inserts its audio in place", () => {
+  it("leaves out a Chapter the user retried until it is generated, then inserts all of it in its place", () => {
     const retried = (status: TimelineChapterInput["audioStatus"], segments: ReturnType<typeof seg>[]) =>
       ch("b", status, segments, false, true);
     const layout = (t: ReturnType<typeof buildTimeline>) => t.entries.map((e) => [e.chapterId, e.offsetMs]);
@@ -61,11 +61,7 @@ describe("buildTimeline", () => {
     expect(queued.complete).toBe(true);
 
     const halfway = buildTimeline([ch("a", "generated"), retried("generating", [seg("b0", 4_000)]), ch("c", "generated")]);
-    expect(layout(halfway)).toEqual([
-      ["a", 0],
-      ["b", 10_000],
-      ["c", 14_000],
-    ]);
+    expect(layout(halfway)).toEqual(layout(queued));
 
     const done = buildTimeline([ch("a", "generated"), retried("generated", [seg("b0", 4_000), seg("b1")]), ch("c", "pending", [])]);
     expect(layout(done)).toEqual([

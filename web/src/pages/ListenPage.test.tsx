@@ -3,9 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookDetail } from "../api";
 import { ListenPage } from "./ListenPage";
 
+// How many players loaded the playlist: a reload makes a new hls.js instance.
+const hlsLoads = vi.hoisted(() => ({ count: 0 }));
 vi.mock("hls.js", () => ({
   default: class {
     static isSupported = () => true;
+    constructor() {
+      hlsLoads.count += 1;
+    }
     static Events = { ERROR: "hlsError" };
     on() {}
     loadSource() {}
@@ -190,6 +195,90 @@ describe("ListenPage (专注页)", () => {
       expect(screen.queryByRole("status")).toBeNull();
       expect(window.location.search).toBe("");
     });
+  });
+
+  describe("when a retried Chapter comes into the playlist before its end", () => {
+    // Chapter 2 failed and was retried; Chapter 3 played on after Chapter 1.
+    const retrying: BookDetail = {
+      ...book,
+      status: "ready",
+      chapters: [
+        chapter("c1", 0, { audioStatus: "generated", startMs: 0 }),
+        chapter("c2", 1, { audioStatus: "generating", waitSeconds: 30 }),
+        chapter("c3", 2, { audioStatus: "generated", startMs: 600_000 }),
+      ],
+    };
+    // Chapter 2 is generated (5 minutes) and inserted before Chapter 3.
+    const inserted: BookDetail = {
+      ...retrying,
+      chapters: [
+        retrying.chapters[0]!,
+        { ...retrying.chapters[1]!, audioStatus: "generated", startMs: 600_000, waitSeconds: null },
+        { ...retrying.chapters[2]!, startMs: 900_000 },
+      ],
+    };
+
+    it("reloads the playlist and resumes at the same place in the same Chapter, still playing", async () => {
+      hlsLoads.count = 0;
+      serve(retrying, inserted);
+      render(<ListenPage id="b1" />);
+      fireEvent.click(await screen.findByRole("button", { name: "播放" }));
+      const { el } = audioWithGenerated(700);
+      Object.defineProperty(el, "currentTime", { value: 612, configurable: true });
+      act(() => el.dispatchEvent(new Event("timeupdate")));
+      expect(hlsLoads.count).toBe(1);
+
+      // Polls every 5 seconds while a retried Chapter generates in a 已就绪 Book.
+      await vi.waitFor(() => expect(hlsLoads.count).toBe(2), { timeout: 7000 });
+      const reloaded = audioWithGenerated(1000);
+      expect(reloaded.el).not.toBe(el);
+      expect(reloaded.seeks).toEqual([912]);
+      expect(play).toHaveBeenCalledTimes(2);
+    }, 10_000);
+
+    it("plays the retried Chapter the user waits for from its start in the new playlist (AC-BOOK-03, AC-BOOK-04)", async () => {
+      hlsLoads.count = 0;
+      window.history.pushState(null, "", "/books/b1/listen?chapter=c2");
+      serve(retrying, inserted);
+      render(<ListenPage id="b1" />);
+      expect((await screen.findByRole("status")).textContent).toBe("该章节生成中，预计约 30 秒");
+      const old = audioWithGenerated(700);
+
+      await vi.waitFor(() => expect(hlsLoads.count).toBe(2), { timeout: 4000 });
+      expect(old.seeks).toEqual([]);
+      const reloaded = audioWithGenerated(1000);
+      expect(reloaded.seeks).toEqual([600]);
+      expect(play).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("asks for a tap when the browser does not let the Chapter start on its own", async () => {
+    play.mockImplementationOnce(() => Promise.reject(new DOMException("autoplay", "NotAllowedError")));
+    window.history.pushState(null, "", "/books/b1/listen?chapter=c2");
+    serve(secondPlayable);
+    render(<ListenPage id="b1" />);
+    await screen.findByRole("button", { name: "播放" });
+
+    audioWithGenerated(900);
+
+    expect((await screen.findByRole("status")).textContent).toBe("已可以收听，点播放开始");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("says the Chapter being generated is awaited when playback catches up with it", async () => {
+    const partly: BookDetail = {
+      ...generating,
+      chapters: [generating.chapters[0]!, { ...generating.chapters[1]!, startMs: 600_000, waitSeconds: null }, generating.chapters[2]!],
+    };
+    serve(partly);
+    render(<ListenPage id="b1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "播放" }));
+    const { el } = audioWithGenerated(640);
+    Object.defineProperty(el, "currentTime", { value: 640, configurable: true });
+
+    act(() => el.dispatchEvent(new Event("waiting")));
+
+    expect(screen.getByRole("status").textContent).toBe("该章节生成中，生成后自动播放");
   });
 
   it("says how long the next Chapter takes when playback catches up with the generated audio", async () => {

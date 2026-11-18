@@ -27,7 +27,7 @@ export function nextPollMs(book: BookDetail, eager = false): number | null {
 
 /**
  * Loads a Book and keeps it current while the worker is still working on it. `reload` loads it again at once,
- * after the user changed it (a retried Chapter).
+ * after the user changed it (a retried Chapter); so does `eager` turning on.
  */
 export function useBook(id: string, { eager = false } = {}) {
   const [book, setBook] = useState<BookDetail | null>(null);
@@ -60,5 +60,11 @@ export function useBook(id: string, { eager = false } = {}) {
   }, [id, version]);
 
   const reload = useCallback(() => setVersion((v) => v + 1), []);
+  // Starting to wait on audio: check now rather than at the next, slower, poll.
+  const wasEager = useRef(eager);
+  useEffect(() => {
+    if (eager && !wasEager.current) reload();
+    wasEager.current = eager;
+  }, [eager, reload]);
   return { book, error, reload };
 }
