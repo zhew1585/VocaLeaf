@@ -48,15 +48,15 @@ export async function succeedJob(tx: Tx, job: Job, now: Date) {
 }
 
 /**
- * A worker reports that its attempt failed. A render job with attempts left goes back to the queue and its
- * Chapter back to 待生成 (PRD 4.3.5 #8); the next claim is its next attempt. Otherwise the job fails. A parse
- * failure is final at once: a file that cannot be parsed (DRM, broken) fails the same way every time, and the
- * Book shows why (`reason`; without one, the file could not be read).
+ * A worker reports that its attempt failed. A parse failure with a `reason` is the file's fault (DRM, broken, no
+ * text): it fails the same way every time, so the Book is 解析失败 at once and shows why (PRD 4.3.5 #4 to #6).
+ * Any other failure (storage, TTS, a bug) goes back to the queue while attempts are left, a Chapter back to
+ * 待生成 (PRD 4.3.5 #8); on the last attempt the job fails, and a Book still parsing shows it as unreadable.
  */
 export async function failAttempt(tx: Tx, job: Job, error: string, now: Date, reason?: ParseFailureReason) {
-  if (job.type === "parse") await failJob(tx, job, error, now, PARSE_FAILURE_MESSAGES[reason ?? "unreadable"]);
+  if (job.type === "parse" && reason) await failJob(tx, job, error, now, PARSE_FAILURE_MESSAGES[reason]);
   else if (job.attempt < MAX_JOB_ATTEMPTS) await requeue(tx, job, error, now);
-  else await failJob(tx, job, error, now);
+  else await failJob(tx, job, error, now, job.type === "parse" ? PARSE_FAILURE_MESSAGES.unreadable : null);
 }
 
 /** Puts a job back in the queue for its next attempt; a Chapter goes back to 待生成. */

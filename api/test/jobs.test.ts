@@ -137,11 +137,11 @@ describe("POST /api/internal/jobs/:id/failure", () => {
     const { app, db } = await testApp();
     const { book, job } = await claimedJob(app);
 
-    const res = await reportFailure(app, job, "BadZipFile: not a zip");
+    const res = await reportFailure(app, job, "ParseFailed: unreadable: BadZipFile: not a zip", "unreadable");
     expect(res.status).toBe(204);
     expect((await bookDetail(app, book.id)).status).toBe("parse_failed");
     const [row] = await db.select().from(jobs).where(eq(jobs.id, job.id));
-    expect(row).toMatchObject({ status: "failed", error: "BadZipFile: not a zip" });
+    expect(row).toMatchObject({ status: "failed", error: "ParseFailed: unreadable: BadZipFile: not a zip" });
   });
 
   // PRD 4.3.5 #4 to #6, AC-UP-05: the user sees why, and the Book stays 解析失败 for good.
@@ -159,13 +159,23 @@ describe("POST /api/internal/jobs/:id/failure", () => {
     expect((await claim(app)).status).toBe(204);
   });
 
-  it("tells the user the file could not be read when a parse fails without a reason", async () => {
+  // Without a reason the worker failed for something other than the file (storage down, a bug): try again.
+  it("parses again after a failure without a reason, and gives up as unreadable after the last attempt", async () => {
     const { app } = await testApp();
-    const { book, job } = await claimedJob(app);
+    const { book, job: first } = await claimedJob(app);
 
-    await reportFailure(app, job, "RuntimeError: boom");
+    await reportFailure(app, first, "NoSuchKey: books/x/source.epub");
+    expect(await bookDetail(app, book.id)).toMatchObject({ status: "parsing", failureReason: null });
 
-    expect((await bookDetail(app, book.id)).failureReason).toBe("文件无法读取，可能已损坏");
+    const second = (await (await claim(app)).json()) as ClaimedJob;
+    expect(second).toMatchObject({ id: first.id, type: "parse", attempt: 2 });
+    await reportFailure(app, second, "NoSuchKey: books/x/source.epub");
+    const third = (await (await claim(app)).json()) as ClaimedJob;
+    expect(third.attempt).toBe(3);
+    await reportFailure(app, third, "NoSuchKey: books/x/source.epub");
+
+    expect(await bookDetail(app, book.id)).toMatchObject({ status: "parse_failed", failureReason: "文件无法读取，可能已损坏" });
+    expect((await claim(app)).status).toBe(204);
   });
 
   it("rejects an unknown reason", async () => {

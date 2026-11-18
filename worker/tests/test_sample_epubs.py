@@ -2,7 +2,7 @@
 
 import pytest
 
-from sample_epubs import FIXTURES, LONG_SENTENCE, SAMPLES
+from sample_epubs import FIXTURES, LONG_COMMA_SENTENCE, LONG_SENTENCE, SAMPLES
 from vocaleaf_worker.epub_parser import ParseFailed, parse_epub
 from vocaleaf_worker.sentences import MAX_SENTENCE_CHARS
 
@@ -23,11 +23,12 @@ def chapter(book, title):
 
 def test_non_body_chapters_are_skipped_and_the_preface_is_narrated(rules_book):
     assert [(c.title, c.skipped) for c in rules_book.chapters] == [
-        ("Copyright", True),
-        ("Contents", True),
-        ("Dedication", True),
+        ("Rights", True),  # rule 1: epub:type copyright-page
+        ("Map of the Book", True),  # rule 1: the landmarks call it the toc
+        ("Dedication", True),  # rule 3: short, no complete Sentence
         ("Preface", False),
         ("Chapter I", False),
+        ("Acknowledgments", True),  # rule 2: the title
         ("Index", True),
         ("Endnotes", True),
     ]
@@ -61,13 +62,15 @@ def test_numbers_and_dates_are_spoken_as_words(rules_book):
     assert holmes.spoken_text == "“You have come two hundred miles, I perceive.”"
 
 
-def test_an_over_long_sentence_is_split_at_semicolons(rules_book):
-    pieces = [s.text for s in chapter(rules_book, "Chapter I").sentences[4:]]
+@pytest.mark.parametrize(("paragraph", "sentence", "mark"), [(2, LONG_SENTENCE, ";"), (3, LONG_COMMA_SENTENCE, ",")])
+def test_an_over_long_sentence_is_split_at_semicolons_or_else_commas(rules_book, paragraph, sentence, mark):
+    pieces = [s.text for s in chapter(rules_book, "Chapter I").sentences if s.paragraph_index == paragraph]
 
-    assert len(LONG_SENTENCE) > MAX_SENTENCE_CHARS
+    assert len(sentence) > MAX_SENTENCE_CHARS
     assert len(pieces) > 1
-    assert all(len(p) <= MAX_SENTENCE_CHARS and p.endswith((";", ".")) for p in pieces)
-    assert " ".join(pieces) == LONG_SENTENCE
+    assert all(len(p) <= MAX_SENTENCE_CHARS for p in pieces)
+    assert all(p.endswith(mark) for p in pieces[:-1])
+    assert " ".join(pieces) == sentence
 
 
 @pytest.mark.parametrize(

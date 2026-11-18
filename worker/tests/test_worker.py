@@ -86,6 +86,16 @@ DRM = make_epub(
 NO_TEXT = make_epub([Doc("c1.xhtml", '<img src="cover.png" alt=""/>')], [TocEntry("Cover", "c1.xhtml")])
 
 
+def test_reports_a_failure_without_a_reason_when_the_file_cannot_be_fetched():
+    # Not the file's fault: the API tries the parse again instead of failing the Book.
+    api = FakeApi(job=JOB)
+
+    run_once(client(api), FakeStorage({}), FakeTts(), PAUSES)
+
+    assert api.calls() == ["claim", "failure"]
+    assert "reason" not in api.bodies("failure")[0]
+
+
 @pytest.mark.parametrize(("epub", "reason"), [(DRM, "drm"), (NO_TEXT, "no_text")])
 def test_reports_why_a_book_cannot_be_parsed(epub, reason):
     api = FakeApi(job=JOB)

@@ -48,12 +48,24 @@ SKIP_TAGS = frozenset({"script", "style", "head"})
 
 # PRD 4.2.5 rule 1: epub:type or landmark types of non-body Chapters. "title-page" is the EPUB 2 guide's spelling.
 NON_BODY_TYPES = frozenset(
-    {"cover", "titlepage", "title-page", "copyright-page", "toc", "index", "colophon", "imprint", "loi", "lot"}
-    | {"endnotes"}
+    {
+        "cover",
+        "titlepage",
+        "title-page",
+        "copyright-page",
+        "toc",
+        "index",
+        "colophon",
+        "imprint",
+        "loi",
+        "lot",
+        "endnotes",
+    }
 )
-# PRD 4.2.5 rule 2, matched against the whole title in lower case without punctuation.
+# PRD 4.2.5 rule 2, matched against the start of the title's words (lower case, no punctuation): "Copyright
+# Notice" and "Index of Names" are Skipped, "Chapter 1: The Index" is not.
 NON_BODY_TITLE = re.compile(
-    r"copyright(?: page)?|(?:table of )?contents|index|acknowledge?ments|about the (?:authors?|publisher)|also by .+"
+    r"(?:copyright|(?:table of )?contents|index|acknowledge?ments|about the (?:authors?|publisher)|also by)\b"
 )
 # Narrated whatever rules 1 and 2 say; only rule 3 (no text worth reading) can skip them.
 NARRATED_TITLE = re.compile(r"(?:preface|foreword|introduction|prologue|epilogue|afterword)(?: .*)?")
@@ -70,6 +82,8 @@ _NOTE_MARK = re.compile(r"[\[(]?(?:[0-9]{1,3}|[*†‡§¶#]{1,3})[\])]?")
 _BRACKETED_NOTE_MARK = re.compile(r"[\[(][0-9]{1,3}[\])]")
 # Notes placed inside the body text; their text is not read there (PRD 4.2.6 rule 3).
 _INLINE_NOTE_TYPES = frozenset({"footnote", "endnote", "rearnote", "note"})
+# Classes that mark footnotes in HTML without epub:type, as Project Gutenberg's does.
+_FOOTNOTE_CLASSES = frozenset({"footnote", "footnotes"})
 
 ParseFailureReason = Literal["drm", "unreadable", "no_text"]
 
@@ -155,11 +169,14 @@ def _read_book(z: zipfile.ZipFile) -> ParsedBook:
     bodies = {doc: body for doc in spine if doc in z.namelist() and (body := _body(z, doc)) is not None}
     paragraphs = _paragraphs_by_chapter(spine, bodies, targets)
     landmarks = _non_body_landmarks(z, opf, opf_dir, manifest)
+    # A landmark on a whole file says nothing about which of several Chapters in that file it means.
+    shared = {t.doc for t in targets if sum(u.doc == t.doc for u in targets) > 1}
 
     chapters = []
     for i, t in enumerate(targets):
         sentences = _sentences(_without_title(paragraphs[i], t.title))
-        marked = (t.doc, t.fragment) in landmarks or not NON_BODY_TYPES.isdisjoint(_target_types(bodies, t))
+        by_landmark = (t.doc, t.fragment) in landmarks and (t.fragment is not None or t.doc not in shared)
+        marked = by_landmark or not NON_BODY_TYPES.isdisjoint(_target_types(bodies, t))
         chapters.append(ParsedChapter(t.title, sentences, skipped=_is_skipped(t.title, marked, sentences)))
     return ParsedBook(
         title=_text(opf.find("opf:metadata/dc:title", NS)),
@@ -173,16 +190,21 @@ def _is_skipped(title: str | None, marked: bool, sentences: tuple[ParsedSentence
     reading (rule 3). Prefaces and the like are exempt from rules 1 and 2."""
     if _lacks_body_text(sentences):
         return True
-    name = " ".join(re.sub(r"[^\w\s]", " ", title.lower()).split()) if title else ""
-    if NARRATED_TITLE.fullmatch(name):
+    words = _title_words(title) if title else ""
+    if NARRATED_TITLE.fullmatch(words):
         return False
-    return marked or bool(NON_BODY_TITLE.fullmatch(name))
+    return marked or bool(NON_BODY_TITLE.match(words))
 
 
 def _lacks_body_text(sentences: tuple[ParsedSentence, ...]) -> bool:
     """PRD 4.2.5 rule 3: under MIN_BODY_CHARS and without a complete Sentence (a dedication, a title page)."""
     chars = sum(len(s.text) for s in sentences)
     return chars < MIN_BODY_CHARS and not any(_COMPLETE_SENTENCE.match(s.text) for s in sentences)
+
+
+def _title_words(title: str) -> str:
+    """A title's words in lower case, single-spaced, without punctuation: "About the Author:" → "about the author"."""
+    return " ".join(re.sub(r"[^\w\s]", " ", title.lower()).split())
 
 
 def _comparable(text: str) -> str:
@@ -273,33 +295,23 @@ def _non_body_landmarks(
     z: zipfile.ZipFile, opf: etree._Element, opf_dir: str, manifest: dict[str, etree._Element]
 ) -> set[tuple[str, str | None]]:
     """Targets (document, fragment) that the EPUB 3 landmarks or the EPUB 2 guide mark as non-body (PRD 4.2.5)."""
-    marked: list[tuple[str, str]] = [
-        (_attr(ref, "type"), _resolve_href(opf_dir, _attr(ref, "href")))
-        for ref in opf.iterfind("opf:guide/opf:reference", NS)
-    ]
+    # (types, href, the directory the href is relative to)
+    marks = [(_attr(ref, "type"), _attr(ref, "href"), opf_dir) for ref in opf.iterfind("opf:guide/opf:reference", NS)]
     nav_item = next((i for i in manifest.values() if "nav" in _attr(i, "properties").split()), None)
     if nav_item is not None:
         nav_path = _resolve(opf_dir, _attr(nav_item, "href"))
-        for nav in _read_xml(z, nav_path).iter(f"{{{NS['x']}}}nav"):
-            if "landmarks" in _types(nav):
-                marked += [
-                    (_attr(a, f"{{{NS['epub']}}}type"), _resolve_href(posixpath.dirname(nav_path), _attr(a, "href")))
-                    for a in nav.iter(f"{{{NS['x']}}}a")
-                ]
-    return {
-        (t.doc, t.fragment)
-        for kinds, href in marked
+        marks += [
+            (_attr(a, f"{{{NS['epub']}}}type"), _attr(a, "href"), posixpath.dirname(nav_path))
+            for nav in _read_xml(z, nav_path).iter(f"{{{NS['x']}}}nav")
+            if "landmarks" in _types(nav)
+            for a in nav.iter(f"{{{NS['x']}}}a")
+        ]
+    targets = (
+        _target(None, base, href)
+        for kinds, href, base in marks
         if href and not NON_BODY_TYPES.isdisjoint(kinds.split())
-        for t in [_target(None, "", href)]
-    }
-
-
-def _resolve_href(base_dir: str, href: str) -> str:
-    """An href made relative to the zip root, keeping its fragment; "" stays ""."""
-    if not href:
-        return ""
-    path, fragment = urldefrag(href)
-    return _resolve(base_dir, path) + (f"#{fragment}" if fragment else "")
+    )
+    return {(t.doc, t.fragment) for t in targets}
 
 
 def _types(el: etree._Element) -> list[str]:
@@ -378,6 +390,8 @@ def _is_leaf_block(el: etree._Element) -> bool:
 def _is_hidden(el: etree._Element) -> bool:
     """Not part of the text read in place: scripts and styles, and footnotes placed inside the body text."""
     if _local(el) in SKIP_TAGS or "doc-footnote" in _attr(el, "role").split() or "footnote" in _types(el):
+        return True
+    if not _FOOTNOTE_CLASSES.isdisjoint(_attr(el, "class").split()):
         return True
     return _local(el) == "aside" and not _INLINE_NOTE_TYPES.isdisjoint(_types(el))
 

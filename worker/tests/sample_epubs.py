@@ -18,20 +18,28 @@ LONG_SENTENCE = (
     " chair to examine the tops of the wardrobes, where the dust lay thick and undisturbed; and at last, weary and"
     " covered in cobwebs, he sat down by the fire and admitted that the letter was not in the room."
 )
+# Another, with commas only: it splits at commas.
+LONG_COMMA_SENTENCE = (
+    "The carriage rolled on through the wet lanes, past the mill and the church, past the long grey wall of the"
+    " park, past cottages whose windows glowed with the first lamps of evening, past the inn where the ostler stood"
+    " smoking in the doorway, past the last of the elms at the edge of the village, until at length the lights of"
+    " the house showed through the rain and the horses slowed of their own accord."
+)
 
 
 def parse_rules() -> bytes:
-    """One Book with every rule in it: non-body Chapters to Skip (AC-UP-06), a Preface to narrate (AC-UP-07),
-    "Mr. Holmes said." (AC-UP-08), note references and a footnote (AC-UP-09), numbers and dates, and an
-    over-long Sentence."""
+    """One Book with every rule in it. Non-body Chapters to Skip (AC-UP-06), each by one rule of PRD 4.2.5 alone:
+    Rights by its epub:type, Map of the Book by the landmarks, Dedication by its short text, Acknowledgments by
+    its title; Index and Endnotes by type and title. A Preface to narrate (AC-UP-07), "Mr. Holmes said."
+    (AC-UP-08), note references and a footnote (AC-UP-09), numbers and dates, and over-long Sentences."""
     docs = [
         Doc(
-            "copyright.xhtml",
-            '<section epub:type="copyright-page"><p>Copyright 2026 The VocaLeaf Authors.'
-            " All rights reserved. First published in 2026.</p></section>",
+            "rights.xhtml",
+            '<section epub:type="copyright-page"><p>These pages may be copied freely for any purpose.'
+            " No permission is needed.</p></section>",
             body_type="frontmatter",
         ),
-        Doc("contents.xhtml", "<ol><li>Preface</li><li>Chapter I</li><li>Index</li></ol>"),
+        Doc("map.xhtml", "<p>The Preface comes first, and the story follows it.</p>"),
         Doc("dedication.xhtml", "<p>For Cassandra</p>"),
         Doc(
             "preface.xhtml",
@@ -45,9 +53,10 @@ def parse_rules() -> bytes:
             '<p>It was the 3rd of March, and the fog was thick.<a href="endnotes.xhtml#note-1" epub:type="noteref">1</a>'
             " Dr. Watson agreed.<sup>2</sup></p>"
             '<aside id="fn-2" epub:type="footnote"><p>A footnote that is never read aloud.</p></aside>'
-            f"<p>{LONG_SENTENCE}</p>",
+            f"<p>{LONG_SENTENCE}</p><p>{LONG_COMMA_SENTENCE}</p>",
             body_type="bodymatter",
         ),
+        Doc("thanks.xhtml", "<p>My thanks go to Dr. Watson for his patience.</p>"),
         Doc("index.xhtml", "<p>Holmes, Sherlock, 1, 4, 9</p><p>Watson, John, 2, 3</p>", body_type="backmatter index"),
         Doc(
             "endnotes.xhtml",
@@ -57,15 +66,17 @@ def parse_rules() -> bytes:
         ),
     ]
     toc = [
-        TocEntry("Copyright", "copyright.xhtml"),
-        TocEntry("Contents", "contents.xhtml"),
+        TocEntry("Rights", "rights.xhtml"),
+        TocEntry("Map of the Book", "map.xhtml"),
         TocEntry("Dedication", "dedication.xhtml"),
         TocEntry("Preface", "preface.xhtml"),
         TocEntry("Chapter I", "chapter-1.xhtml"),
+        TocEntry("Acknowledgments", "thanks.xhtml"),
         TocEntry("Index", "index.xhtml"),
         TocEntry("Endnotes", "endnotes.xhtml"),
     ]
-    return make_epub(docs, toc, title="A Study in Rules", author="VocaLeaf")
+    landmarks = [("toc", "map.xhtml"), ("bodymatter", "chapter-1.xhtml")]
+    return make_epub(docs, toc, title="A Study in Rules", author="VocaLeaf", landmarks=landmarks)
 
 
 def drm() -> bytes:

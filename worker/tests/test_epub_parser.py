@@ -244,6 +244,16 @@ def test_a_chapter_named_by_the_landmarks_is_skipped():
     assert skipped(parse_epub(epub)) == {"Front": True, "One": False}
 
 
+def test_a_landmark_on_a_whole_file_that_several_chapters_share_is_not_trusted():
+    epub = make_epub(
+        [Doc("book.xhtml", f'{BODY}<section id="c2">{BODY}</section>')],
+        [TocEntry("One", "book.xhtml"), TocEntry("Two", "book.xhtml#c2")],
+        landmarks=[("toc", "book.xhtml")],
+    )
+
+    assert skipped(parse_epub(epub)) == {"One": False, "Two": False}
+
+
 def test_a_chapter_named_by_the_epub2_guide_is_skipped():
     epub = make_epub(
         [Doc("rights.xhtml", BODY), Doc("c1.xhtml", BODY)],
@@ -268,9 +278,12 @@ def test_a_chapter_named_by_the_epub2_guide_is_skipped():
         ("About the Publisher", True),
         ("Acknowledgments", True),
         ("Acknowledgements", True),
+        ("Copyright Notice", True),
+        ("Index of Names", True),
+        ("About the Author and Illustrator", True),
         ("Chapter 1: The Index", False),
         ("Indexing the Stars", False),
-        ("Contents of a Drawer", False),
+        ("The Contents of a Drawer", False),
     ],
 )
 def test_a_chapter_titled_like_non_body_text_is_skipped(title, is_skipped):
@@ -366,6 +379,23 @@ def test_footnote_text_is_not_read_inside_the_chapter():
                 "c1.xhtml",
                 '<p>He said so.<a epub:type="noteref" href="#fn1">1</a></p>'
                 '<aside id="fn1" epub:type="footnote"><p>A note about it.</p></aside>'
+                "<p>The end came.</p>",
+            )
+        ],
+        [TocEntry("One", "c1.xhtml")],
+    )
+
+    assert texts(parse_epub(epub).chapters[0]) == [(0, "He said so."), (1, "The end came.")]
+
+
+def test_footnotes_marked_only_by_class_are_not_read_inside_the_chapter():
+    # Project Gutenberg's HTML marks notes with classes only.
+    epub = make_epub(
+        [
+            Doc(
+                "c1.xhtml",
+                '<p>He said so.<a class="fnanchor" href="#Footnote_1">[1]</a></p>'
+                '<div class="footnote"><p><a id="Footnote_1">[1]</a> A note about it.</p></div>'
                 "<p>The end came.</p>",
             )
         ],

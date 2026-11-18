@@ -1,12 +1,13 @@
 // End-to-end functional tests through the running compose stack, from the user's side:
 // everything goes through the web origin (nginx → API), and the worker runs for real.
 import { execFileSync } from "node:child_process";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { Book, BookDetail, Sentence } from "../api/src/contract.js";
 import { api, compose, endOpenJobs, PRIDE_AND_PREJUDICE, ROOT, upload, waitWhileParsing } from "./support.js";
 
-// Uploaded Books go on to generate audio for hours; do not leave that queued for the next test file.
-afterAll(() => endOpenJobs());
+// Uploaded Books go on to generate audio for hours; end it after each test, so the next upload's parse does not
+// wait behind a Chapter being generated.
+afterEach(() => endOpenJobs());
 
 /** Runs a Python one-liner inside the worker container; returns its exit status. */
 function inWorker(code: string): number {

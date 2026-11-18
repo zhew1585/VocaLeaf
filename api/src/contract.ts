@@ -237,7 +237,7 @@ export const JobFailureSchema = z
     attempt: AttemptSchema,
     /** For the job log only. */
     error: z.string(),
-    /** Sent with a failed parse job; a parse failure without one is taken as unreadable. */
+    /** Sent when a parse fails because of the file; a failure without one is retried like any other. */
     reason: z.enum(PARSE_FAILURE_REASONS).optional(),
   })
   .openapi("JobFailure");

@@ -49,9 +49,7 @@ def _run(api: ApiClient, storage: ObjectStorage, tts: Tts, pauses: Pauses, job: 
         raise
     except ParseFailed as exc:
         log.warning("job %s: book cannot be parsed: %s", job.id, exc)
-        api.report_failure(job, f"{type(exc.__cause__ or exc).__name__}: {exc}", reason=exc.reason)
-    except Exception as exc:  # the API queues a Chapter again (PRD 4.3.5 #8)
+        api.report_failure(job, f"ParseFailed: {exc}", reason=exc.reason)
+    except Exception as exc:  # not the file's fault: the API queues the job again (PRD 4.3.5 #8)
         log.exception("job %s failed", job.id)
-        # A parse failure always tells the user why; an unforeseen error means the file could not be read.
-        reason = "unreadable" if isinstance(job, ParseJob) else None
-        api.report_failure(job, f"{type(exc).__name__}: {exc}", reason=reason)
+        api.report_failure(job, f"{type(exc).__name__}: {exc}")
