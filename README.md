@@ -24,6 +24,7 @@ docker compose up --build
 | --- | --- | --- |
 | `WEB_PORT` | `8080` | 网页端口 |
 | `WORKER_TOKEN` | `dev-worker-token-change-me` | worker 调用 `/api/internal` 的共享密钥，上线必须改 |
+| `JOB_LEASE_SECONDS` | `600` | worker 领取任务后的租约时长；到期未回调的任务可被其他 worker 重新领取 |
 
 ## 组成
 
@@ -39,6 +40,12 @@ docker compose up --build
 对象存储只通过 `S3_ENDPOINT`、`S3_REGION`、`S3_BUCKET`、`S3_ACCESS_KEY_ID`、`S3_SECRET_ACCESS_KEY` 访问。
 换成 Cloudflare R2：把这五个变量改成 R2 的值（`S3_REGION=auto`），并去掉 `storage` 服务。
 
+### 任务租约
+
+worker 领取任务时拿到一个租约（`JOB_LEASE_SECONDS`）和本次领取的序号 `attempt`。
+worker 崩溃或重启后，租约到期的任务会被重新领取，`attempt` 加 1；同一任务最多领取 3 次（PRD 4.7.2），第 3 次仍超时则任务失败，书进入【解析失败】。
+回调必须带回 `attempt`，任务已被重新领取或已结束时回调返回 409，不会覆盖新结果。
+
 登录在 #6 实现。
 目前所有请求都以一个固定的开发身份进行，见 [api/src/dev-identity.ts](api/src/dev-identity.ts)。
 
@@ -50,7 +57,7 @@ npm test                   # api（PGlite 内存 Postgres）与 web 的测试
 npm run typecheck
 (cd worker && uv sync && uv run pytest && uv run ruff check && uv run pyright)
 
-docker compose up -d --build
+npm run e2e:up             # 以 5 秒租约起栈（租约相关的端到端测试需要）
 npm run test:e2e           # 针对运行中的栈的端到端功能测试
 ```
 

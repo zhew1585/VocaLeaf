@@ -14,6 +14,12 @@ class ClaimedJob:
     type: Literal["parse"]
     book_id: str
     source_key: str
+    # Fencing token: sent back with every report so the API can refuse reports from a superseded claim.
+    attempt: int
+
+
+class JobSuperseded(Exception):
+    """The API refused a report (409): the job finished, failed or was claimed again after this claim's lease."""
 
 
 class ApiClient:
@@ -28,22 +34,31 @@ class ApiClient:
         if res.status_code == 204:
             return None
         data = res.json()
-        return ClaimedJob(id=data["id"], type=data["type"], book_id=data["bookId"], source_key=data["sourceKey"])
+        return ClaimedJob(
+            id=data["id"],
+            type=data["type"],
+            book_id=data["bookId"],
+            source_key=data["sourceKey"],
+            attempt=data["attempt"],
+        )
 
-    def report_parse_result(self, job_id: str, book: ParsedBook, parser_version: str) -> None:
-        self._post(f"/api/internal/jobs/{job_id}/parse-result", json=parse_result_payload(book, parser_version))
+    def report_parse_result(self, job: ClaimedJob, book: ParsedBook, parser_version: str) -> None:
+        payload = {"attempt": job.attempt, **parse_result_payload(book, parser_version)}
+        self._post(f"/api/internal/jobs/{job.id}/parse-result", json=payload)
 
-    def report_failure(self, job_id: str, error: str) -> None:
-        self._post(f"/api/internal/jobs/{job_id}/failure", json={"error": error})
+    def report_failure(self, job: ClaimedJob, error: str) -> None:
+        self._post(f"/api/internal/jobs/{job.id}/failure", json={"attempt": job.attempt, "error": error})
 
     def _post(self, path: str, json: dict | None = None) -> httpx.Response:
         res = self._http.post(path, json=json, headers=self._headers)
+        if res.status_code == 409:
+            raise JobSuperseded(path)
         res.raise_for_status()
         return res
 
 
 def parse_result_payload(book: ParsedBook, parser_version: str) -> dict:
-    """ParseResult as defined in api/src/contract.ts."""
+    """ParseResult as defined in api/src/contract.ts, without the attempt echo."""
     return {
         "parserVersion": parser_version,
         "title": book.title,

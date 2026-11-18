@@ -68,6 +68,7 @@ function toBook(row: BookRow): Book {
     title: row.title,
     author: row.author,
     status: row.status,
+    failureReason: row.failureReason,
     createdAt: row.createdAt.toISOString(),
   };
 }

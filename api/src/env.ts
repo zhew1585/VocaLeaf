@@ -9,6 +9,8 @@ const EnvSchema = z.object({
   S3_ACCESS_KEY_ID: z.string().min(1),
   S3_SECRET_ACCESS_KEY: z.string().min(1),
   WORKER_TOKEN: z.string().min(16),
+  // Technical config: how long a worker holds a claimed job before it may be claimed again.
+  JOB_LEASE_SECONDS: z.coerce.number().int().positive().default(600),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

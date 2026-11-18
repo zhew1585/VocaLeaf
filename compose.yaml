@@ -46,6 +46,8 @@ services:
     environment:
       <<: [*s3, *worker-token]
       DATABASE_URL: postgres://vocaleaf:vocaleaf@postgres:5432/vocaleaf
+      # How long a worker holds a claimed job before another worker may take it over.
+      JOB_LEASE_SECONDS: ${JOB_LEASE_SECONDS:-600}
     depends_on:
       postgres: { condition: service_healthy }
       storage: { condition: service_started }

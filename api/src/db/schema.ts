@@ -29,6 +29,8 @@ export const books = pgTable("books", {
   fileSize: integer("file_size").notNull(),
   status: bookStatus("status").notNull().default("parsing"),
   parserVersion: text("parser_version"),
+  // User-facing reason shown with parse_failed; the full set of reasons (PRD 4.3.5) comes with #3.
+  failureReason: text("failure_reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -70,9 +72,10 @@ export const jobs = pgTable("jobs", {
     .references(() => books.id, { onDelete: "cascade" }),
   type: jobType("type").notNull(),
   status: jobStatus("status").notNull().default("queued"),
-  // Incremented on every claim. No lease timeout yet: a job whose worker dies stays running;
-  // timeouts and automatic retries (PRD 4.3.5 #8, #10) arrive with #5.
+  // Incremented on every claim, and the fencing token callbacks must echo (see jobs/routes.ts).
   attempt: integer("attempt").notNull().default(0),
+  // While running: when the claiming worker's lease ends and the job may be claimed again.
+  leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
   error: text("error"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

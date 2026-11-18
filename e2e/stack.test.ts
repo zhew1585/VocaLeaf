@@ -1,33 +1,9 @@
 // End-to-end functional tests through the running compose stack, from the user's side:
 // everything goes through the web origin (nginx → API), and the worker runs for real.
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { Book, BookDetail, Sentence } from "../api/src/contract.js";
-
-const BASE = process.env.E2E_BASE_URL ?? "http://localhost:8080";
-const ROOT = new URL("..", import.meta.url).pathname;
-const PRIDE_AND_PREJUDICE = new Uint8Array(readFileSync(new URL("../fixtures/pride-and-prejudice.epub", import.meta.url)));
-
-async function api<T>(path: string, init?: RequestInit): Promise<{ status: number; body: T }> {
-  const res = await fetch(`${BASE}/api${path}`, init);
-  return { status: res.status, body: (await res.json()) as T };
-}
-
-function upload(name: string, bytes: BlobPart) {
-  const form = new FormData();
-  form.append("file", new File([bytes], name));
-  return api<Book & { error?: { code: string; message: string } }>("/books", { method: "POST", body: form });
-}
-
-async function waitWhileParsing(id: string): Promise<BookDetail> {
-  const deadline = Date.now() + 60_000;
-  for (;;) {
-    const { body } = await api<BookDetail>(`/books/${id}`);
-    if (body.status !== "parsing" || Date.now() > deadline) return body;
-    await new Promise((r) => setTimeout(r, 500));
-  }
-}
+import { api, PRIDE_AND_PREJUDICE, ROOT, upload, waitWhileParsing } from "./support.js";
 
 /** Runs a Python one-liner inside the worker container; returns its exit status. */
 function inWorker(code: string): number {

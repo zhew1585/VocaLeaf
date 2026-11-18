@@ -20,6 +20,8 @@ export const BookSchema = z
     title: z.string(),
     author: z.string().nullable(),
     status: BookStatusSchema,
+    /** Why parsing failed, shown with parse_failed; null otherwise. */
+    failureReason: z.string().nullable(),
     createdAt: z.iso.datetime(),
   })
   .openapi("Book");
@@ -62,6 +64,8 @@ export const ClaimedJobSchema = z
     bookId: z.uuid(),
     /** Object key of the original EPUB in the bucket. */
     sourceKey: z.string(),
+    /** Which claim of this job this is; every callback must send it back unchanged. */
+    attempt: z.int().min(1),
   })
   .openapi("ClaimedJob");
 
@@ -77,8 +81,12 @@ export const ParsedChapterSchema = z.object({
   sentences: z.array(ParsedSentenceSchema),
 });
 
+/** Echo of ClaimedJob.attempt. A report from a claim that has since been superseded is refused. */
+const AttemptSchema = z.int().min(1);
+
 export const ParseResultSchema = z
   .object({
+    attempt: AttemptSchema,
     parserVersion: z.string().min(1),
     title: z.string().nullable(),
     author: z.string().nullable(),
@@ -86,7 +94,7 @@ export const ParseResultSchema = z
   })
   .openapi("ParseResult");
 
-export const JobFailureSchema = z.object({ error: z.string() }).openapi("JobFailure");
+export const JobFailureSchema = z.object({ attempt: AttemptSchema, error: z.string() }).openapi("JobFailure");
 
 export type BookStatus = z.infer<typeof BookStatusSchema>;
 export type AudioStatus = z.infer<typeof AudioStatusSchema>;

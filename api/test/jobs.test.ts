@@ -2,9 +2,9 @@ import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import type { BookDetail, ClaimedJob, ParseResult } from "../src/contract.js";
 import { jobs } from "../src/db/schema.js";
-import { claim, postJson, testApp, uploadBook, type TestApp } from "./helpers.js";
+import { claim, postJson, reportFailure, reportParse, testApp, uploadBook, type TestApp } from "./helpers.js";
 
-const result: ParseResult = {
+const result: Omit<ParseResult, "attempt"> = {
   parserVersion: "test-1",
   title: "Pride and Prejudice",
   author: "Jane Austen",
@@ -72,7 +72,7 @@ describe("POST /api/internal/jobs/:id/parse-result", () => {
     const { app } = await testApp();
     const { book, job } = await claimedJob(app);
 
-    const res = await postJson(app, `/api/internal/jobs/${job.id}/parse-result`, result);
+    const res = await reportParse(app, job, result);
     expect(res.status).toBe(204);
 
     const d = await detail(app, book.id);
@@ -87,7 +87,7 @@ describe("POST /api/internal/jobs/:id/parse-result", () => {
     const { app } = await testApp();
     const { book, job } = await claimedJob(app);
     const many = Array.from({ length: 12_001 }, (_, i) => ({ paragraphIndex: i, text: `S${i}.`, spokenText: `S${i}.` }));
-    const res = await postJson(app, `/api/internal/jobs/${job.id}/parse-result`, {
+    const res = await reportParse(app, job, {
       ...result,
       chapters: [{ title: "Long", sentences: many }],
     });
@@ -98,15 +98,15 @@ describe("POST /api/internal/jobs/:id/parse-result", () => {
   it("keeps the file-name title when the EPUB has no title", async () => {
     const { app } = await testApp();
     const { book, job } = await claimedJob(app);
-    await postJson(app, `/api/internal/jobs/${job.id}/parse-result`, { ...result, title: null, author: null });
+    await reportParse(app, job, { ...result, title: null, author: null });
     expect(await detail(app, book.id)).toMatchObject({ title: "Pride and Prejudice", author: null });
   });
 
   it("refuses a second report for the same job", async () => {
     const { app } = await testApp();
     const { job } = await claimedJob(app);
-    await postJson(app, `/api/internal/jobs/${job.id}/parse-result`, result);
-    const again = await postJson(app, `/api/internal/jobs/${job.id}/parse-result`, result);
+    await reportParse(app, job, result);
+    const again = await reportParse(app, job, result);
     expect(again.status).toBe(409);
   });
 
@@ -114,14 +114,14 @@ describe("POST /api/internal/jobs/:id/parse-result", () => {
     const { app, db } = await testApp();
     const book = await uploadBook(app);
     const [queued] = await db.select().from(jobs).where(eq(jobs.bookId, book.id));
-    const res = await postJson(app, `/api/internal/jobs/${queued!.id}/parse-result`, result);
+    const res = await reportParse(app, { id: queued!.id, attempt: 1 }, result);
     expect(res.status).toBe(409);
   });
 
   it("rejects a result without Chapters", async () => {
     const { app } = await testApp();
     const { job } = await claimedJob(app);
-    const res = await postJson(app, `/api/internal/jobs/${job.id}/parse-result`, { ...result, chapters: [] });
+    const res = await reportParse(app, job, { ...result, chapters: [] });
     expect(res.status).toBe(400);
   });
 });
@@ -131,10 +131,22 @@ describe("POST /api/internal/jobs/:id/failure", () => {
     const { app, db } = await testApp();
     const { book, job } = await claimedJob(app);
 
-    const res = await postJson(app, `/api/internal/jobs/${job.id}/failure`, { error: "BadZipFile: not a zip" });
+    const res = await reportFailure(app, job, "BadZipFile: not a zip");
     expect(res.status).toBe(204);
     expect((await detail(app, book.id)).status).toBe("parse_failed");
     const [row] = await db.select().from(jobs).where(eq(jobs.id, job.id));
     expect(row).toMatchObject({ status: "failed", error: "BadZipFile: not a zip" });
+  });
+});
+
+describe("worker protocol contract", () => {
+  it("hands out the attempt with the job and requires it back on every report", async () => {
+    const { app } = await testApp();
+    const { job } = await claimedJob(app);
+    expect(job.attempt).toBe(1);
+
+    const withoutAttempt = { parserVersion: "x", title: null, author: null, chapters: [{ title: null, sentences: [] }] };
+    expect((await postJson(app, `/api/internal/jobs/${job.id}/parse-result`, withoutAttempt)).status).toBe(400);
+    expect((await reportParse(app, { id: job.id, attempt: 2 }, withoutAttempt)).status).toBe(409);
   });
 });

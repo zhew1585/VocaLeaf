@@ -15,6 +15,6 @@ const s3: S3Config = {
 };
 await ensureBucket(s3);
 const storage = s3Storage(s3);
-const app = createApp({ db, storage, workerToken: env.WORKER_TOKEN });
+const app = createApp({ db, storage, workerToken: env.WORKER_TOKEN, jobLeaseMs: env.JOB_LEASE_SECONDS * 1000 });
 
 serve({ fetch: app.fetch, port: env.PORT }, ({ port }) => console.log(`api listening on :${port}`));

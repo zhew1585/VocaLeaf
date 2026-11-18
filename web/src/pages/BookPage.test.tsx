@@ -13,6 +13,7 @@ const book: BookDetail = {
   title: "Pride and Prejudice",
   author: "Jane Austen",
   status: "generating",
+  failureReason: null,
   createdAt: "2026-11-18T00:00:00.000Z",
   chapters: [
     { id: "c0", index: 0, title: "Titlepage", skipped: false, audioStatus: "pending", sentenceCount: 3 },
@@ -42,5 +43,17 @@ describe("BookPage", () => {
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({ ...book, status: "parsing", chapters: [] })));
     render(<BookPage id="b1" />);
     expect(await screen.findByText("解析中")).toBeTruthy();
+  });
+
+  it("shows 解析失败 with its reason", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ ...book, status: "parse_failed", failureReason: "解析超时，请删除后重新上传", chapters: [] }),
+      ),
+    );
+    render(<BookPage id="b1" />);
+    expect(await screen.findByText("解析失败")).toBeTruthy();
+    expect(screen.getByText("解析超时，请删除后重新上传")).toBeTruthy();
   });
 });

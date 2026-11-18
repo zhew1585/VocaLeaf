@@ -10,6 +10,10 @@ export interface AppDeps {
   storage: ObjectStorage;
   /** Shared secret the worker presents as a bearer token on /internal routes. */
   workerToken: string;
+  /** How long a claimed job stays with its worker before another worker may claim it. */
+  jobLeaseMs: number;
+  /** Current time; injectable so tests can expire leases without waiting. */
+  now?: () => Date;
 }
 
 /** Builds the HTTP app. Every route lives under /api; the OpenAPI document is /api/openapi.json. */

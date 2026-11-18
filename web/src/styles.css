@@ -180,6 +180,13 @@ button {
   color: var(--ink-2);
 }
 
+.book-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 .status {
   display: inline-flex;
   align-items: center;

@@ -2,9 +2,9 @@
 // with the worker side driven only through the /internal HTTP protocol.
 import { describe, expect, it } from "vitest";
 import type { Book, BookDetail, ClaimedJob, ParseResult, Sentence } from "../src/contract.js";
-import { claim, epubForm, postJson, testApp, uploadBook, type TestApp } from "./helpers.js";
+import { claim, epubForm, reportParse, testApp, uploadBook, type TestApp } from "./helpers.js";
 
-const parsed: ParseResult = {
+const parsed: Omit<ParseResult, "attempt"> = {
   parserVersion: "test-1",
   title: "Pride and Prejudice",
   author: "Jane Austen",
@@ -37,7 +37,7 @@ describe("upload an EPUB and see its Chapters", () => {
 
     const job = (await (await claim(app)).json()) as ClaimedJob;
     expect(job.bookId).toBe(uploaded.id);
-    expect((await postJson(app, `/api/internal/jobs/${job.id}/parse-result`, parsed)).status).toBe(204);
+    expect((await reportParse(app, job, parsed)).status).toBe(204);
 
     const detail = await get<BookDetail>(app, `/api/books/${uploaded.id}`);
     expect(detail).toMatchObject({ title: "Pride and Prejudice", author: "Jane Austen", status: "generating" });
@@ -51,7 +51,7 @@ describe("upload an EPUB and see its Chapters", () => {
     const { app } = await testApp();
     const uploaded = await uploadBook(app);
     const job = (await (await claim(app)).json()) as ClaimedJob;
-    await postJson(app, `/api/internal/jobs/${job.id}/parse-result`, parsed);
+    await reportParse(app, job, parsed);
     const chapter = (await get<BookDetail>(app, `/api/books/${uploaded.id}`)).chapters[1]!;
 
     const first = await get<Sentence[]>(app, `/api/chapters/${chapter.id}/sentences`);
@@ -62,7 +62,7 @@ describe("upload an EPUB and see its Chapters", () => {
     ]);
 
     // A late duplicate report from the worker must not re-split the Book.
-    expect((await postJson(app, `/api/internal/jobs/${job.id}/parse-result`, parsed)).status).toBe(409);
+    expect((await reportParse(app, job, parsed)).status).toBe(409);
     const again = await get<Sentence[]>(app, `/api/chapters/${chapter.id}/sentences`);
     expect(again.map((s) => s.id)).toEqual(first.map((s) => s.id));
   });

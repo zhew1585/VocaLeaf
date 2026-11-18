@@ -75,7 +75,12 @@ export function BookPage({ id }: { id: string }) {
               <h1 className="book-title">{book.title}</h1>
               {book.author && <p className="book-author">{book.author}</p>}
             </div>
-            <StatusBadge status={book.status} />
+            <div className="book-status">
+              <StatusBadge status={book.status} />
+              {book.status === "parse_failed" && book.failureReason && (
+                <p className="form-error">{book.failureReason}</p>
+              )}
+            </div>
           </>
         )}
       </aside>
