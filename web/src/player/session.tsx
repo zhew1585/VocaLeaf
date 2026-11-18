@@ -41,9 +41,9 @@ export function useListening(): Listening {
   return listening;
 }
 
-export const PLAYBACK_FAILED = "播放失败，请刷新页面重试";
+const PLAYBACK_FAILED = "播放失败，请刷新页面重试";
 
-export function playlistUrl(bookId: string): string {
+function playlistUrl(bookId: string): string {
   return `/api/books/${bookId}/audio.m3u8`;
 }
 

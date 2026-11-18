@@ -110,7 +110,7 @@ describe("ListenPage (专注页)", () => {
     renderPage();
 
     expect(await screen.findByRole("heading", { name: "Pride and Prejudice" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "播放" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "播放" })).toBeTruthy();
     expect(screen.getByRole("progressbar", { name: "整本进度" })).toBeTruthy();
   });
 

@@ -27,6 +27,10 @@ export function useChapterSentences(wanted: ChapterSummary[]): ReadonlyMap<strin
   const [loaded, setLoaded] = useState<ReadonlyMap<string, Loaded>>(new Map());
   const [tick, setTick] = useState(0);
   const inFlight = useRef(new Set<string>());
+  // The latest request per Chapter; an older one answering late is ignored.
+  const latest = useRef(new Map<string, string>());
+  const retry = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(retry.current), []);
 
   const generating = wanted.some((c) => c.audioStatus === "generating");
   useEffect(() => {
@@ -41,15 +45,18 @@ export function useChapterSentences(wanted: ChapterSummary[]): ReadonlyMap<strin
       const request = `${chapter.id}@${version}`;
       if (loaded.get(chapter.id)?.version === version || inFlight.current.has(request)) continue;
       inFlight.current.add(request);
+      latest.current.set(chapter.id, request);
       getChapterSentences(chapter.id)
         .then((rows) => {
+          if (latest.current.get(chapter.id) !== request) return;
           const sentences = rows.map(({ id, paragraphIndex, text, startMs }) => ({ id, paragraphIndex, text, startMs }));
           setLoaded((prev) => new Map(prev).set(chapter.id, { version, sentences }));
         })
         .catch((err: unknown) => {
           // The Chapter stays a placeholder; ask again shortly by moving the tick.
           console.warn(`Loading the Sentences of Chapter ${chapter.id} failed`, err);
-          setTimeout(() => setTick((n) => n + 1), RETRY_MS);
+          clearTimeout(retry.current);
+          retry.current = setTimeout(() => setTick((n) => n + 1), RETRY_MS);
         })
         .finally(() => inFlight.current.delete(request));
     }

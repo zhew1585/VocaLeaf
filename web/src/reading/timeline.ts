@@ -50,8 +50,11 @@ export function paragraphs(sentences: ReadingSentence[]): ReadingSentence[][] {
   return out;
 }
 
+/** Reading column widths of F7, by which side panels are open. */
+const COLUMN = { both: 620, sentencePanel: 680, directory: 720, none: 760 } as const;
+
 /** Width of the reading column and the player for each combination of open side panels (F7). */
 export function columnWidth({ directory, sentencePanel }: { directory: boolean; sentencePanel: boolean }): number {
-  if (sentencePanel) return directory ? 620 : 680;
-  return directory ? 720 : 760;
+  if (sentencePanel) return directory ? COLUMN.both : COLUMN.sentencePanel;
+  return directory ? COLUMN.directory : COLUMN.none;
 }

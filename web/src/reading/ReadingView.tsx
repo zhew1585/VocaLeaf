@@ -26,7 +26,7 @@ const SENTENCE_ESTIMATE_PX = 48;
 /** Chapters rendered on each side of the one at the reading position (F9: only Chapters near the view). */
 const WINDOW_RADIUS = 1;
 /** Keys that scroll the reading area; pressing one is a manual scroll. */
-const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"]);
+const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
 /** Steers the reading view from outside (the Chapter directory). */
 export interface ReadingViewHandle {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { BookDetail, ChapterSummary } from "../api";
 import { isPlayableChapter, waitMessage } from "../chapters";
 import type { StartRequest } from "../player/playback";
@@ -8,6 +8,7 @@ import { BackToShelf, ChapterDirectory } from "../reading/ChapterDirectory";
 import { ReadingView, type ReadingViewHandle } from "../reading/ReadingView";
 import { SentencePanel, SentencePanelToggle } from "../reading/SentencePanel";
 import { columnWidth, playingChapterId } from "../reading/timeline";
+import "../reading/focus.css";
 import { useBook } from "../useBook";
 import { usePlaylist } from "./usePlaylist";
 
@@ -30,10 +31,10 @@ function usePickedChapter() {
       window.history.replaceState(null, "", window.location.pathname);
     }
   };
-  /** The Chapter if the Book has it and it can be played. */
+  /** The picked Chapter and its pick count, if the Book has it and it can be played. */
   const find = (book: BookDetail | null) => {
     const chapter = book?.chapters.find((c) => c.id === picked?.id);
-    return chapter && isPlayableChapter(chapter) ? chapter : undefined;
+    return picked && chapter && isPlayableChapter(chapter) ? { chapter, n: picked.n } : undefined;
   };
   return { picked, pick, settle, find };
 }
@@ -72,6 +73,8 @@ export function ListenPage({ id }: { id: string }) {
   const [directoryOpen, setDirectoryOpen] = useState(wideWindow);
   const [panelOpen, setPanelOpen] = useState(false);
   const reading = useRef<ReadingViewHandle>(null);
+  // Stable, so the reading view's memoized Chapters do not render again on every time update.
+  const toggleDirectory = useCallback(() => setDirectoryOpen((o) => !o), []);
 
   const playable = book?.playable ?? false;
   const { open, reload, requestStart } = listening;
@@ -83,10 +86,15 @@ export function ListenPage({ id }: { id: string }) {
     if (playlist.revision > 0) reload();
   }, [playlist.revision, reload]);
 
-  const target = chapterPick.find(book);
+  const found = chapterPick.find(book);
+  const target = found?.chapter;
   const targetPending = target !== undefined && target.startMs === null;
-  const startAt: StartRequest | null = target
-    ? { id: `${target.id}#${chapterPick.picked!.n}`, seconds: target.startMs === null ? null : target.startMs / 1000, autoplay: true }
+  const startAt: StartRequest | null = found
+    ? {
+        id: `${found.chapter.id}#${found.n}`,
+        seconds: found.chapter.startMs === null ? null : found.chapter.startMs / 1000,
+        autoplay: true,
+      }
     : playlist.resume;
   // Asked in the same commit as open (above), which drops any request of the Book opened before.
   useEffect(() => {
@@ -119,8 +127,9 @@ export function ListenPage({ id }: { id: string }) {
     if (isPlayableChapter(chapter)) chapterPick.pick(chapter.id);
   };
 
+  // The player shows the session, which holds this Book once opened (right after the Book is playable).
   const dock = playable ? (
-    <Player totalSeconds={totalSeconds} notice={notice} />
+    here && <Player totalSeconds={totalSeconds} notice={notice} />
   ) : (
     <p className="listen-wait">
       {targetPending
@@ -159,7 +168,7 @@ export function ListenPage({ id }: { id: string }) {
           playingChapterId={playingId}
           columnWidth={width}
           directoryOpen={directoryOpen}
-          onToggleDirectory={() => setDirectoryOpen((o) => !o)}
+          onToggleDirectory={toggleDirectory}
           dock={dock}
         />
         {!panelOpen && <SentencePanelToggle onOpen={() => setPanelOpen(true)} />}
