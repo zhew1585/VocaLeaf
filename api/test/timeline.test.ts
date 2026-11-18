@@ -2,12 +2,13 @@ import { describe, expect, it } from "vitest";
 import { buildTimeline, estimateDurationMs, hasAudio, toM3u8, type TimelineChapterInput } from "../src/books/timeline.js";
 
 const seg = (id: string, durationMs = 10_000) => ({ id, durationMs });
-const ch = (id: string, audioStatus: TimelineChapterInput["audioStatus"], segments = [seg(`${id}-0`)], skipped = false) => ({
-  id,
-  audioStatus,
-  segments,
-  skipped,
-});
+const ch = (
+  id: string,
+  audioStatus: TimelineChapterInput["audioStatus"],
+  segments = [seg(`${id}-0`)],
+  skipped = false,
+  retried = false,
+): TimelineChapterInput => ({ id, audioStatus, segments, skipped, retried });
 
 describe("buildTimeline", () => {
   it("lays generated Chapters end to end, leaving out Skipped ones and failed ones that published nothing", () => {
@@ -36,6 +37,38 @@ describe("buildTimeline", () => {
     const t = buildTimeline([ch("a", "generated"), ch("b", "pending", []), ch("c", "generated")]);
     expect(t.entries.map((e) => e.chapterId)).toEqual(["a"]);
     expect(t.complete).toBe(false);
+  });
+
+  it("keeps what a Chapter waiting for another attempt published, and stops after it", () => {
+    const t = buildTimeline([ch("a", "generated"), ch("b", "pending", [seg("b0", 3_000)]), ch("c", "generated")]);
+    expect(t.entries.map((e) => [e.chapterId, e.offsetMs])).toEqual([
+      ["a", 0],
+      ["b", 10_000],
+    ]);
+    expect(t.complete).toBe(false);
+  });
+
+  it("leaves out a Chapter the user retried until it is generated, then inserts all of it in its place", () => {
+    const retried = (status: TimelineChapterInput["audioStatus"], segments: ReturnType<typeof seg>[]) =>
+      ch("b", status, segments, false, true);
+    const layout = (t: ReturnType<typeof buildTimeline>) => t.entries.map((e) => [e.chapterId, e.offsetMs]);
+
+    const queued = buildTimeline([ch("a", "generated"), retried("pending", []), ch("c", "generated")]);
+    expect(layout(queued)).toEqual([
+      ["a", 0],
+      ["c", 10_000],
+    ]);
+    expect(queued.complete).toBe(true);
+
+    const halfway = buildTimeline([ch("a", "generated"), retried("generating", [seg("b0", 4_000)]), ch("c", "generated")]);
+    expect(layout(halfway)).toEqual(layout(queued));
+
+    const done = buildTimeline([ch("a", "generated"), retried("generated", [seg("b0", 4_000), seg("b1")]), ch("c", "pending", [])]);
+    expect(layout(done)).toEqual([
+      ["a", 0],
+      ["b", 10_000],
+    ]);
+    expect(done.complete).toBe(false);
   });
 
   it("has no audio when nothing was written yet, even with a Chapter generating", () => {

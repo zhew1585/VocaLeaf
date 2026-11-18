@@ -56,6 +56,15 @@ export const BookSchema = z
     playable: z.boolean(),
     /** Why parsing failed, shown with parse_failed. Null otherwise, and for most failures until #3 adds reasons. */
     failureReason: z.string().nullable(),
+    /** Generation progress shown while generating (PRD 4.3.3): 生成中 {generated}/{narrated}. */
+    progress: z
+      .object({
+        /** Narrated Chapters generated so far. */
+        generated: z.int().min(0),
+        /** Chapters that are not Skipped. 0 while parsing. */
+        narrated: z.int().min(0),
+      })
+      .openapi("BookProgress"),
     createdAt: z.iso.datetime(),
   })
   .openapi("Book");
@@ -70,6 +79,16 @@ export const ChapterSummarySchema = z
     sentenceCount: z.int(),
     /** Length of the Chapter's audio once generated, null before. */
     durationMs: z.int().nullable(),
+    /**
+     * Where the Chapter's audio starts in the Book's playlist, in milliseconds; playing from a Chapter seeks here.
+     * Null while the playlist has none of its audio yet.
+     */
+    startMs: z.int().min(0).nullable(),
+    /**
+     * For a Chapter without audio in the playlist yet that is queued or generating: about how many seconds until
+     * it plays (PRD 4.3.4, 【该章节生成中，预计约 N 秒】). Null otherwise.
+     */
+    waitSeconds: z.int().positive().nullable(),
   })
   .openapi("ChapterSummary");
 

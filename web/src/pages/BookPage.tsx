@@ -1,7 +1,8 @@
-import type { BookStatus } from "../api";
+import type { Book, BookStatus } from "../api";
 import { AudioLinesIcon, ChevronLeftIcon, CircleAlertIcon, LoaderIcon, PlaySolidIcon } from "../icons";
 import { navigate } from "../router";
 import { useBook } from "../useBook";
+import { ChapterList } from "./ChapterList";
 
 const STATUS_LABEL: Record<BookStatus, string> = {
   parsing: "解析中",
@@ -21,12 +22,33 @@ function StatusBadge({ status }: { status: BookStatus }) {
   );
 }
 
+/** 生成中 with generated / narrated Chapters and a bar (design 04-2, PRD 4.3.3 进度展示). */
+function GenerationProgress({ progress }: { progress: Book["progress"] }) {
+  const { generated, narrated } = progress;
+  return (
+    <div className="generation">
+      <div className="generation-label">
+        <span className="status status-generating">
+          <AudioLinesIcon size={14} />
+          生成中
+        </span>
+        <span className="generation-count" aria-label="生成进度">
+          {generated} / {narrated}
+        </span>
+      </div>
+      <div className="generation-track">
+        <div className="generation-fill" style={{ width: `${narrated > 0 ? (generated / narrated) * 100 : 0}%` }} />
+      </div>
+    </div>
+  );
+}
+
 /**
- * Book detail, design 04-2: the Book's status, 开始收听 once it is playable, and its Chapter list with Sentence
- * counts. Kept current while the worker parses and generates.
+ * Book detail, design 04-2: the Book's status or generation progress, 开始收听 once it is playable, and its
+ * Chapters with their state; a 生成失败 one can be retried. Kept current while the worker parses and generates.
  */
 export function BookPage({ id }: { id: string }) {
-  const { book, error } = useBook(id);
+  const { book, error, reload } = useBook(id);
 
   return (
     <div className="book-layout">
@@ -54,7 +76,11 @@ export function BookPage({ id }: { id: string }) {
               {book.author && <p className="book-author">{book.author}</p>}
             </div>
             <div className="book-status">
-              <StatusBadge status={book.status} />
+              {book.status === "generating" ? (
+                <GenerationProgress progress={book.progress} />
+              ) : (
+                <StatusBadge status={book.status} />
+              )}
               {book.status === "parse_failed" && book.failureReason && (
                 <p className="form-error">{book.failureReason}</p>
               )}
@@ -73,16 +99,7 @@ export function BookPage({ id }: { id: string }) {
           </>
         )}
       </aside>
-      {book && book.chapters.length > 0 && (
-        <ol className="chapters" aria-label="章节">
-          {book.chapters.map((c) => (
-            <li key={c.id} className="chapter-row">
-              <span className="chapter-title">{c.title}</span>
-              <span className="chapter-meta">{c.sentenceCount} 句</span>
-            </li>
-          ))}
-        </ol>
-      )}
+      {book && book.chapters.length > 0 && <ChapterList bookId={id} chapters={book.chapters} onRetried={reload} />}
     </div>
   );
 }

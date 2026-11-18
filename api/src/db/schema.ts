@@ -144,6 +144,10 @@ export const jobs = pgTable(
     attempt: integer("attempt").notNull().default(0),
     // While running: when the claiming worker's lease ends and the job may be claimed again.
     leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    // When the current claim started. With updatedAt of a succeeded job, how long its last claim took:
+    // the pace that estimates how long a waiting Chapter still waits (books/wait.ts).
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    // Why the last attempt failed. Kept when the job is queued again for another attempt.
     error: text("error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

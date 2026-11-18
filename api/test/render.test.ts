@@ -66,6 +66,16 @@ async function sentencesOf(app: TestApp, chapterId: string) {
 
 const state = (b: BookDetail) => [b.status, b.playable];
 
+/** Reports the claim failed, then claims and fails the job's remaining attempts: its Chapter ends 生成失败. */
+async function failForGood(app: TestApp, job: ClaimedRenderJob, error: string) {
+  expect((await reportFailure(app, job, error)).status).toBe(204);
+  for (let attempt = job.attempt + 1; attempt <= 3; attempt++) {
+    const again = await claimRender(app);
+    expect([again.id, again.attempt]).toEqual([job.id, attempt]);
+    expect((await reportFailure(app, again, error)).status).toBe(204);
+  }
+}
+
 describe("generating a Book's audio after parsing", () => {
   it("goes 生成中·未可播 → 生成中·可播 → 已就绪, and every narrated Sentence gets start_ms, end_ms and word_timings", async () => {
     const t = await testApp();
@@ -157,7 +167,7 @@ describe("generating a Book's audio after parsing", () => {
     const first = await claimRender(t.app);
     const second = await claimRender(t.app);
 
-    expect((await reportFailure(t.app, first, "kokoro unreachable")).status).toBe(204);
+    await failForGood(t.app, first, "kokoro unreachable");
     expect((await bookDetail(t.app, book.id)).status).toBe("generating");
     await reportRenderResult(t.app, second, await renderAll(t.storage, second));
 
@@ -331,7 +341,7 @@ describe("a render job that runs longer than the lease", () => {
     await reportRenderProgress(t.app, first, { segments: firstReport.segments.slice(0, 1), sentences: [] });
     const before = segmentUrls(await playlist(t.app, book.id), book.id);
 
-    await reportFailure(t.app, first, "kokoro crashed");
+    await failForGood(t.app, first, "kokoro crashed");
     await reportRenderResult(t.app, second, await renderAll(t.storage, second));
 
     const after = segmentUrls(await playlist(t.app, book.id), book.id);

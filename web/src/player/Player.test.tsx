@@ -136,6 +136,104 @@ describe("Player", () => {
     expect(screen.getByRole("alert").textContent).toBe("播放失败，请刷新页面重试");
   });
 
+  describe("a requested start (a Chapter picked from the list)", () => {
+    /** The audio element as hls.js leaves it: metadata loaded, `generated` seconds playable, seeks recorded. */
+    function loaded(generated: number) {
+      const el = audio();
+      const seeks: number[] = [];
+      Object.defineProperty(el, "readyState", { value: HTMLMediaElement.HAVE_METADATA, configurable: true });
+      Object.defineProperty(el, "currentTime", {
+        get: () => seeks.at(-1) ?? 0,
+        set: (t: number) => seeks.push(t),
+        configurable: true,
+      });
+      grow(generated);
+      return seeks;
+    }
+
+    /** The playlist reloaded with `generated` seconds of audio in it. */
+    function grow(generated: number) {
+      const el = audio();
+      Object.defineProperty(el, "duration", { value: generated, configurable: true });
+      act(() => el.dispatchEvent(new Event("durationchange")));
+    }
+
+    it("seeks there and plays once the playlist reaches it, then reports the request done", () => {
+      const onStartSettled = vi.fn();
+      render(<Player src="/api/books/b1/audio.m3u8" startAt={{ id: "c3", seconds: 600, autoplay: true }} onStartSettled={onStartSettled} />);
+      const seeks = loaded(300);
+      expect(play).not.toHaveBeenCalled();
+
+      grow(610);
+
+      expect(seeks).toEqual([600]);
+      expect(play).toHaveBeenCalledTimes(1);
+      expect(onStartSettled).toHaveBeenCalledTimes(1);
+      grow(620);
+      expect(seeks).toEqual([600]);
+    });
+
+    it("keeps waiting while the position is not known yet, and plays once it is", () => {
+      const { rerender } = render(<Player src="/api/books/b1/audio.m3u8" startAt={{ id: "c3", seconds: null, autoplay: true }} />);
+      const seeks = loaded(300);
+      grow(900);
+      expect(play).not.toHaveBeenCalled();
+
+      rerender(<Player src="/api/books/b1/audio.m3u8" startAt={{ id: "c3", seconds: 600, autoplay: true }} />);
+
+      expect(seeks).toEqual([600]);
+      expect(play).toHaveBeenCalledTimes(1);
+    });
+
+    it("is dropped when the user plays or pauses by hand meanwhile", () => {
+      const onStartSettled = vi.fn();
+      render(<Player src="/api/books/b1/audio.m3u8" startAt={{ id: "c3", seconds: 600, autoplay: true }} onStartSettled={onStartSettled} />);
+      const seeks = loaded(300);
+
+      fireEvent.click(screen.getByRole("button", { name: "播放" }));
+      expect(onStartSettled).toHaveBeenCalledTimes(1);
+      grow(610);
+
+      expect(seeks).toEqual([]);
+      expect(play).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows no error when the browser wants a tap before playing on its own", async () => {
+      play.mockImplementationOnce(() => Promise.reject(new DOMException("autoplay", "NotAllowedError")));
+      render(<Player src="/api/books/b1/audio.m3u8" startAt={{ id: "c3", seconds: 10, autoplay: true }} />);
+      loaded(60);
+      await act(async () => {});
+
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.getByRole("button", { name: "播放" })).toBeTruthy();
+    });
+  });
+
+  it("reports when playback waits at the end of the generated audio, and when it moves on again", () => {
+    const onWaitingForAudio = vi.fn();
+    render(<Player src="/api/books/b1/audio.m3u8" onWaitingForAudio={onWaitingForAudio} />);
+    fireEvent.click(screen.getByRole("button", { name: "播放" }));
+    const el = audio();
+
+    // Buffering in the middle is not waiting for audio to be generated.
+    timeUpdate(100, 600);
+    act(() => el.dispatchEvent(new Event("waiting")));
+    expect(onWaitingForAudio).not.toHaveBeenCalled();
+
+    timeUpdate(599.6, 600);
+    act(() => el.dispatchEvent(new Event("waiting")));
+    expect(onWaitingForAudio).toHaveBeenLastCalledWith(true);
+
+    act(() => el.dispatchEvent(new Event("playing")));
+    expect(onWaitingForAudio).toHaveBeenLastCalledWith(false);
+    expect(onWaitingForAudio).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows a notice above the controls", () => {
+    render(<Player src="/api/books/b1/audio.m3u8" notice="该章节生成中，预计约 40 秒" />);
+    expect(screen.getByRole("status").textContent).toBe("该章节生成中，预计约 40 秒");
+  });
+
   it("stops loading when it goes away", () => {
     const { unmount } = render(<Player src="/api/books/b1/audio.m3u8" />);
     unmount();

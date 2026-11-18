@@ -1,14 +1,19 @@
 // A Book's continuous audio (PRD 4.4.1): its narrated Chapters' HLS segments, one after another.
 // The playlist, the Book's `playable` flag and Sentence times all derive from this one function.
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import type { AudioStatus } from "../contract.js";
 import type { Db } from "../db/client.js";
-import { audioSegments, chapters } from "../db/schema.js";
+import { audioSegments, chapters, jobs } from "../db/schema.js";
 
 export interface TimelineChapterInput {
   id: string;
   skipped: boolean;
   audioStatus: AudioStatus;
+  /**
+   * The Chapter failed for good once (its job used up every attempt) and the user asked to generate it again.
+   * It is then generated out of Chapter order, after the Chapters behind it already played on.
+   */
+  retried: boolean;
   /** The Chapter's segments in order. */
   segments: { id: string; durationMs: number }[];
 }
@@ -22,26 +27,43 @@ export interface TimelineEntry {
 
 export interface Timeline {
   entries: TimelineEntry[];
-  /** True once no more audio will be appended: every narrated Chapter is generated or failed. */
+  /**
+   * True once no more audio will be appended at the end: every narrated Chapter is generated, failed, or
+   * retried (whose audio goes in its own place, not at the end).
+   */
   complete: boolean;
 }
 
 /**
- * Lays the narrated Chapters (given in Chapter order) end to end. Skipped Chapters are left out. A failed
- * Chapter keeps only what it published before failing (usually nothing). The timeline stops at the first
- * narrated Chapter still pending, after the segments a generating one has so far: later Chapters cannot be
- * placed before it. Since published segments are never taken back, a player only ever sees segments appended
- * at the end, as an HLS EVENT playlist requires.
+ * Lays the narrated Chapters (given in Chapter order) end to end. Skipped Chapters are left out.
+ * The timeline stops at the first narrated Chapter still to generate, after the segments it has so far (a
+ * Chapter waiting for another attempt may have some): later Chapters cannot be placed before it. Since
+ * published segments are never taken back, a player only ever sees segments appended at the end, as an HLS
+ * EVENT playlist requires.
+ * A failed Chapter keeps only what it published before failing (usually nothing) and holds nothing back.
+ * Neither does one the user retried: it is generated out of order, so it is left out until it is generated
+ * and then inserted in its place whole. That is the one case where the playlist changes before its end, at
+ * most twice per retry (a failed Chapter's earlier audio drops out, then all of it comes in); the 专注页
+ * notices and reloads the playlist (web/src/pages/usePlaylist.ts).
  */
 export function buildTimeline(chaptersInOrder: TimelineChapterInput[]): Timeline {
   const entries: TimelineEntry[] = [];
   let offsetMs = 0;
-  for (const ch of chaptersInOrder) {
-    if (ch.skipped || (ch.audioStatus === "failed" && ch.segments.length === 0)) continue;
-    if (ch.audioStatus === "pending") return { entries, complete: false };
+  const place = (ch: TimelineChapterInput) => {
     entries.push({ chapterId: ch.id, offsetMs, segments: ch.segments });
     offsetMs += ch.segments.reduce((sum, s) => sum + s.durationMs, 0);
-    if (ch.audioStatus === "generating") return { entries, complete: false };
+  };
+  for (const ch of chaptersInOrder) {
+    if (ch.skipped) continue;
+    const hasAudio = ch.segments.length > 0;
+    if (ch.retried && ch.audioStatus !== "generated") continue;
+    if (ch.audioStatus === "failed") {
+      if (hasAudio) place(ch);
+      continue;
+    }
+    if (ch.audioStatus === "pending" && !hasAudio) return { entries, complete: false };
+    place(ch);
+    if (ch.audioStatus !== "generated") return { entries, complete: false };
   }
   return { entries, complete: true };
 }
@@ -70,12 +92,18 @@ export function estimateDurationMs(chaptersInOrder: DurationChapterInput[]): num
   return Math.round(generatedMs + (restChars * generatedMs) / generatedChars);
 }
 
+/** Where a Chapter's audio starts in the Book's audio, or null while the timeline has none of it. */
+export function chapterStartMs(timeline: Timeline, chapterId: string): number | null {
+  const entry = timeline.entries.find((e) => e.chapterId === chapterId);
+  return entry && entry.segments.length > 0 ? entry.offsetMs : null;
+}
+
 /** Whether the timeline has any audio to play (PRD 4.3.3 invariant 3). */
 export function hasAudio(timeline: Timeline): boolean {
   return timeline.entries.some((e) => e.segments.length > 0);
 }
 
-/** Loads the timelines of several Books in two queries. */
+/** Loads the timelines of several Books in three queries. */
 export async function loadTimelines(db: Db, bookIds: string[]): Promise<Map<string, Timeline>> {
   if (bookIds.length === 0) return new Map();
   const chapterRows = await db
@@ -90,13 +118,24 @@ export async function loadTimelines(db: Db, bookIds: string[]): Promise<Map<stri
     .where(inArray(chapters.bookId, bookIds))
     .orderBy(asc(audioSegments.chapterId), asc(audioSegments.index));
 
+  // A Chapter whose job failed for good and that is not failed now was retried by the user.
+  const failedRows = await db
+    .selectDistinct({ chapterId: jobs.chapterId })
+    .from(jobs)
+    .where(and(inArray(jobs.bookId, bookIds), eq(jobs.type, "render_chapter"), eq(jobs.status, "failed")));
+  const failedOnce = new Set(failedRows.map((r) => r.chapterId));
+
   const segmentsByChapter = Map.groupBy(segmentRows, (s) => s.chapterId);
   const chaptersByBook = Map.groupBy(chapterRows, (c) => c.bookId);
   return new Map(
     bookIds.map((id) => [
       id,
       buildTimeline(
-        (chaptersByBook.get(id) ?? []).map((c) => ({ ...c, segments: segmentsByChapter.get(c.id) ?? [] })),
+        (chaptersByBook.get(id) ?? []).map((c) => ({
+          ...c,
+          retried: failedOnce.has(c.id) && c.audioStatus !== "failed",
+          segments: segmentsByChapter.get(c.id) ?? [],
+        })),
       ),
     ]),
   );
