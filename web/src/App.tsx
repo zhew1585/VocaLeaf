@@ -1,16 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { getMe, logOut, UNAUTHORIZED_EVENT, type User } from "./api";
 import { BookPage } from "./pages/BookPage";
 import { ListenPage } from "./pages/ListenPage";
 import { LoginPage } from "./pages/LoginPage";
 import { UploadPage } from "./pages/UploadPage";
+import { ListeningProvider } from "./player/session";
 import { navigate, usePathname } from "./router";
 
 /** /books/:id is the Book's detail, /books/:id/listen its 专注页, anything else the upload screen. */
-function Screen({ path }: { path: string }) {
+function route(path: string): { bookId?: string; listen: boolean } {
   const [, bookId, listen] = /^\/books\/([^/]+)(\/listen)?$/.exec(path) ?? [];
-  if (!bookId) return <UploadPage />;
-  return listen ? <ListenPage id={bookId} /> : <BookPage id={bookId} />;
+  return { bookId, listen: listen !== undefined };
 }
 
 type Session = { state: "loading" } | { state: "failed" } | { state: "ready"; user: User | null };
@@ -64,20 +64,46 @@ export function App() {
     }
   }
 
+  const { bookId, listen } = route(path);
+  // The listening session outlives the pages (【返回书架】 keeps playing) and ends with logging out.
+  return (
+    <ListeningProvider>
+      {bookId && listen ? (
+        // The 专注页 takes the whole window, without the app's header.
+        <ListenPage id={bookId} />
+      ) : (
+        <Shell email={session.user.email} loggingOut={loggingOut} onLogOut={onLogOut}>
+          {bookId ? <BookPage id={bookId} /> : <UploadPage />}
+        </Shell>
+      )}
+    </ListeningProvider>
+  );
+}
+
+/** The app's header (brand, account) above a page. */
+function Shell({
+  email,
+  loggingOut,
+  onLogOut,
+  children,
+}: {
+  email: string;
+  loggingOut: boolean;
+  onLogOut(): void;
+  children: ReactNode;
+}) {
   return (
     <div className="shell">
       <header className="brand">
         <a href="/" className="brand-name">拾页</a>
         <div className="account">
-          <span className="account-email">{session.user.email}</span>
+          <span className="account-email">{email}</span>
           <button type="button" className="text-button" disabled={loggingOut} onClick={onLogOut}>
             退出登录
           </button>
         </div>
       </header>
-      <main>
-        <Screen path={path} />
-      </main>
+      <main>{children}</main>
     </div>
   );
 }

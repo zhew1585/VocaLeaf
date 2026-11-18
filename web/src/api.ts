@@ -82,3 +82,8 @@ export function getBook(id: string): Promise<BookDetail> {
 export function getChapterSentences(chapterId: string): Promise<Sentence[]> {
   return request<Sentence[]>(`/chapters/${chapterId}/sentences`);
 }
+
+/** Generates a 生成失败 Chapter again; it goes back to 待生成. */
+export async function retryChapter(chapterId: string): Promise<void> {
+  await send(`/chapters/${chapterId}/retry`, { method: "POST" });
+}

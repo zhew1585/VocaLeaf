@@ -1,33 +1,33 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { audio, hlsInstances, stubMediaPlayback, timeUpdate } from "../test-media";
-import { formatElapsed, formatRemaining, Player } from "./Player";
+import { audio, audioWithGenerated, hlsInstances, stubMediaPlayback, timeUpdate } from "../test-media";
+import { formatElapsed, formatRemaining, Player, type PlayerProps } from "./Player";
 import { ListeningProvider, useListening } from "./session";
 
 vi.mock("hls.js", async () => ({ default: (await import("../test-media")).FakeHls }));
 
-let play: ReturnType<typeof vi.fn>;
-let pause: ReturnType<typeof vi.fn>;
-
+let media: ReturnType<typeof stubMediaPlayback>;
 beforeEach(() => {
   hlsInstances.length = 0;
-  ({ play, pause } = stubMediaPlayback());
+  media = stubMediaPlayback();
 });
-
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
 
-/** A player for Book b1's session, as the 专注页 opens it. */
-function OpenedPlayer({ id = "b1", totalSeconds }: { id?: string; totalSeconds?: number }) {
-  const { open } = useListening();
-  useEffect(() => open(id), [open, id]);
-  return <Player totalSeconds={totalSeconds} />;
+/** The player on a session with Book b1 open, as the 专注页 has it. */
+function OpenedPlayer(props: PlayerProps & { startAt?: { id: string; seconds: number } }) {
+  const { open, requestStart } = useListening();
+  useEffect(() => {
+    open("b1");
+    if (props.startAt) requestStart({ ...props.startAt, autoplay: true });
+  }, [open, requestStart]);
+  return <Player {...props} />;
 }
 
-function renderPlayer(props: { id?: string; totalSeconds?: number } = {}) {
+function renderPlayer(props: Parameters<typeof OpenedPlayer>[0] = {}) {
   return render(
     <ListeningProvider>
       <OpenedPlayer {...props} />
@@ -36,22 +36,15 @@ function renderPlayer(props: { id?: string; totalSeconds?: number } = {}) {
 }
 
 describe("Player", () => {
-  it("loads the Book's HLS playlist from the beginning, not from the live edge", () => {
+  it("plays the session's Book with the one button, which says what it will do", () => {
     renderPlayer();
-
-    expect(hlsInstances.map((h) => h.source)).toEqual(["/api/books/b1/audio.m3u8"]);
     expect(hlsInstances[0]!.media).toBe(audio());
-    expect(hlsInstances[0]!.config).toMatchObject({ startPosition: 0 });
-  });
-
-  it("plays and pauses with the one button, which says what it will do", () => {
-    renderPlayer();
 
     fireEvent.click(screen.getByRole("button", { name: "播放" }));
-    expect(play).toHaveBeenCalledTimes(1);
+    expect(media.play).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { name: "暂停" }));
-    expect(pause).toHaveBeenCalledTimes(1);
+    expect(media.pause).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("button", { name: "播放" })).toBeTruthy();
   });
 
@@ -71,7 +64,7 @@ describe("Player", () => {
     renderPlayer();
     Object.defineProperty(audio(), "seekable", { value: { length: 1, end: () => 120 }, configurable: true });
 
-    timeUpdate(30, Number.POSITIVE_INFINITY);
+    timeUpdate(30);
 
     expect(screen.getByRole("progressbar").getAttribute("aria-valuemax")).toBe("120");
     expect(screen.getByText("−0:01:30")).toBeTruthy();
@@ -86,21 +79,26 @@ describe("Player", () => {
     expect(screen.getByText("−11:31:40")).toBeTruthy();
   });
 
-  it("says so when the stream cannot be played, but not for errors hls.js recovers from", () => {
+  it("says so when the stream cannot be played", () => {
     renderPlayer();
-    const onError = hlsInstances[0]!.handlers.hlsError!;
-
-    act(() => onError("hlsError", { fatal: false }));
-    expect(screen.queryByRole("alert")).toBeNull();
-
-    act(() => onError("hlsError", { fatal: true }));
+    act(() => hlsInstances[0]!.handlers.hlsError!("hlsError", { fatal: true }));
     expect(screen.getByRole("alert").textContent).toBe("播放失败，请刷新页面重试");
   });
 
-  it("stops loading when it goes away", () => {
-    const { unmount } = renderPlayer();
-    unmount();
-    expect(hlsInstances[0]!.destroyed).toBe(true);
+  it("shows a notice above the controls", () => {
+    renderPlayer({ notice: "该章节生成中，预计约 40 秒" });
+    expect(screen.getByRole("status").textContent).toBe("该章节生成中，预计约 40 秒");
+  });
+
+  it("asks for a tap when the browser does not let a picked Chapter start on its own", async () => {
+    media.play.mockImplementationOnce(() => Promise.reject(new DOMException("autoplay", "NotAllowedError")));
+    renderPlayer({ startAt: { id: "c3", seconds: 10 }, notice: "该章节生成中，预计约 40 秒" });
+    audioWithGenerated(60);
+    await act(async () => {});
+
+    expect(screen.getByRole("status").textContent).toBe("已可以收听，点播放开始");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("button", { name: "播放" })).toBeTruthy();
   });
 });
 

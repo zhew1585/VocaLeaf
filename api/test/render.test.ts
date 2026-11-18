@@ -20,7 +20,7 @@ import {
 
 const sentence = (text: string, paragraphIndex = 0) => ({ paragraphIndex, text, spokenText: text });
 
-/** A Book whose Imprint is Skipped (as #3 will report it) and whose two other Chapters are narrated. */
+/** A Book whose Imprint is Skipped (as the worker reports it) and whose two other Chapters are narrated. */
 const parsed: Omit<ParseResult, "attempt"> = {
   parserVersion: "test-1",
   title: "Pride and Prejudice",
@@ -65,6 +65,16 @@ async function sentencesOf(app: TestApp, chapterId: string) {
 }
 
 const state = (b: BookDetail) => [b.status, b.playable];
+
+/** Reports the claim failed, then claims and fails the job's remaining attempts: its Chapter ends 生成失败. */
+async function failForGood(app: TestApp, job: ClaimedRenderJob, error: string) {
+  expect((await reportFailure(app, job, error)).status).toBe(204);
+  for (let attempt = job.attempt + 1; attempt <= 3; attempt++) {
+    const again = await claimRender(app);
+    expect([again.id, again.attempt]).toEqual([job.id, attempt]);
+    expect((await reportFailure(app, again, error)).status).toBe(204);
+  }
+}
 
 describe("generating a Book's audio after parsing", () => {
   it("goes 生成中·未可播 → 生成中·可播 → 已就绪, and every narrated Sentence gets start_ms, end_ms and word_timings", async () => {
@@ -157,7 +167,7 @@ describe("generating a Book's audio after parsing", () => {
     const first = await claimRender(t.app);
     const second = await claimRender(t.app);
 
-    expect((await reportFailure(t.app, first, "kokoro unreachable")).status).toBe(204);
+    await failForGood(t.app, first, "kokoro unreachable");
     expect((await bookDetail(t.app, book.id)).status).toBe("generating");
     await reportRenderResult(t.app, second, await renderAll(t.storage, second));
 
@@ -243,25 +253,6 @@ describe("the Book's playlist", () => {
     // Chapter II's place in the Book is not known yet, so neither are its Sentences' times.
     const two = await sentencesOf(t.app, (await bookDetail(t.app, book.id)).chapters[2]!.id);
     expect(two.every((s) => s.startMs === null)).toBe(true);
-  });
-
-  it("tells where each Chapter starts in it, so a player can jump to a Chapter; null while the Chapter is not placed", async () => {
-    const t = await testApp();
-    const book = await parsedBook(t);
-    const first = await claimRender(t.app);
-    const second = await claimRender(t.app);
-    const starts = async () => (await bookDetail(t.app, book.id)).chapters.map((c) => [c.title, c.startMs]);
-
-    expect(await starts()).toEqual([["I", null], ["Imprint", null], ["II", null]]);
-
-    const firstReport = await renderAll(t.storage, first);
-    await reportRenderProgress(t.app, first, { segments: firstReport.segments.slice(0, 1), sentences: [] });
-    expect(await starts()).toEqual([["I", 0], ["Imprint", null], ["II", null]]);
-
-    await reportRenderResult(t.app, first, { segments: firstReport.segments.slice(1), sentences: firstReport.sentences });
-    await reportRenderResult(t.app, second, await renderAll(t.storage, second));
-    // The Skipped Chapter is not in the audio; Chapter II follows Chapter I's 8 s.
-    expect(await starts()).toEqual([["I", 0], ["Imprint", null], ["II", 8000]]);
   });
 
   it("is empty and the Book not playable before any segment is written", async () => {
@@ -350,7 +341,7 @@ describe("a render job that runs longer than the lease", () => {
     await reportRenderProgress(t.app, first, { segments: firstReport.segments.slice(0, 1), sentences: [] });
     const before = segmentUrls(await playlist(t.app, book.id), book.id);
 
-    await reportFailure(t.app, first, "kokoro crashed");
+    await failForGood(t.app, first, "kokoro crashed");
     await reportRenderResult(t.app, second, await renderAll(t.storage, second));
 
     const after = segmentUrls(await playlist(t.app, book.id), book.id);

@@ -66,3 +66,24 @@ export function timeUpdate(currentTime: number, duration = Number.POSITIVE_INFIN
     el.dispatchEvent(new Event("timeupdate"));
   });
 }
+
+/** The audio element as hls.js leaves it: metadata loaded, `seconds` playable; returns the seeks made. */
+export function audioWithGenerated(seconds: number) {
+  const el = audio();
+  const seeks: number[] = [];
+  Object.defineProperty(el, "readyState", { value: HTMLMediaElement.HAVE_METADATA, configurable: true });
+  Object.defineProperty(el, "currentTime", {
+    get: () => seeks.at(-1) ?? 0,
+    set: (t: number) => seeks.push(t),
+    configurable: true,
+  });
+  grow(seconds);
+  return { el, seeks };
+}
+
+/** The playlist reloaded with `seconds` of audio in it. */
+export function grow(seconds: number) {
+  const el = audio();
+  Object.defineProperty(el, "duration", { value: seconds, configurable: true });
+  act(() => el.dispatchEvent(new Event("durationchange")));
+}

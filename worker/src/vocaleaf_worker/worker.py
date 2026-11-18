@@ -3,7 +3,7 @@
 import logging
 
 from vocaleaf_worker.api_client import ApiClient, Job, JobSuperseded, ParseJob, RenderJob
-from vocaleaf_worker.epub_parser import PARSER_VERSION, parse_epub
+from vocaleaf_worker.epub_parser import PARSER_VERSION, ParseFailed, parse_epub
 from vocaleaf_worker.heartbeat import Heartbeat
 from vocaleaf_worker.narration import Pauses
 from vocaleaf_worker.render import render_chapter
@@ -47,6 +47,9 @@ def _run(api: ApiClient, storage: ObjectStorage, tts: Tts, pauses: Pauses, job: 
                 render_chapter(api, storage, tts, job, pauses, heartbeat.check)
     except JobSuperseded:
         raise
-    except Exception as exc:  # reasons per PRD 4.3.5 come with #3, automatic retries with #5
+    except ParseFailed as exc:
+        log.warning("job %s: book cannot be parsed: %s", job.id, exc)
+        api.report_failure(job, f"ParseFailed: {exc}", reason=exc.reason)
+    except Exception as exc:  # not the file's fault: the API queues the job again (PRD 4.3.5 #8)
         log.exception("job %s failed", job.id)
         api.report_failure(job, f"{type(exc).__name__}: {exc}")

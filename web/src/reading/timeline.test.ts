@@ -10,6 +10,7 @@ const chapter = (id: string, startMs: number | null, skipped = false): ChapterSu
   audioStatus: startMs === null ? "pending" : "generated",
   sentenceCount: 1,
   durationMs: null,
+  waitSeconds: null,
   startMs,
 });
 

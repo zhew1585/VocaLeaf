@@ -235,9 +235,108 @@ button {
 }
 
 .chapter-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 13px;
   color: var(--ink-3);
   white-space: nowrap;
+}
+
+button.chapter-title {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.chapter-title:hover {
+  color: var(--leaf);
+}
+
+.chapter-row.is-skipped .chapter-title {
+  color: var(--ink-3);
+}
+
+.chapter-generating {
+  color: var(--leaf);
+}
+
+.chapter-generating svg {
+  animation: spin 1.2s linear infinite;
+}
+
+.chapter-failed {
+  color: var(--danger);
+}
+
+.retry-button {
+  height: 30px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.retry-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.chapter-row:has(.chapter-error) {
+  flex-wrap: wrap;
+}
+
+.chapter-error {
+  flex-basis: 100%;
+  margin: 0 0 12px;
+}
+
+/* 生成中 n / N with its bar, in place of the status badge while generating. */
+.generation {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.generation-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.generation-label .status {
+  font-weight: 500;
+}
+
+.generation-count {
+  font-family: var(--font-num);
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.generation-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--sunken);
+  overflow: hidden;
+}
+
+.generation-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--leaf);
+  transition: width 0.3s ease;
 }
 
 .listen-button {
@@ -247,44 +346,33 @@ button {
   gap: 8px;
 }
 
-/* 01 专注页, minimal: the reading column (620) with the floating player at its bottom. */
-.listen-layout {
-  max-width: 620px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  /* room for the floating player */
-  padding-bottom: 160px;
-}
-
-.listen-column {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
 .listen-wait {
   margin: 0;
   font-size: 14px;
   color: var(--ink-2);
 }
 
-/* The paper fades out under the player, as in the design. */
-.player-dock {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 56px 16px 24px;
-  background: linear-gradient(to bottom, rgb(246 242 233 / 0), var(--paper) 60%);
-  pointer-events: none;
+/* 【该章节生成中，预计约 N 秒】 above the player while the wanted audio is not generated yet. */
+.player-notice {
+  margin: 0;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 16px;
+  background: var(--leaf-soft);
+  color: var(--leaf);
+  font-size: 13px;
+}
+
+.player-notice svg {
+  animation: spin 1.2s linear infinite;
 }
 
 /* Design 01 ④: floating player, same width as the reading column. */
 .player {
-  max-width: 620px;
-  margin: 0 auto;
+  width: 100%;
   padding: 14px 20px;
   display: flex;
   flex-direction: column;
@@ -615,5 +703,513 @@ button {
 
   .login-art {
     display: none;
+  }
+}
+
+/* ---- 01 专注页: ① directory, ② reading, ④ floating player, 句子精读 (PRD 4.4.5, F7) ---- */
+
+.focus {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.focus-main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.focus-error {
+  margin: 16px;
+}
+
+.icon-button {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink-2);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+/* ① The Chapter directory */
+.directory {
+  width: 264px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px 12px 16px;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.shelf-back {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  color: var(--ink-2);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.shelf-back:hover {
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+.shelf-back.is-compact {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 22px;
+  background: var(--leaf);
+  color: var(--surface);
+  box-shadow: 0 6px 16px rgb(38 62 45 / 0.16);
+}
+
+.directory-collapsed {
+  position: absolute;
+  z-index: 3;
+  top: 24px;
+  left: 24px;
+}
+
+.directory-label {
+  margin: 12px 8px 4px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.directory-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.directory-item {
+  width: 100%;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.directory-item:hover {
+  background: var(--sunken);
+}
+
+.directory-item.is-playing {
+  background: var(--leaf-soft);
+  color: var(--leaf);
+  font-weight: 500;
+}
+
+.directory-item-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chapter-tag {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--sunken);
+  color: var(--ink-3);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 18px;
+}
+
+/* The playing Chapter's sound wave; still while paused. */
+.wave {
+  flex-shrink: 0;
+  height: 12px;
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.wave i {
+  width: 2px;
+  height: 100%;
+  border-radius: 1px;
+  background: currentColor;
+  transform-origin: bottom;
+  transform: scaleY(0.5);
+}
+
+.wave i:nth-child(2) {
+  transform: scaleY(0.9);
+}
+
+.wave.is-moving i {
+  animation: wave 0.9s ease-in-out infinite alternate;
+}
+
+.wave.is-moving i:nth-child(2) {
+  animation-delay: -0.3s;
+}
+
+.wave.is-moving i:nth-child(3) {
+  animation-delay: -0.6s;
+}
+
+@keyframes wave {
+  from {
+    transform: scaleY(0.3);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/* ③ The Book at the bottom of the directory */
+.directory-book {
+  display: flex;
+  gap: 12px;
+  padding: 12px 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.directory-cover {
+  width: 44px;
+  height: 60px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  background: var(--leaf);
+  color: var(--surface);
+  font-family: var(--font-read);
+  font-size: 22px;
+}
+
+.directory-book-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.directory-title {
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: var(--font-read);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.directory-title span {
+  display: inline-block;
+}
+
+/* A title wider than the directory scrolls to its end and back. */
+.directory-title .is-scrolling {
+  animation: title-scroll 10s ease-in-out 2s infinite alternate;
+}
+
+@keyframes title-scroll {
+  0%,
+  15% {
+    transform: translateX(0);
+  }
+  85%,
+  100% {
+    transform: translateX(var(--overflow));
+  }
+}
+
+.directory-author {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.directory-progress {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-num);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.directory-progress-track {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--sunken);
+  overflow: hidden;
+}
+
+.directory-progress-fill {
+  height: 100%;
+  background: var(--leaf);
+}
+
+/* ② The reading area: Chapters one after another, each title sticking while it is read */
+.reading {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.reading-scroll {
+  position: relative;
+  height: 100%;
+  overflow-y: auto;
+  /* The reading view keeps its own anchor when Chapters render above the view. */
+  overflow-anchor: none;
+}
+
+.reading-content {
+  width: min(var(--column), 100% - 64px);
+  margin: 0 auto;
+  /* room for the floating player under the last Sentence */
+  padding-bottom: 50vh;
+  transition: width 0.2s ease;
+}
+
+.reading-heading {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  height: 92px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  background: var(--paper);
+}
+
+/* Once the Chapter is scrolled into, the text fades out under its title. */
+.reading-chapter.is-faded .reading-heading::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 48px;
+  background: linear-gradient(to bottom, var(--paper), rgb(246 242 233 / 0));
+  pointer-events: none;
+}
+
+.reading-title {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-family: var(--font-read);
+  font-size: 26px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.reading-chevron {
+  color: var(--ink-3);
+  font-size: 22px;
+  transition: transform 0.2s ease;
+}
+
+.reading-title[aria-expanded="false"] .reading-chevron {
+  transform: rotate(180deg);
+}
+
+.reading-paragraph {
+  margin: 0 0 14px;
+  padding: 7px 12px;
+  font-family: var(--font-read);
+  font-size: 21px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.sentence {
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+/* The Sentence being read (AC-READ-01). */
+.sentence.is-playing {
+  padding: 2px 0;
+  background: var(--leaf-soft);
+  color: var(--ink);
+}
+
+.reading-placeholder {
+  margin: 0 12px;
+}
+
+/* ④ The floating player and 【回到播放处】 above it; the paper fades out under them. */
+.reading-dock {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 48px 32px 24px;
+  background: linear-gradient(to bottom, rgb(246 242 233 / 0), var(--paper) 55%);
+  pointer-events: none;
+}
+
+.reading-dock > * {
+  width: min(var(--column), 100%);
+  pointer-events: auto;
+  transition: width 0.2s ease;
+}
+
+.reading-dock > .follow-button {
+  width: auto;
+}
+
+.reading-dock .listen-wait {
+  text-align: center;
+}
+
+.follow-button {
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--leaf);
+  font: inherit;
+  font-size: 13px;
+  box-shadow: 0 6px 16px rgb(38 62 45 / 0.1);
+  cursor: pointer;
+}
+
+/* 句子精读 (collapsed by default, AC-READ-14) */
+.panel-toggle {
+  position: absolute;
+  z-index: 3;
+  top: 28px;
+  right: 24px;
+}
+
+.sentence-panel {
+  width: 440px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.sentence-panel-header {
+  height: 92px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px 0 24px;
+}
+
+.sentence-panel-header h2 {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: 18px;
+}
+
+.sentence-panel-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px;
+  color: var(--ink-3);
+  font-size: 13px;
+  text-align: center;
+}
+
+.sentence-panel-empty p {
+  margin: 0;
+}
+
+.sentence-panel-empty .sentence-panel-empty-title {
+  margin-top: 6px;
+  color: var(--ink-2);
+  font-size: 15px;
+}
+
+/* Narrow windows: the side panels lie over the reading area. */
+@media (max-width: 900px) {
+  .directory,
+  .sentence-panel {
+    position: absolute;
+    z-index: 4;
+    top: 0;
+    bottom: 0;
+    box-shadow: 0 0 32px rgb(38 62 45 / 0.12);
+  }
+
+  .directory {
+    left: 0;
+  }
+
+  .sentence-panel {
+    right: 0;
+    width: min(440px, 100%);
+  }
+
+  .reading-content {
+    width: calc(100% - 32px);
+  }
+
+  /* Clear of the floating back and 句子精读 buttons. */
+  .reading-heading {
+    padding: 0 56px 0 76px;
   }
 }

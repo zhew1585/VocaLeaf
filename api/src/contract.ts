@@ -54,8 +54,17 @@ export const BookSchema = z
      * While generating this tells 生成中·未可播 (false) from 生成中·可播 (true).
      */
     playable: z.boolean(),
-    /** Why parsing failed, shown with parse_failed. Null otherwise, and for most failures until #3 adds reasons. */
+    /** Why parsing failed (PRD 4.3.5 #4 to #6, #10), shown with parse_failed. Null otherwise. */
     failureReason: z.string().nullable(),
+    /** Generation progress shown while generating (PRD 4.3.3): 生成中 {generated}/{narrated}. */
+    progress: z
+      .object({
+        /** Narrated Chapters generated so far. */
+        generated: z.int().min(0),
+        /** Chapters that are not Skipped. 0 while parsing. */
+        narrated: z.int().min(0),
+      })
+      .openapi("BookProgress"),
     createdAt: z.iso.datetime(),
   })
   .openapi("Book");
@@ -71,10 +80,15 @@ export const ChapterSummarySchema = z
     /** Length of the Chapter's audio once generated, null before. */
     durationMs: z.int().nullable(),
     /**
-     * Where the Chapter starts in the Book's continuous audio, in milliseconds from the start of the playlist.
-     * Null while none of its audio is in the playlist: Skipped, not generated yet, or failed without audio.
+     * Where the Chapter's audio starts in the Book's playlist, in milliseconds; playing from a Chapter seeks here.
+     * Null while the playlist has none of its audio yet.
      */
-    startMs: z.int().nullable(),
+    startMs: z.int().min(0).nullable(),
+    /**
+     * For a Chapter without audio in the playlist yet that is queued or generating: about how many seconds until
+     * it plays (PRD 4.3.4, 【该章节生成中，预计约 N 秒】). Null otherwise.
+     */
+    waitSeconds: z.int().positive().nullable(),
   })
   .openapi("ChapterSummary");
 
@@ -165,7 +179,7 @@ export const ParsedSentenceSchema = z.object({
 export const ParsedChapterSchema = z.object({
   /** Title from the table of contents; null when missing (the API then names it 第 N 章). */
   title: z.string().nullable(),
-  /** Kept in the Book but not narrated (PRD 4.2.5). The worker detects it from #3 on; absent means narrated. */
+  /** Kept in the Book but not narrated (PRD 4.2.5), as the worker detected it; absent means narrated. */
   skipped: z.boolean().default(false),
   sentences: z.array(ParsedSentenceSchema),
 });
@@ -212,7 +226,21 @@ export const RenderReportSchema = z
   })
   .openapi("RenderReport");
 
-export const JobFailureSchema = z.object({ attempt: AttemptSchema, error: z.string() }).openapi("JobFailure");
+/**
+ * Why a Book cannot be parsed (PRD 4.3.5): DRM (#4), a broken file (#5), or no text to narrate (#6).
+ * The API turns it into the message the user sees.
+ */
+export const PARSE_FAILURE_REASONS = ["drm", "unreadable", "no_text"] as const;
+
+export const JobFailureSchema = z
+  .object({
+    attempt: AttemptSchema,
+    /** For the job log only. */
+    error: z.string(),
+    /** Sent when a parse fails because of the file; a failure without one is retried like any other. */
+    reason: z.enum(PARSE_FAILURE_REASONS).optional(),
+  })
+  .openapi("JobFailure");
 
 export type BookStatus = z.infer<typeof BookStatusSchema>;
 export type AudioStatus = z.infer<typeof AudioStatusSchema>;
@@ -226,6 +254,7 @@ export type ClaimedJob = z.infer<typeof ClaimedJobSchema>;
 export type ClaimedParseJob = z.infer<typeof ClaimedParseJobSchema>;
 export type ClaimedRenderJob = z.infer<typeof ClaimedRenderJobSchema>;
 export type RenderReport = z.infer<typeof RenderReportSchema>;
+export type ParseFailureReason = (typeof PARSE_FAILURE_REASONS)[number];
 export type ParseResult = z.input<typeof ParseResultSchema>;
 export type User = z.infer<typeof UserSchema>;
 export type CodeSent = z.infer<typeof CodeSentSchema>;

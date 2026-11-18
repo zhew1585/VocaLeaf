@@ -17,6 +17,8 @@ import { useChapterSentences } from "./useChapterSentences";
 
 /** Height of the sticky Chapter title at the top of the reading area (design: 92). */
 const HEADER_PX = 92;
+/** The text fades out this far under the sticky title; a Sentence there is not in view. */
+const FADE_PX = 48;
 /** Room the floating player takes at the bottom; a Sentence under it is not in view. */
 const DOCK_PX = 160;
 /** Placeholder height per Sentence for a Chapter never rendered at this width. */
@@ -73,14 +75,14 @@ function firstVisibleSentence(section: HTMLElement, viewTop: number): Element | 
 }
 
 /**
- * Scrolls so the target is in the readable band between the sticky title and the player: a third of the way
+ * Scrolls so the target is in the readable band between the title's fade and the player: a third of the way
  * down that band. Nothing moves while it is already there. Short moves glide, long jumps are instant.
  */
 function keepInView(container: HTMLElement, target: Element, isSection: boolean) {
   const box = container.getBoundingClientRect();
   const rect = target.getBoundingClientRect();
   const top = rect.top - box.top;
-  const bandTop = HEADER_PX;
+  const bandTop = HEADER_PX + FADE_PX;
   const bandBottom = container.clientHeight - DOCK_PX;
   let delta: number;
   if (isSection) delta = top;

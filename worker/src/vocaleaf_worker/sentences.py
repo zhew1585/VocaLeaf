@@ -1,13 +1,21 @@
-"""Sentence splitting (PRD 4.2.6 rule 1).
+"""Sentence splitting (PRD 4.2.6 rules 1 and 2).
 
 Splits after . ! ? or … (plus any closing quotes or brackets) when whitespace and the start of a new sentence
 follow. A period that belongs to an abbreviation does not end a Sentence (AC-UP-08). The abbreviation lists
 start from ebook2audiobook's English list (ADR 0001); SENTENCE_OPENERS is our own heuristic for the
-abbreviations that can end a Sentence too. Over-long Sentences, footnote numbers and number spelling (the rest
-of PRD 4.2.6) come with #3.
+abbreviations that can end a Sentence too.
+
+A Sentence longer than MAX_SENTENCE_CHARS is split further at semicolons, then colons, then commas, and as a last
+resort between words (PRD 4.2.6 rule 2); each piece becomes a Sentence of its own.
 """
 
 import re
+
+# PRD 4.7.2 单句最大字符数.
+MAX_SENTENCE_CHARS = 300
+
+# Where an over-long Sentence may break, most preferred first. The mark stays with the piece before it.
+_CLAUSE_MARKS = (";", ":", ",")
 
 # Titles stand before a name, so a Sentence never ends on one unless the paragraph or a quotation ends there.
 # Matched with their own capitalization: "MS." (a manuscript) is not "Ms.".
@@ -94,4 +102,28 @@ def split_sentences(paragraph: str) -> list[str]:
         sentences.append(paragraph[start:end].strip())
         start = m.end()
     sentences.append(paragraph[start:].strip())
-    return [s for s in sentences if s]
+    return [piece for s in sentences if s for piece in _within_limit(s, _CLAUSE_MARKS)]
+
+
+def _within_limit(sentence: str, marks: tuple[str, ...]) -> list[str]:
+    """Splits an over-long Sentence after the first of `marks` it contains (pieces still too long try the next
+    marks), then packs neighbouring pieces back together as long as they fit."""
+    if len(sentence) <= MAX_SENTENCE_CHARS:
+        return [sentence]
+    if not marks:
+        return _pack(sentence.split(" "))
+    parts = re.split(rf"(?<={re.escape(marks[0])})\s+", sentence)
+    if len(parts) == 1:
+        return _within_limit(sentence, marks[1:])
+    return _pack([piece for part in parts for piece in _within_limit(part, marks[1:])])
+
+
+def _pack(pieces: list[str]) -> list[str]:
+    """Joins consecutive pieces with a space while the result stays within MAX_SENTENCE_CHARS."""
+    packed: list[str] = []
+    for piece in pieces:
+        if packed and len(packed[-1]) + 1 + len(piece) <= MAX_SENTENCE_CHARS:
+            packed[-1] = f"{packed[-1]} {piece}"
+        else:
+            packed.append(piece)
+    return packed

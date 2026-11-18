@@ -5,7 +5,7 @@ from typing import Literal
 
 import httpx
 
-from vocaleaf_worker.epub_parser import ParsedBook
+from vocaleaf_worker.epub_parser import ParsedBook, ParseFailureReason
 from vocaleaf_worker.tts import Voice, Word
 
 
@@ -94,8 +94,10 @@ class ApiClient:
         payload = {"attempt": job.attempt, **render_report_payload(segments, sentences)}
         self._report(f"/api/internal/jobs/{job.id}/{'render-result' if finished else 'render-progress'}", payload)
 
-    def report_failure(self, job: Job, error: str) -> None:
-        self._report(f"/api/internal/jobs/{job.id}/failure", {"attempt": job.attempt, "error": error})
+    def report_failure(self, job: Job, error: str, reason: ParseFailureReason | None = None) -> None:
+        """`error` is for the job log; `reason`, for a parse job, picks the message the user sees (PRD 4.3.5)."""
+        payload = {"attempt": job.attempt, "error": error, **({"reason": reason} if reason else {})}
+        self._report(f"/api/internal/jobs/{job.id}/failure", payload)
 
     def _report(self, path: str, payload: dict) -> None:
         """Posts a job report; a 409 means this claim was superseded and raises JobSuperseded."""
@@ -137,6 +139,7 @@ def parse_result_payload(book: ParsedBook, parser_version: str) -> dict:
         "chapters": [
             {
                 "title": c.title,
+                "skipped": c.skipped,
                 "sentences": [
                     {"paragraphIndex": s.paragraph_index, "text": s.text, "spokenText": s.spoken_text}
                     for s in c.sentences
