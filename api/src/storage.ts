@@ -18,12 +18,12 @@ function s3Client(config: S3Config): S3Client {
     endpoint: config.endpoint,
     region: config.region,
     credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
-    // MinIO needs path-style URLs; R2 accepts them too.
+    // Local S3 servers need path-style URLs; R2 accepts them too.
     forcePathStyle: true,
   });
 }
 
-/** S3-compatible storage: a local S3 server in development, Cloudflare R2 in production, switched by env. */
+/** S3-compatible storage: RustFS in development, Cloudflare R2 in production, switched by env. */
 export function s3Storage(config: S3Config): ObjectStorage {
   const client = s3Client(config);
   return {

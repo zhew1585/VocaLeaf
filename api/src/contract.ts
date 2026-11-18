@@ -6,11 +6,13 @@ export const ErrorSchema = z
   .object({ error: z.object({ code: z.string(), message: z.string() }) })
   .openapi("Error");
 
-/** Main Book status, PRD 4.3.3. */
-export const BookStatusSchema = z.enum(["parsing", "generating", "ready", "parse_failed"]);
+/** Main Book status, PRD 4.3.3. Also the database enum (db/schema.ts). */
+export const BOOK_STATUSES = ["parsing", "generating", "ready", "parse_failed"] as const;
+export const BookStatusSchema = z.enum(BOOK_STATUSES);
 
-/** Chapter audio_status, PRD 4.3.3. */
-export const AudioStatusSchema = z.enum(["pending", "generating", "generated", "failed"]);
+/** Chapter audio_status, PRD 4.3.3. Also the database enum (db/schema.ts). */
+export const AUDIO_STATUSES = ["pending", "generating", "generated", "failed"] as const;
+export const AudioStatusSchema = z.enum(AUDIO_STATUSES);
 
 export const BookSchema = z
   .object({

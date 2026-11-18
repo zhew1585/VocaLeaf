@@ -1,6 +1,7 @@
 """HTTP client for the API's /internal worker protocol. Mirrors api/src/contract.ts."""
 
 from dataclasses import dataclass
+from typing import Literal
 
 import httpx
 
@@ -10,7 +11,7 @@ from vocaleaf_worker.epub_parser import ParsedBook
 @dataclass(frozen=True)
 class ClaimedJob:
     id: str
-    type: str
+    type: Literal["parse"]
     book_id: str
     source_key: str
 

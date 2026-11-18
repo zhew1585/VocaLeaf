@@ -16,6 +16,7 @@ import { validationHook } from "../validation.js";
 
 const security = [{ workerToken: [] }];
 const jobParams = z.object({ id: z.uuid() });
+const jobNotRunning = { error: { code: "job_not_running", message: "Job is not running" } } as const;
 const conflict = {
   description: "Job is not running",
   content: { "application/json": { schema: ErrorSchema } },
@@ -59,7 +60,7 @@ const failureRoute = createRoute({
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 /** Postgres caps bind parameters at 65535 per statement; 6 columns per sentence row. */
-const SENTENCE_INSERT_CHUNK = 5000;
+const SENTENCE_INSERT_BATCH = 5000;
 
 /** Locks a running job for the rest of the transaction, or returns undefined. */
 async function lockRunningJob(tx: Tx, id: string) {
@@ -88,8 +89,8 @@ async function storeParseResult(tx: Tx, bookId: string, result: ParseResult) {
   const rows = inserted.flatMap(({ id, index }) =>
     result.chapters[index]!.sentences.map((s, i) => ({ chapterId: id, index: i, ...s })),
   );
-  for (let i = 0; i < rows.length; i += SENTENCE_INSERT_CHUNK) {
-    await tx.insert(sentences).values(rows.slice(i, i + SENTENCE_INSERT_CHUNK));
+  for (let i = 0; i < rows.length; i += SENTENCE_INSERT_BATCH) {
+    await tx.insert(sentences).values(rows.slice(i, i + SENTENCE_INSERT_BATCH));
   }
 
   await tx
@@ -139,7 +140,7 @@ export function jobRoutes({ db, workerToken }: AppDeps) {
       await tx.update(jobs).set({ status: "succeeded", updatedAt: new Date() }).where(eq(jobs.id, id));
       return true;
     });
-    if (!stored) return c.json({ error: { code: "job_not_running", message: "Job is not running" } }, 409);
+    if (!stored) return c.json(jobNotRunning, 409);
     return c.body(null, 204);
   });
 
@@ -156,7 +157,7 @@ export function jobRoutes({ db, workerToken }: AppDeps) {
       }
       return true;
     });
-    if (!recorded) return c.json({ error: { code: "job_not_running", message: "Job is not running" } }, 409);
+    if (!recorded) return c.json(jobNotRunning, 409);
     return c.body(null, 204);
   });
 

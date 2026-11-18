@@ -1,5 +1,6 @@
 // Database schema. The API is the only component that reads or writes it (ADR 0002).
-// Field names follow PRD 4.2 and 4.3.1; columns needed only by later tickets are added there.
+// Field names follow PRD 4.2 and 4.3.1. Fields that only later tickets read or write
+// (cover, voice, Skipped reason, audio timing) are added by those tickets.
 import {
   boolean,
   integer,
@@ -10,9 +11,10 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
+import { AUDIO_STATUSES, BOOK_STATUSES } from "../contract.js";
 
-export const bookStatus = pgEnum("book_status", ["parsing", "generating", "ready", "parse_failed"]);
-export const audioStatus = pgEnum("audio_status", ["pending", "generating", "generated", "failed"]);
+export const bookStatus = pgEnum("book_status", BOOK_STATUSES);
+export const audioStatus = pgEnum("audio_status", AUDIO_STATUSES);
 export const jobType = pgEnum("job_type", ["parse"]);
 export const jobStatus = pgEnum("job_status", ["queued", "running", "succeeded", "failed"]);
 
@@ -68,6 +70,8 @@ export const jobs = pgTable("jobs", {
     .references(() => books.id, { onDelete: "cascade" }),
   type: jobType("type").notNull(),
   status: jobStatus("status").notNull().default("queued"),
+  // Incremented on every claim. No lease timeout yet: a job whose worker dies stays running;
+  // timeouts and automatic retries (PRD 4.3.5 #8, #10) arrive with #5.
   attempt: integer("attempt").notNull().default(0),
   error: text("error"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

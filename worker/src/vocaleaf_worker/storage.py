@@ -1,4 +1,4 @@
-"""Read access to the S3-compatible bucket (MinIO-compatible locally, Cloudflare R2 in production)."""
+"""Read access to the S3-compatible bucket (RustFS locally, Cloudflare R2 in production)."""
 
 from typing import Protocol
 
