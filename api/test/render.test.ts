@@ -2,6 +2,7 @@
 // the worker side is driven only through the /internal HTTP protocol, as the real worker does.
 import { describe, expect, it } from "vitest";
 import type { BookDetail, ClaimedRenderJob, ParseResult, Sentence } from "../src/contract.js";
+import { books, users } from "../src/db/schema.js";
 import {
   bookDetail,
   claimJob,
@@ -258,7 +259,8 @@ describe("the Book's playlist", () => {
     await reportRenderResult(t.app, job, await renderAll(t.storage, job));
     const [url] = segmentUrls(await playlist(t.app, book.id), book.id);
 
-    await t.db.execute(`update books set owner_id = '${crypto.randomUUID()}'`);
+    const [other] = await t.db.insert(users).values({ email: "other@example.com" }).returning();
+    await t.db.update(books).set({ ownerId: other!.id });
 
     expect((await t.app.request(`/api/books/${book.id}/audio.m3u8`)).status).toBe(404);
     expect((await t.app.request(url!)).status).toBe(404);

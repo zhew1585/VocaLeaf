@@ -29,9 +29,9 @@ function segmentPaths(m3u8: string, bookId: string): string[] {
 }
 
 async function playlist(bookId: string) {
-  const res = await fetch(`http://localhost:8080/api/books/${bookId}/audio.m3u8`);
+  const res = await fetchBytes(`/api/books/${bookId}/audio.m3u8`);
   expect(res.status).toBe(200);
-  return res.text();
+  return new TextDecoder().decode(res.bytes);
 }
 
 /** ffprobe inside the worker container (which has ffmpeg), reading the bytes from stdin. */

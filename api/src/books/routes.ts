@@ -1,6 +1,7 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, asc, count, desc, eq, sql, sum } from "drizzle-orm";
 import type { AppDeps } from "../app.js";
+import type { UserEnv } from "../auth/session.js";
 import {
   BookDetailSchema,
   BookSchema,
@@ -11,7 +12,6 @@ import {
 } from "../contract.js";
 import type { Db } from "../db/client.js";
 import { books, chapters, jobs, sentences } from "../db/schema.js";
-import { currentUser, type UserEnv } from "../dev-identity.js";
 import { sourceKey } from "../storage.js";
 import { validationHook } from "../validation.js";
 import { notFound, ownBook } from "./own-book.js";
@@ -86,7 +86,6 @@ function titleFromFileName(name: string): string {
 /** User-facing Book routes. */
 export function bookRoutes({ db, storage }: AppDeps) {
   const app = new OpenAPIHono<UserEnv>({ defaultHook: validationHook });
-  for (const path of ["/books", "/books/*", "/chapters/*"]) app.use(path, currentUser);
 
   app.openapi(uploadRoute, async (c) => {
     const { file } = c.req.valid("form");

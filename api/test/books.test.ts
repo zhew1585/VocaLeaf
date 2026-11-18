@@ -1,12 +1,11 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import type { Book, BookDetail } from "../src/contract.js";
-import { books, jobs } from "../src/db/schema.js";
-import { DEV_USER_ID } from "../src/dev-identity.js";
-import { epubForm, testApp, uploadBook } from "./helpers.js";
+import { books, jobs, users } from "../src/db/schema.js";
+import { epubForm, READER_EMAIL, testApp, uploadBook } from "./helpers.js";
 
 describe("POST /api/books", () => {
-  it("stores the file, creates a parsing Book owned by the dev user and queues a parse job", async () => {
+  it("stores the file, creates a parsing Book owned by the logged-in user and queues a parse job", async () => {
     const { app, db, storage } = await testApp();
     const res = await app.request("/api/books", { method: "POST", body: epubForm("Pride and Prejudice.epub") });
 
@@ -16,7 +15,8 @@ describe("POST /api/books", () => {
     expect(storage.objects.get(`books/${book.id}/source.epub`)).toEqual(new Uint8Array([80, 75, 3, 4]));
 
     const [row] = await db.select().from(books).where(eq(books.id, book.id));
-    expect(row).toMatchObject({ ownerId: DEV_USER_ID, fileSize: 4, format: "epub", source: "upload" });
+    const [reader] = await db.select().from(users).where(eq(users.email, READER_EMAIL));
+    expect(row).toMatchObject({ ownerId: reader!.id, fileSize: 4, format: "epub", source: "upload" });
     const queued = await db.select().from(jobs).where(eq(jobs.bookId, book.id));
     expect(queued).toMatchObject([{ type: "parse", status: "queued", attempt: 0 }]);
   });
@@ -44,7 +44,8 @@ describe("GET /api/books/:id", () => {
     expect((await app.request(`/api/books/${crypto.randomUUID()}`)).status).toBe(404);
 
     const otherId = crypto.randomUUID();
-    await db.insert(books).values({ id: otherId, ownerId: crypto.randomUUID(), title: "x", fileSize: 1 });
+    const [other] = await db.insert(users).values({ email: "other@example.com" }).returning();
+    await db.insert(books).values({ id: otherId, ownerId: other!.id, title: "x", fileSize: 1 });
     expect((await app.request(`/api/books/${otherId}`)).status).toBe(404);
   });
 
@@ -55,11 +56,15 @@ describe("GET /api/books/:id", () => {
 });
 
 describe("GET /api/openapi.json", () => {
-  it("documents the book and worker routes", async () => {
+  it("documents the auth, book and worker routes", async () => {
     const { app } = await testApp();
     const doc = (await (await app.request("/api/openapi.json")).json()) as { paths: Record<string, unknown> };
     expect(Object.keys(doc.paths)).toEqual(
       expect.arrayContaining([
+        "/api/auth/code",
+        "/api/auth/login",
+        "/api/auth/logout",
+        "/api/me",
         "/api/books",
         "/api/books/{id}",
         "/api/internal/jobs/claim",

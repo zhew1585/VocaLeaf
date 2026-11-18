@@ -15,7 +15,16 @@ docker compose up --build
 The first start builds three images and pulls the Kokoro image (about 4.5 GB).
 Later starts take a few seconds.
 
-Open http://localhost:8080 and upload an EPUB without DRM, for example [Pride and Prejudice from Standard Ebooks](https://standardebooks.org/ebooks/jane-austen/pride-and-prejudice).
+Logging in needs an invited email.
+Add yours to the allowlist (see [Login](#login)):
+
+```sh
+docker compose exec api node dist/scripts/allowlist.js add you@example.com --by your-name
+```
+
+Open http://localhost:8080, enter that email and click 发送验证码 (send code).
+The six-digit code arrives in Mailpit at http://localhost:8025, and the API log prints it too (`docker compose logs api`).
+After logging in, upload an EPUB without DRM, for example [Pride and Prejudice from Standard Ebooks](https://standardebooks.org/ebooks/jane-austen/pride-and-prejudice).
 The page then opens the book detail view.
 The book shows 解析中 (parsing) first, then 生成中 (generating) once parsing finishes, with every chapter and its sentence count.
 A few seconds later the first narrated chapter has its first audio segment and 开始收听 (start listening) becomes clickable; it opens the 专注页 (focus page) with the player.
@@ -30,6 +39,10 @@ Environment variables:
 | --- | --- | --- |
 | `WEB_PORT` | `8080` | Port for the web app |
 | `WORKER_TOKEN` | `dev-worker-token-change-me` | Shared secret the worker sends to `/api/internal`. Change it before any public deployment. |
+| `APP_ENV` | `development` | `development` also prints login codes to the API log and lets the session cookie work over plain http. Set `production` for any deployment behind HTTPS. |
+| `SMTP_URL` | `smtp://mailpit:1025` | Where login code emails go, as a nodemailer SMTP URL, for example `smtps://user:pass@smtp.example.com:465` |
+| `MAIL_FROM` | `拾页 <login@vocaleaf.local>` | Sender of login code emails |
+| `MAILPIT_PORT` | `8025` | Port for Mailpit's inbox |
 | `JOB_LEASE_SECONDS` | `600` | How long a worker holds a claimed job. The worker renews it with a heartbeat every third of the lease; once heartbeats stop and the lease expires, another worker can claim the job. |
 | `PAUSE_SENTENCE_MS` | `300` | Silence between two sentences of one paragraph (PRD 4.7.2) |
 | `PAUSE_PARAGRAPH_MS` | `800` | Silence between paragraphs |
@@ -45,9 +58,11 @@ Environment variables:
 | `postgres` | Database. Only the API shares its network. |
 | `storage` | S3-compatible object storage (RustFS) |
 | `kokoro` | Kokoro-FastAPI on CPU, pinned by image digest. See [Audio](#audio). |
+| `mailpit` | Catches every email the API sends and shows it at http://localhost:8025; nothing leaves the machine |
 
 The API and the worker reach object storage only through `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`.
 To use Cloudflare R2, set these five variables to your R2 values (with `S3_REGION=auto`) and remove the `storage` service.
+To send real email, set `SMTP_URL` and `MAIL_FROM` for your SMTP service and remove the `mailpit` service.
 
 ### Job leases
 
@@ -86,8 +101,31 @@ docker compose run --rm --no-deps -v "$PWD/worker/scripts:/scripts:ro" -v "$PWD/
   worker python /scripts/voice_samples.py /out
 ```
 
-Sign-in comes in [#6](https://github.com/zhew1585/VocaLeaf/issues/6).
-Until then every request runs as one fixed development user, defined in [api/src/dev-identity.ts](api/src/dev-identity.ts).
+### Login
+
+Only invited emails can log in (PRD 4.1.1); there is no password and no sign-up.
+The login page asks for an email and calls `POST /api/auth/code`.
+An email that is not on the allowlist gets 该邮箱暂未获得内测资格 (not invited) and no email is sent.
+An invited email gets a six-digit code over SMTP, valid for 10 minutes; another code can be sent 60 seconds later, and it replaces the first.
+`POST /api/auth/login` with the right code creates the account on first login and starts a session.
+A code is used once and stops working after five wrong guesses.
+
+The session is a random token in an HttpOnly, SameSite=Lax cookie; the database keeps only its SHA-256.
+A cookie rather than a bearer header, because the browser fetches HLS audio by itself, and native HLS on iOS Safari cannot add headers.
+Sessions do not expire: `GET /api/me`, which the app calls on every load, renews the cookie's 400-day lifetime.
+Each device has its own session, and `POST /api/auth/logout` ends only that device's.
+Every API route needs a session except `/api/auth/*`, `/api/health`, `/api/openapi.json` and the worker's `/api/internal/*` (which needs `WORKER_TOKEN`).
+
+Operators manage the allowlist with a script inside the `api` container.
+`add` and `remove` write every email to the audit log (`audit_log`, PRD 4.6.2) with the operator named by `--by`; removing an email also logs that user out on every device.
+
+```sh
+docker compose exec api node dist/scripts/allowlist.js add a@example.com b@example.com --by allen
+docker compose exec api node dist/scripts/allowlist.js remove a@example.com --by allen
+docker compose exec api node dist/scripts/allowlist.js list
+```
+
+Books uploaded before login existed belonged to a fixed development user; the migration gives them to the account `dev@vocaleaf.local`, so allowlisting that email reaches them.
 
 ## Develop and test
 
@@ -99,7 +137,8 @@ npm run typecheck
 
 npm run e2e:up             # start the stack with a 5-second lease, which the lease tests need
 npm run test:e2e           # end-to-end tests against the running stack, real Kokoro included (about 2 minutes;
-                           # ends every unfinished job on the stack)
+                           # ends every unfinished job on the stack; each test file logs in as a fresh
+                           # allowlisted email, reading its code from Mailpit)
 ```
 
 After you change `api/src/db/schema.ts`, run `npm run db:generate -w api` to generate a migration.
