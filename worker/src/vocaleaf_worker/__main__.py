@@ -8,7 +8,9 @@ import time
 import httpx
 
 from vocaleaf_worker.api_client import ApiClient
+from vocaleaf_worker.narration import Pauses
 from vocaleaf_worker.storage import S3Storage
+from vocaleaf_worker.tts import KokoroTts
 from vocaleaf_worker.worker import run_once
 
 log = logging.getLogger("vocaleaf_worker")
@@ -27,10 +29,13 @@ def main() -> None:
         access_key_id=env["S3_ACCESS_KEY_ID"],
         secret_access_key=env["S3_SECRET_ACCESS_KEY"],
     )
-    log.info("worker started, polling %s", env["API_URL"])
+    # One long Sentence can take Kokoro tens of seconds on CPU.
+    tts = KokoroTts(httpx.Client(base_url=env["KOKORO_URL"], timeout=300))
+    pauses = Pauses.from_env(env)  # fails fast on a malformed value
+    log.info("worker started, polling %s, pauses %s", env["API_URL"], pauses)
     while True:
         try:
-            if run_once(api, storage):
+            if run_once(api, storage, tts, pauses):
                 continue
         except Exception:  # API unreachable or rejected a call: log, back off, keep polling
             log.exception("job cycle failed")

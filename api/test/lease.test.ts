@@ -136,7 +136,8 @@ describe("late reports from a worker whose lease was taken over", () => {
 
     expect((await reportParse(app, slow, parsed)).status).toBe(204);
     expect((await bookDetail(app, book.id)).status).toBe("generating");
-    expect(await claimJob(app)).toBeUndefined();
+    // The parse job is done: what comes next is the first Chapter's render job, not the parse again.
+    expect((await claimJob(app))?.type).toBe("render_chapter");
   });
 });
 

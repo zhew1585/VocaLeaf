@@ -1,4 +1,4 @@
-"""Read access to the S3-compatible bucket (RustFS locally, Cloudflare R2 in production)."""
+"""Access to the S3-compatible bucket (RustFS locally, Cloudflare R2 in production)."""
 
 from typing import Protocol
 
@@ -6,12 +6,14 @@ import boto3
 from botocore.config import Config
 
 
-class SourceStorage(Protocol):
+class ObjectStorage(Protocol):
     def get_object(self, key: str) -> bytes: ...
+
+    def put_object(self, key: str, body: bytes, content_type: str) -> None: ...
 
 
 class S3Storage:
-    def __init__(self, endpoint: str, region: str, bucket: str, access_key_id: str, secret_access_key: str):
+    def __init__(self, endpoint: str, region: str, bucket: str, access_key_id: str, secret_access_key: str) -> None:
         self._bucket = bucket
         self._client = boto3.client(
             "s3",
@@ -25,3 +27,6 @@ class S3Storage:
 
     def get_object(self, key: str) -> bytes:
         return self._client.get_object(Bucket=self._bucket, Key=key)["Body"].read()
+
+    def put_object(self, key: str, body: bytes, content_type: str) -> None:
+        self._client.put_object(Bucket=self._bucket, Key=key, Body=body, ContentType=content_type)

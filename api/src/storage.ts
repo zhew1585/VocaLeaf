@@ -1,8 +1,17 @@
-import { CreateBucketCommand, HeadBucketCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  CreateBucketCommand,
+  GetObjectCommand,
+  HeadBucketCommand,
+  NoSuchKey,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 
 /** Object storage as the API needs it. Reached through S3-compatible config only (ADR 0003). */
 export interface ObjectStorage {
   putObject(key: string, body: Uint8Array, contentType: string): Promise<void>;
+  /** The object's bytes, or undefined when there is no such key. */
+  getObject(key: string): Promise<Uint8Array | undefined>;
 }
 
 export interface S3Config {
@@ -32,12 +41,29 @@ export function s3Storage(config: S3Config): ObjectStorage {
         new PutObjectCommand({ Bucket: config.bucket, Key: key, Body: body, ContentType: contentType }),
       );
     },
+    async getObject(key) {
+      try {
+        const res = await client.send(new GetObjectCommand({ Bucket: config.bucket, Key: key }));
+        return await res.Body!.transformToByteArray();
+      } catch (err) {
+        if (err instanceof NoSuchKey) return undefined;
+        throw err;
+      }
+    },
   };
 }
 
 /** Where a Book's original upload lives in the bucket. */
 export function sourceKey(bookId: string): string {
   return `books/${bookId}/source.epub`;
+}
+
+/**
+ * Where a render claim writes a Chapter's HLS segments. Each claim gets its own prefix, so a claim that lost
+ * its lease can never overwrite the segments of the claim that took over.
+ */
+export function audioPrefix(bookId: string, chapterId: string, jobId: string, attempt: number): string {
+  return `books/${bookId}/audio/${chapterId}/${jobId}-${attempt}/`;
 }
 
 /**

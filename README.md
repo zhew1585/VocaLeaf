@@ -18,6 +18,8 @@ Later starts take a few seconds.
 Open http://localhost:8080 and upload an EPUB without DRM, for example [Pride and Prejudice from Standard Ebooks](https://standardebooks.org/ebooks/jane-austen/pride-and-prejudice).
 The page then opens the book detail view.
 The book shows 解析中 (parsing) first, then 生成中 (generating) once parsing finishes, with every chapter and its sentence count.
+A few seconds later the first narrated chapter has its first audio segment and 开始收听 (start listening) becomes clickable; it opens the 专注页 (focus page) with the player.
+Once every narrated chapter is generated, the book moves to 已就绪 (ready).
 
 To stop the stack, run `docker compose down`.
 To also delete all data, run `docker compose down -v`.
@@ -28,7 +30,10 @@ Environment variables:
 | --- | --- | --- |
 | `WEB_PORT` | `8080` | Port for the web app |
 | `WORKER_TOKEN` | `dev-worker-token-change-me` | Shared secret the worker sends to `/api/internal`. Change it before any public deployment. |
-| `JOB_LEASE_SECONDS` | `600` | How long a worker holds a claimed job. When the lease expires without a callback, another worker can claim the job. |
+| `JOB_LEASE_SECONDS` | `600` | How long a worker holds a claimed job. The worker renews it with a heartbeat every third of the lease; once heartbeats stop and the lease expires, another worker can claim the job. |
+| `PAUSE_SENTENCE_MS` | `300` | Silence between two sentences of one paragraph (PRD 4.7.2) |
+| `PAUSE_PARAGRAPH_MS` | `800` | Silence between paragraphs |
+| `PAUSE_CHAPTER_START_MS` | `1500` | Silence before a chapter's first sentence |
 
 ## Services
 
@@ -39,7 +44,7 @@ Environment variables:
 | `worker` | Stateless Python process. It claims jobs from the API, reads the uploaded file from object storage, and reports results back to the API. It has no database connection. |
 | `postgres` | Database. Only the API shares its network. |
 | `storage` | S3-compatible object storage (RustFS) |
-| `kokoro` | Kokoro-FastAPI on CPU. Audio generation starts using it in [#2](https://github.com/zhew1585/VocaLeaf/issues/2). |
+| `kokoro` | Kokoro-FastAPI on CPU, pinned by image digest. See [Audio](#audio). |
 
 The API and the worker reach object storage only through `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`.
 To use Cloudflare R2, set these five variables to your R2 values (with `S3_REGION=auto`) and remove the `storage` service.
@@ -47,11 +52,39 @@ To use Cloudflare R2, set these five variables to your R2 values (with `S3_REGIO
 ### Job leases
 
 When a worker claims a job, it gets a lease of `JOB_LEASE_SECONDS` and the claim number `attempt`.
-If the worker crashes or restarts, any worker can claim the job again once the lease expires, and each new claim increases `attempt` by one.
+While the job runs, the worker sends a heartbeat every third of the lease, so a chapter that takes longer than the lease to generate on CPU is never claimed by a second worker.
+If the worker crashes or restarts, its heartbeats stop, any worker can claim the job again once the lease expires, and each new claim increases `attempt` by one.
 Workers can claim a job at most 3 times (PRD 4.7.2).
-If the third claim also times out, the job fails and the book moves to 解析失败 (parsing failed).
-Every callback must send back its `attempt`.
-The API answers 409 when the job was claimed again or has already finished, so a late callback never overwrites a newer result.
+If the third claim also times out, the job fails: a parse job moves the book to 解析失败 (parsing failed), a generation job moves its chapter to 生成失败 (generation failed) and the book carries on.
+Every callback and heartbeat must send back its `attempt`.
+The API answers 409 when the job was claimed again or has already finished, so a late callback never overwrites a newer result; a worker whose heartbeat gets 409 drops the job.
+Jobs are claimed by their position in their book first (parse = 0, the nth narrated chapter = n), then by age, so a newly uploaded book never waits behind other books' later chapters.
+
+### Audio
+
+After parsing, the API queues one `render_chapter` job per narrated chapter (Skipped ones excluded), in chapter order.
+The worker sends the sentences of each paragraph to Kokoro's `/dev/captioned_speech` together (PCM plus word timestamps), so the voice hears their context and carries its intonation across them; paragraphs longer than about 400 characters are split at sentence boundaries.
+It maps the returned words back to each sentence and keeps each sentence's voiced span, replacing Kokoro's own pauses with the configured ones: `PAUSE_CHAPTER_START_MS` before a chapter's first sentence, `PAUSE_PARAGRAPH_MS` between paragraphs and `PAUSE_SENTENCE_MS` between sentences.
+If the words of a paragraph cannot be matched to its sentences, that paragraph is spoken again one sentence at a time.
+The chapter is streamed through one ffmpeg process into HLS: AAC mono 48 kbps, segments of about 10 seconds (MPEG-TS).
+It writes each segment to object storage and reports it as soon as it is complete, so a book is playable after its first segment.
+The book's playlist is `GET /api/books/{id}/audio.m3u8`: the segments of every narrated chapter in chapter order, with `EXT-X-DISCONTINUITY` between chapters.
+While the book generates it is an EVENT playlist that players reload as it grows; `EXT-X-ENDLIST` is added once the book is ready.
+Segments are served from object storage through `GET /api/books/{id}/segments/{segmentId}.ts`, with the same ownership check as the book.
+Published segments are never taken back: a re-claimed chapter is generated again but only appends the segments the earlier claim had not written, and a chapter that fails halfway keeps what it published.
+A sentence's `start_ms` and `end_ms` cover exactly its voiced span (the pauses around it belong to no sentence); they are stored relative to its chapter and returned as positions in the whole book's audio. `word_timings` are relative to the sentence's own start.
+The book's `durationMs` is exact once it is ready; while it generates, the remaining chapters are estimated at the generated chapters' pace per character, and the player shows whole-book progress against it.
+
+The Kokoro model is pinned to the unquantized `kokoro-v1_0.pth` (hexgrad/Kokoro-82M, sha256 `496dba11…c17f`).
+It ships inside the `kokoro-fastapi-cpu:v0.10.0` image, which compose pins by digest, and `DOWNLOAD_MODEL=false` stops it from fetching weights at start, so development and production run the same model file (ADR 0003).
+
+The voice mapping (PRD 4.7.2) is in `worker/src/vocaleaf_worker/tts.py`: US female `af_heart`, US male `am_michael`, UK female `bf_emma`, UK male `bm_george`.
+Samples of all four voices are in [docs/samples/issue-2/](docs/samples/issue-2/). To render them again:
+
+```sh
+docker compose run --rm --no-deps -v "$PWD/worker/scripts:/scripts:ro" -v "$PWD/docs/samples/issue-2:/out" \
+  worker python /scripts/voice_samples.py /out
+```
 
 Sign-in comes in [#6](https://github.com/zhew1585/VocaLeaf/issues/6).
 Until then every request runs as one fixed development user, defined in [api/src/dev-identity.ts](api/src/dev-identity.ts).
@@ -65,7 +98,8 @@ npm run typecheck
 (cd worker && uv sync && uv run pytest && uv run ruff check && uv run pyright)
 
 npm run e2e:up             # start the stack with a 5-second lease, which the lease tests need
-npm run test:e2e           # end-to-end tests against the running stack
+npm run test:e2e           # end-to-end tests against the running stack, real Kokoro included (about 2 minutes;
+                           # ends every unfinished job on the stack)
 ```
 
 After you change `api/src/db/schema.ts`, run `npm run db:generate -w api` to generate a migration.

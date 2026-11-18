@@ -13,6 +13,7 @@
   --font-ui: "Noto Sans SC", system-ui, sans-serif;
   --font-title: "Noto Serif SC", serif;
   --font-read: "Newsreader", Georgia, serif;
+  --font-num: "Inter", system-ui, sans-serif;
 }
 
 * {
@@ -233,6 +234,142 @@ button {
   font-size: 13px;
   color: var(--ink-3);
   white-space: nowrap;
+}
+
+.listen-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* 01 专注页, minimal: the reading column (620) with the floating player at its bottom. */
+.listen-layout {
+  max-width: 620px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  /* room for the floating player */
+  padding-bottom: 160px;
+}
+
+.listen-column {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.listen-wait {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+/* The paper fades out under the player, as in the design. */
+.player-dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 56px 16px 24px;
+  background: linear-gradient(to bottom, rgb(246 242 233 / 0), var(--paper) 60%);
+  pointer-events: none;
+}
+
+/* Design 01 ④: floating player, same width as the reading column. */
+.player {
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 14px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  box-shadow: 0 8px 24px rgb(38 62 45 / 0.08);
+  pointer-events: auto;
+}
+
+.player-error {
+  text-align: center;
+}
+
+.player-controls {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.play-button {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--leaf);
+  color: var(--surface);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.play-button:focus-visible {
+  outline: 2px solid var(--leaf);
+  outline-offset: 3px;
+}
+
+.play-glyph {
+  transform: translateX(1px);
+}
+
+.player-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.player-time {
+  font-family: var(--font-num);
+  font-size: 11px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.player-track {
+  position: relative;
+  flex: 1;
+  height: 10px;
+}
+
+.player-track::before,
+.player-fill {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 3px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.player-track::before {
+  right: 0;
+  background: var(--sunken);
+}
+
+.player-fill {
+  background: var(--leaf);
+}
+
+.player-knob {
+  position: absolute;
+  top: 0;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  border-radius: 5px;
+  background: var(--leaf);
 }
 
 @media (max-width: 760px) {

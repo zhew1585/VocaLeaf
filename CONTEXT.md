@@ -36,6 +36,8 @@ _Avoid_: Hidden, excluded, front matter
 The smallest unit of a Book's text, with a stable ID; the anchor that audio timing, marks and cards attach to.
 _Avoid_: Segment, line, chunk
 
+An HLS segment (about ten seconds of a Chapter's audio, cut without regard to Sentences) is a storage and playback detail, not a domain term; never call a Sentence a segment.
+
 ## Capture
 
 **Mark**:

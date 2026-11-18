@@ -1,0 +1,1 @@
+ALTER TABLE "jobs" ADD CONSTRAINT "jobs_chapter_matches_type" CHECK (("jobs"."type"::text = 'render_chapter') = ("jobs"."chapter_id" is not null));

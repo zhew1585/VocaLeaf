@@ -1,5 +1,6 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
+import { audioRoutes } from "./books/audio-routes.js";
 import { bookRoutes } from "./books/routes.js";
 import type { Db } from "./db/client.js";
 import { jobRoutes } from "./jobs/routes.js";
@@ -22,6 +23,7 @@ export function createApp(deps: AppDeps) {
   app.openAPIRegistry.registerComponent("securitySchemes", "workerToken", { type: "http", scheme: "bearer" });
   app.get("/health", (c) => c.json({ ok: true }));
   app.route("/", bookRoutes(deps));
+  app.route("/", audioRoutes(deps));
   app.route("/", jobRoutes(deps));
   app.doc31("/openapi.json", { openapi: "3.1.0", info: { title: "VocaLeaf API", version: "0.1.0" } });
   app.onError((err, c) => {
