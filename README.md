@@ -31,6 +31,9 @@ Environment variables:
 | `WEB_PORT` | `8080` | Port for the web app |
 | `WORKER_TOKEN` | `dev-worker-token-change-me` | Shared secret the worker sends to `/api/internal`. Change it before any public deployment. |
 | `JOB_LEASE_SECONDS` | `600` | How long a worker holds a claimed job. The worker renews it with a heartbeat every third of the lease; once heartbeats stop and the lease expires, another worker can claim the job. |
+| `PAUSE_SENTENCE_MS` | `300` | Silence between two sentences of one paragraph (PRD 4.7.2) |
+| `PAUSE_PARAGRAPH_MS` | `800` | Silence between paragraphs |
+| `PAUSE_CHAPTER_START_MS` | `1500` | Silence before a chapter's first sentence |
 
 ## Services
 
@@ -60,13 +63,16 @@ Jobs are claimed by their position in their book first (parse = 0, the nth narra
 ### Audio
 
 After parsing, the API queues one `render_chapter` job per narrated chapter (Skipped ones excluded), in chapter order.
-The worker sends each sentence to Kokoro's `/dev/captioned_speech` (PCM plus word timestamps) and streams the chapter through one ffmpeg process into HLS: AAC mono 48 kbps, segments of about 10 seconds (MPEG-TS).
+The worker sends the sentences of each paragraph to Kokoro's `/dev/captioned_speech` together (PCM plus word timestamps), so the voice hears their context and carries its intonation across them; paragraphs longer than about 400 characters are split at sentence boundaries.
+It maps the returned words back to each sentence and keeps each sentence's voiced span, replacing Kokoro's own pauses with the configured ones: `PAUSE_CHAPTER_START_MS` before a chapter's first sentence, `PAUSE_PARAGRAPH_MS` between paragraphs and `PAUSE_SENTENCE_MS` between sentences.
+If the words of a paragraph cannot be matched to its sentences, that paragraph is spoken again one sentence at a time.
+The chapter is streamed through one ffmpeg process into HLS: AAC mono 48 kbps, segments of about 10 seconds (MPEG-TS).
 It writes each segment to object storage and reports it as soon as it is complete, so a book is playable after its first segment.
 The book's playlist is `GET /api/books/{id}/audio.m3u8`: the segments of every narrated chapter in chapter order, with `EXT-X-DISCONTINUITY` between chapters.
 While the book generates it is an EVENT playlist that players reload as it grows; `EXT-X-ENDLIST` is added once the book is ready.
 Segments are served from object storage through `GET /api/books/{id}/segments/{segmentId}.ts`, with the same ownership check as the book.
 Published segments are never taken back: a re-claimed chapter is generated again but only appends the segments the earlier claim had not written, and a chapter that fails halfway keeps what it published.
-A sentence's `start_ms` and `end_ms` are stored relative to its chapter and returned as positions in the whole book's audio; `word_timings` are relative to the sentence's own start.
+A sentence's `start_ms` and `end_ms` cover exactly its voiced span (the pauses around it belong to no sentence); they are stored relative to its chapter and returned as positions in the whole book's audio. `word_timings` are relative to the sentence's own start.
 The book's `durationMs` is exact once it is ready; while it generates, the remaining chapters are estimated at the generated chapters' pace per character, and the player shows whole-book progress against it.
 
 The Kokoro model is pinned to the unquantized `kokoro-v1_0.pth` (hexgrad/Kokoro-82M, sha256 `496dba11…c17f`).

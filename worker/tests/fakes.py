@@ -3,6 +3,7 @@ MockTransport), object storage and TTS. Audio still goes through the real ffmpeg
 
 import json
 import math
+import re
 import struct
 import threading
 import time
@@ -61,24 +62,52 @@ def tone(ms: int) -> bytes:
     return b"".join(struct.pack("<h", int(8000 * math.sin(2 * math.pi * 440 * i / SAMPLE_RATE))) for i in range(n))
 
 
-class FakeTts:
-    """Speaks every text as a tone of `sentence_ms`, with one timed word per word of the text."""
+def silence(ms: int) -> bytes:
+    return b"\x00\x00" * (SAMPLE_RATE * ms // 1000)
 
-    def __init__(self, sentence_ms: int = 4000, delay_seconds: float = 0, fail_on: str | None = None):
-        self.sentence_ms = sentence_ms
+
+class FakeTts:
+    """Speaks like Kokoro, in shape: a short lead-in silence, every word as a tone of `word_ms`, a natural pause
+    after each sentence-ending word, trailing silence, and a timestamp per spoken word (none for punctuation).
+
+    `drop_words_of` makes the timestamps skip every word of that text when it is part of a longer input, as a
+    TTS that mangles a Sentence would; spoken alone it is timed normally.
+    """
+
+    LEAD_MS = 50
+    NATURAL_PAUSE_MS = 250
+    TRAIL_MS = 300
+
+    def __init__(
+        self, word_ms: int = 300, delay_seconds: float = 0, fail_on: str | None = None, drop_words_of: str | None = None
+    ):
+        self.word_ms = word_ms
         self.delay_seconds = delay_seconds
         self.fail_on = fail_on
+        self.drop_words_of = drop_words_of
         self.calls: list[tuple[str, Voice]] = []
-        self._pcm = tone(sentence_ms)
+        self._word = tone(word_ms)
 
     def synthesize(self, text: str, voice: Voice) -> Speech:
         self.calls.append((text, voice))
         time.sleep(self.delay_seconds)
-        if text == self.fail_on:
+        if self.fail_on and self.fail_on in text:
             raise httpx.ConnectError("kokoro unreachable")
-        words = text.split()
-        step = self.sentence_ms // max(len(words), 1)
-        return Speech(self._pcm, tuple(Word(w, i * step, (i + 1) * step) for i, w in enumerate(words)))
+        dropped = range(0)
+        if self.drop_words_of and text != self.drop_words_of and (found := text.find(self.drop_words_of)) >= 0:
+            dropped = range(found, found + len(self.drop_words_of))
+        pcm, words, at = [silence(self.LEAD_MS)], [], self.LEAD_MS
+        for match in re.finditer(r"\S+", text):
+            token = match.group()
+            pcm.append(self._word)
+            if match.start() not in dropped:
+                words.append(Word(token.strip('.,;!?"“”'), at, at + self.word_ms))
+            at += self.word_ms
+            if token.endswith((".", "!", "?")):
+                pcm.append(silence(self.NATURAL_PAUSE_MS))
+                at += self.NATURAL_PAUSE_MS
+        pcm.append(silence(self.TRAIL_MS))
+        return Speech(b"".join(pcm), tuple(words))
 
 
 def client(api: FakeApi) -> ApiClient:

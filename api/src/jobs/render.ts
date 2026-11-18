@@ -20,7 +20,7 @@ export async function startRender(tx: Tx, job: Job): Promise<RenderClaim> {
   await tx.update(chapters).set({ audioStatus: "generating" }).where(eq(chapters.id, chapterId));
   const [book] = await tx.select({ voice: books.voice }).from(books).where(eq(books.id, job.bookId));
   const rows = await tx
-    .select({ id: sentences.id, spokenText: sentences.spokenText })
+    .select({ id: sentences.id, spokenText: sentences.spokenText, paragraphIndex: sentences.paragraphIndex })
     .from(sentences)
     .where(eq(sentences.chapterId, chapterId))
     .orderBy(asc(sentences.index));

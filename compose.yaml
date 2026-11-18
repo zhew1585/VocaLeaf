@@ -66,6 +66,10 @@ services:
       <<: [*s3, *worker-token]
       API_URL: http://api:3000
       KOKORO_URL: http://kokoro:8880
+      # Narration pauses in ms (technical config, PRD 4.7.2): between Sentences, between paragraphs, Chapter start.
+      PAUSE_SENTENCE_MS: ${PAUSE_SENTENCE_MS:-300}
+      PAUSE_PARAGRAPH_MS: ${PAUSE_PARAGRAPH_MS:-800}
+      PAUSE_CHAPTER_START_MS: ${PAUSE_CHAPTER_START_MS:-1500}
     depends_on:
       api: { condition: service_healthy }
       kokoro: { condition: service_healthy }

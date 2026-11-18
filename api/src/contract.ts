@@ -121,8 +121,8 @@ export const ClaimedRenderJobSchema = z
     voice: VoiceSchema,
     /** Every segment of this claim is written under this object key prefix. */
     audioPrefix: z.string(),
-    /** The Chapter's Sentences in reading order. */
-    sentences: z.array(z.object({ id: z.uuid(), spokenText: z.string() })),
+    /** The Chapter's Sentences in reading order, with their paragraph (PRD 4.2.6) for pacing the narration. */
+    sentences: z.array(z.object({ id: z.uuid(), spokenText: z.string(), paragraphIndex: z.int().min(0) })),
   })
   .openapi("ClaimedRenderJob");
 

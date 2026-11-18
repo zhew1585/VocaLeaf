@@ -25,6 +25,8 @@ class ParseJob:
 class SentenceToSpeak:
     id: str
     spoken_text: str
+    # Sentences of one paragraph are synthesized together and separated by the shorter pause.
+    paragraph_index: int
 
 
 @dataclass(frozen=True)
@@ -121,7 +123,7 @@ def job_from_claim(data: dict) -> Job:
             chapter_id=data["chapterId"],
             voice=data["voice"],
             audio_prefix=data["audioPrefix"],
-            sentences=tuple(SentenceToSpeak(s["id"], s["spokenText"]) for s in data["sentences"]),
+            sentences=tuple(SentenceToSpeak(s["id"], s["spokenText"], s["paragraphIndex"]) for s in data["sentences"]),
         )
     raise ValueError(f"unknown job type {data['type']!r}")
 

@@ -45,6 +45,45 @@ function probe(bytes: Uint8Array) {
     .streams[0]!;
 }
 
+/** Every Sentence of the Book in reading order. */
+async function sentencesOf(book: BookDetail): Promise<Sentence[]> {
+  const all: Sentence[] = [];
+  for (const c of book.chapters) all.push(...(await api<Sentence[]>(`/chapters/${c.id}/sentences`)).body);
+  return all;
+}
+
+/** Positions (in reading order) of each Chapter's first Sentence. */
+function chapterStarts(book: BookDetail): Set<number> {
+  const starts = new Set<number>();
+  let position = 0;
+  for (const c of book.chapters) {
+    starts.add(position);
+    position += c.sentenceCount;
+  }
+  return starts;
+}
+
+/** The Book's whole playlist decoded to 24 kHz mono PCM, by ffmpeg inside the worker container. */
+function decodeBook(bookId: string): Int16Array {
+  const pcm = execFileSync(
+    "docker",
+    [
+      ...["compose", "exec", "-T", "worker", "ffmpeg", "-loglevel", "error", "-allowed_extensions", "ALL"],
+      ...["-i", `http://api:3000/api/books/${bookId}/audio.m3u8`, "-f", "s16le", "-ac", "1", "-ar", "24000", "pipe:1"],
+    ],
+    { cwd: ROOT, maxBuffer: 64 * 1024 * 1024 },
+  );
+  return new Int16Array(pcm.buffer, pcm.byteOffset, pcm.byteLength / 2);
+}
+
+/** Root mean square level of the audio between two times in ms. */
+function rms(audio: Int16Array, fromMs: number, toMs: number): number {
+  const window = audio.subarray(Math.floor((fromMs * 24_000) / 1000), Math.floor((toMs * 24_000) / 1000));
+  let sum = 0;
+  for (const v of window) sum += v * v;
+  return Math.sqrt(sum / Math.max(window.length, 1));
+}
+
 beforeEach(() => endOpenJobs());
 afterAll(() => endOpenJobs());
 
@@ -90,29 +129,71 @@ describe("a Book generated to the end", () => {
       ["The Walk", "generated"],
     ]);
 
-    const sentences: Sentence[] = [];
-    for (const c of book.chapters) sentences.push(...(await api<Sentence[]>(`/chapters/${c.id}/sentences`)).body);
+    const sentences = await sentencesOf(book);
     expect(sentences.length).toBeGreaterThanOrEqual(6);
     for (const s of sentences) {
       expect(s.startMs).not.toBeNull();
       expect(s.endMs!).toBeGreaterThan(s.startMs!);
       expect(s.wordTimings!.length).toBeGreaterThan(0);
     }
-    // One continuous timeline: each Sentence starts where the previous one ended. A new Chapter starts after the
-    // previous Chapter's last segment, which the AAC encoder pads by up to one frame (about 43 ms at 24 kHz).
-    for (let i = 1; i < sentences.length; i++) {
-      const gap = sentences[i]!.startMs! - sentences[i - 1]!.endMs!;
-      expect(gap).toBeGreaterThanOrEqual(0);
-      expect(gap).toBeLessThan(100);
-    }
+    // The whole playlist covers every Sentence and the pauses after the last one.
     const total = book.chapters.reduce((ms, c) => ms + c.durationMs!, 0);
-    expect(Math.abs(sentences.at(-1)!.endMs! - total)).toBeLessThan(200);
+    expect(total).toBeGreaterThanOrEqual(sentences.at(-1)!.endMs!);
+    expect(total - sentences.at(-1)!.endMs!).toBeLessThan(300);
 
     const m3u8 = await playlist(book.id);
     expect(m3u8).toContain("#EXT-X-ENDLIST");
     expect(m3u8.match(/#EXT-X-DISCONTINUITY/g)).toHaveLength(1);
     for (const path of segmentPaths(m3u8, book.id)) {
       expect((await fetchBytes(path)).status).toBe(200);
+    }
+  });
+});
+
+describe("narration with pauses, spoken a paragraph at a time", () => {
+  it("separates Sentences with silence, paragraphs with longer silence, and keeps every word inside its Sentence", async () => {
+    const created = await upload("short-walk.epub", SHORT_WALK);
+    const parsed = await waitForBook(created.body.id, (b) => b.status !== "parsing", 60_000);
+    const before = await sentencesOf(parsed);
+
+    const book = await waitForBook(created.body.id, (b) => b.status === "ready", 120_000);
+    const sentences = await sentencesOf(book);
+
+    // Generating changes no Sentence: same IDs, boundaries and text as parsing produced.
+    const text = (list: Sentence[]) => list.map((s) => [s.id, s.paragraphIndex, s.text, s.spokenText]);
+    expect(text(sentences)).toEqual(text(before));
+
+    // Times only ever move forward and never overlap; each pause matches its kind (defaults: 300 / 800 / 1500 ms).
+    const firstOf = chapterStarts(book);
+    expect(sentences[0]!.startMs).toBe(1500);
+    for (let i = 1; i < sentences.length; i++) {
+      const gap = sentences[i]!.startMs! - sentences[i - 1]!.endMs!;
+      const newParagraph = sentences[i]!.paragraphIndex !== sentences[i - 1]!.paragraphIndex;
+      if (firstOf.has(i)) expect(gap, `chapter start before sentence ${i}`).toBeGreaterThanOrEqual(1500);
+      else expect(gap, `pause before sentence ${i}`).toBe(newParagraph ? 800 : 300);
+    }
+
+    // Every word lies inside its own Sentence's span, and is one of that Sentence's words.
+    const norm = (w: string) => w.toLowerCase().replace(/[^a-z0-9]/g, "");
+    for (const s of sentences) {
+      const own = new Set(s.spokenText.split(/\s+/).map(norm));
+      for (const w of s.wordTimings!) {
+        expect(w.startMs).toBeGreaterThanOrEqual(0);
+        expect(w.endMs).toBeLessThanOrEqual(s.endMs! - s.startMs!);
+        expect(own.has(norm(w.word)), `${w.word} in "${s.spokenText}"`).toBe(true);
+      }
+    }
+
+    // In the audio a player decodes, the pauses are silent and the Sentences are not.
+    const audio = decodeBook(book.id);
+    const level = (from: number, to: number) => rms(audio, from, to);
+    expect(level(100, 1300), "chapter start").toBeLessThan(150);
+    for (let i = 0; i < sentences.length; i++) {
+      const s = sentences[i]!;
+      expect(level(s.startMs!, s.endMs!), `sentence ${i}`).toBeGreaterThan(500);
+      if (i > 0 && !firstOf.has(i)) {
+        expect(level(sentences[i - 1]!.endMs! + 110, s.startMs! - 110), `pause before sentence ${i}`).toBeLessThan(150);
+      }
     }
   });
 });

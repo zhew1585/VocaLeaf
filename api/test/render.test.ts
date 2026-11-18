@@ -123,10 +123,11 @@ describe("generating a Book's audio after parsing", () => {
     expect([first.chapterId, second.chapterId]).toEqual([detail.chapters[0]!.id, detail.chapters[2]!.id]);
     expect(first).toMatchObject({ bookId: book.id, voice: "us_female", attempt: 1, leaseMs: TEST_LEASE_MS });
     expect(first.audioPrefix.startsWith(`books/${book.id}/audio/`)).toBe(true);
-    expect(second.sentences.map((s) => s.spokenText)).toEqual([
-      "Mr. Bennet was among the earliest.",
-      "He had always intended.",
-      "Observing his second daughter.",
+    // With their paragraphs, so the worker can speak a paragraph at once and pause longer between paragraphs.
+    expect(second.sentences.map((s) => [s.spokenText, s.paragraphIndex])).toEqual([
+      ["Mr. Bennet was among the earliest.", 0],
+      ["He had always intended.", 1],
+      ["Observing his second daughter.", 1],
     ]);
     expect((await bookDetail(t.app, book.id)).chapters.map((c) => c.audioStatus)).toEqual(["generating", "pending", "generating"]);
   });

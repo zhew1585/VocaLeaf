@@ -5,6 +5,7 @@ import logging
 from vocaleaf_worker.api_client import ApiClient, Job, JobSuperseded, ParseJob, RenderJob
 from vocaleaf_worker.epub_parser import PARSER_VERSION, parse_epub
 from vocaleaf_worker.heartbeat import Heartbeat
+from vocaleaf_worker.narration import DEFAULT_PAUSES, Pauses
 from vocaleaf_worker.render import render_chapter
 from vocaleaf_worker.storage import ObjectStorage
 from vocaleaf_worker.tts import Tts
@@ -12,23 +13,29 @@ from vocaleaf_worker.tts import Tts
 log = logging.getLogger(__name__)
 
 
-def run_once(api: ApiClient, storage: ObjectStorage, tts: Tts, heartbeat_seconds: float | None = None) -> bool:
+def run_once(
+    api: ApiClient,
+    storage: ObjectStorage,
+    tts: Tts,
+    pauses: Pauses = DEFAULT_PAUSES,
+    heartbeat_seconds: float | None = None,
+) -> bool:
     """Claims and runs one job, keeping its lease alive meanwhile. Returns False when nothing was queued.
-    `heartbeat_seconds` overrides the interval derived from the lease (tests)."""
+    `pauses` lays out narrated audio; `heartbeat_seconds` overrides the interval derived from the lease (tests)."""
     job = api.claim()
     if job is None:
         return False
     log.info("job %s: %s book %s (attempt %d)", job.id, job.type, job.book_id, job.attempt)
     try:
         with Heartbeat(api, job, heartbeat_seconds) as heartbeat:
-            _run(api, storage, tts, job, heartbeat)
+            _run(api, storage, tts, pauses, job, heartbeat)
     except JobSuperseded:
         # Our lease ran out and another worker took the job over, or the job ended; its result is not ours.
         log.warning("job %s attempt %d was superseded; dropped", job.id, job.attempt)
     return True
 
 
-def _run(api: ApiClient, storage: ObjectStorage, tts: Tts, job: Job, heartbeat: Heartbeat) -> None:
+def _run(api: ApiClient, storage: ObjectStorage, tts: Tts, pauses: Pauses, job: Job, heartbeat: Heartbeat) -> None:
     try:
         match job:
             case ParseJob():
@@ -37,7 +44,7 @@ def _run(api: ApiClient, storage: ObjectStorage, tts: Tts, job: Job, heartbeat: 
                 api.report_parse_result(job, book, PARSER_VERSION)
                 log.info("job %s: %d chapters", job.id, len(book.chapters))
             case RenderJob():
-                render_chapter(api, storage, tts, job, heartbeat.check)
+                render_chapter(api, storage, tts, job, pauses, heartbeat.check)
     except JobSuperseded:
         raise
     except Exception as exc:  # reasons per PRD 4.3.5 come with #3, automatic retries with #5
