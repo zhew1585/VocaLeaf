@@ -6,7 +6,14 @@ import struct
 import pytest
 
 from vocaleaf_worker.api_client import SentenceToSpeak
-from vocaleaf_worker.narration import ChapterAssembler, Pauses, align_words, pauses_before, plan_chunks
+from vocaleaf_worker.narration import (
+    ChapterAssembler,
+    Pauses,
+    SpokenSentence,
+    align_words,
+    pauses_before,
+    plan_passages,
+)
 from vocaleaf_worker.tts import SAMPLE_RATE, Speech, Word
 
 PAUSES = Pauses(sentence_ms=300, paragraph_ms=800, chapter_start_ms=1500)
@@ -16,25 +23,25 @@ def s(id: str, text: str, paragraph: int) -> SentenceToSpeak:
     return SentenceToSpeak(id=id, spoken_text=text, paragraph_index=paragraph)
 
 
-class TestPlanChunks:
+class TestPlanPassages:
     def test_groups_the_sentences_of_each_paragraph(self):
         sentences = [s("a", "One.", 0), s("b", "Two.", 0), s("c", "Three.", 1)]
 
-        chunks = plan_chunks(sentences, max_chars=400)
+        chunks = plan_passages(sentences, max_chars=400)
 
         assert [[x.id for x in c] for c in chunks] == [["a", "b"], ["c"]]
 
     def test_splits_a_long_paragraph_at_sentence_boundaries(self):
         sentences = [s(str(i), "x" * 150 + ".", 0) for i in range(5)]
 
-        chunks = plan_chunks(sentences, max_chars=400)
+        chunks = plan_passages(sentences, max_chars=400)
 
         assert [[x.id for x in c] for c in chunks] == [["0", "1"], ["2", "3"], ["4"]]
 
     def test_keeps_a_sentence_longer_than_the_limit_whole_and_alone(self):
         sentences = [s("a", "Short.", 0), s("b", "y" * 500, 0), s("c", "End.", 0)]
 
-        assert [[x.id for x in c] for c in plan_chunks(sentences, max_chars=400)] == [["a"], ["b"], ["c"]]
+        assert [[x.id for x in c] for c in plan_passages(sentences, max_chars=400)] == [["a"], ["b"], ["c"]]
 
 
 class TestPausesBefore:
@@ -123,6 +130,40 @@ class TestAlignWords:
 
         assert align_words(sentences, tuple(words)) is None
 
+    def test_does_not_let_a_spelled_out_number_jump_to_the_next_sentence(self):
+        sentences = [s("a", "Chapter 1.", 0), s("b", "One day he left.", 0)]
+        words = [w("Chapter", 0, 1), w("one", 1, 2), w("One", 3, 4), w("day", 4, 5), w("he", 5, 6), w("left", 6, 7)]
+
+        aligned = align_words(sentences, tuple(words))
+
+        assert aligned is not None
+        assert [[x.word for x in ws] for ws in aligned] == [["Chapter", "one"], ["One", "day", "he", "left"]]
+
+    def test_still_moves_on_after_a_sentence_ending_in_a_spelled_out_number(self):
+        sentences = [s("a", "He was born in 1811.", 0), s("b", "Then he left.", 0)]
+        words = [w("He", 0, 1), w("was", 1, 2), w("born", 2, 3), w("in", 3, 4), w("eighteen", 4, 5)]
+        words += [w("eleven", 5, 6), w("Then", 7, 8), w("he", 8, 9), w("left", 9, 10)]
+
+        aligned = align_words(sentences, tuple(words))
+
+        assert aligned is not None
+        assert [len(ws) for ws in aligned] == [6, 3]
+
+    def test_gives_up_on_a_passage_with_a_sentence_that_has_no_words_to_find(self):
+        sentences = [s("a", "He left.", 0), s("b", "* * *", 0), s("c", "She stayed.", 0)]
+        words = (w("He", 0, 1), w("left", 1, 2), w("She", 3, 4), w("stayed", 4, 5))
+
+        assert align_words(sentences, words) is None
+
+    def test_counts_words_in_any_script(self):
+        sentences = [s("a", "He said:", 0), s("b", "Ἀλλά.", 0)]
+        words = (w("He", 0, 1), w("said", 1, 2), w("Ἀλλά", 3, 4))
+
+        aligned = align_words(sentences, words)
+
+        assert aligned is not None
+        assert [[x.word for x in ws] for ws in aligned] == [["He", "said"], ["Ἀλλά"]]
+
     def test_gives_up_when_a_sentence_with_words_gets_none(self):
         sentences = [s("a", "It is a truth.", 0), s("b", "However little known.", 0)]
         words = (w("It", 0, 1), w("is", 1, 2), w("a", 2, 3), w("truth", 3, 4))
@@ -138,28 +179,25 @@ def silence(ms: int) -> bytes:
     return b"\x00\x00" * (SAMPLE_RATE * ms // 1000)
 
 
+def spoken(sentences: list[SentenceToSpeak], words: list[tuple[Word, ...]]) -> list[SpokenSentence]:
+    return [SpokenSentence(sentence, ws) for sentence, ws in zip(sentences, words, strict=True)]
+
+
 def samples(pcm: bytes) -> list[int]:
     return [v for (v,) in struct.iter_unpack("<h", pcm)]
 
 
 class TestChapterAssembler:
-    """Chunk audio: 50 ms lead silence, sentence a voiced 1000 ms, 400 ms natural pause, sentence b voiced 600 ms,
+    """Passage audio: 50 ms lead silence, sentence a voiced 1000 ms, 400 ms natural pause, sentence b voiced 600 ms,
     then 300 ms trailing silence. The assembler must replace natural pauses with the configured ones."""
 
-    chunk_pcm = silence(50) + tone(1000) + silence(400) + tone(600) + silence(300)
-    chunk_words = (w("It", 50, 550), w("is", 550, 1050), w("Fine", 1450, 2050))
+    passage_pcm = silence(50) + tone(1000) + silence(400) + tone(600) + silence(300)
+    passage_words = (w("It", 50, 550), w("is", 550, 1050), w("Fine", 1450, 2050))
 
     def assemble(self, sentences: list[SentenceToSpeak]):
         assembler = ChapterAssembler(pauses_before(sentences, PAUSES))
-        pcm, timed = assembler.add(
-            sentences,
-            Speech(self.chunk_pcm, self.chunk_words),
-            [
-                self.chunk_words[:2],
-                self.chunk_words[2:],
-            ],
-        )
-        return pcm, timed
+        words = [self.passage_words[:2], self.passage_words[2:]]
+        return assembler.add(spoken(sentences, words), Speech(self.passage_pcm, self.passage_words))
 
     def test_places_voiced_spans_after_the_configured_pauses_and_excludes_silence_from_sentence_times(self):
         _pcm, timed = self.assemble([s("a", "It is.", 0), s("b", "Fine.", 0)])
@@ -175,7 +213,7 @@ class TestChapterAssembler:
         assert at(1600) != 0 and at(2400) != 0  # sentence a
         assert at(2650) == 0  # the gap between a and b
         assert at(3000) != 0  # sentence b
-        # The chunk's audio ends a margin after b's last word.
+        # The passage's audio ends a margin after b's last word.
         assert len(values) <= SAMPLE_RATE * (3400 + 100) // 1000
 
     def test_uses_the_paragraph_pause_between_paragraphs(self):
@@ -189,34 +227,50 @@ class TestChapterAssembler:
         assert timed[0].words == (w("It", 0, 500), w("is", 500, 1000))
         assert timed[1].words == (w("Fine", 0, 600),)
 
-    def test_continues_the_timeline_across_chunks(self):
+    def test_continues_the_timeline_across_passages(self):
         sentences = [s("a", "It is.", 0), s("b", "Fine.", 0), s("c", "Again.", 0)]
         assembler = ChapterAssembler(pauses_before(sentences, PAUSES))
         first_pcm, _ = assembler.add(
-            sentences[:2],
-            Speech(self.chunk_pcm, self.chunk_words),
-            [
-                self.chunk_words[:2],
-                self.chunk_words[2:],
-            ],
+            spoken(sentences[:2], [self.passage_words[:2], self.passage_words[2:]]),
+            Speech(self.passage_pcm, self.passage_words),
         )
-        _, timed = assembler.add(
-            sentences[2:],
-            Speech(silence(50) + tone(500) + silence(200), (w("Again", 50, 550),)),
-            [(w("Again", 50, 550),)],
-        )
+        again = (w("Again", 50, 550),)
+        _, timed = assembler.add(spoken(sentences[2:], [again]), Speech(silence(50) + tone(500) + silence(200), again))
 
-        # Chunks of one paragraph are joined by the sentence pause, not the paragraph pause.
+        # Passages of one paragraph are joined by the sentence pause, not the paragraph pause.
         assert (timed[0].start_ms, timed[0].end_ms) == (3700, 4200)
         assert len(first_pcm) // 2 <= SAMPLE_RATE * 3550 // 1000
 
-    def test_times_a_sentence_the_tts_gave_no_words_as_its_whole_audio(self):
+    def test_gives_a_sentence_with_nothing_to_voice_no_time_and_no_audio(self):
         sentences = [s("a", "* * *", 0)]
         assembler = ChapterAssembler(pauses_before(sentences, PAUSES))
 
-        _, timed = assembler.add(sentences, Speech(tone(400), ()), [()])
+        pcm, timed = assembler.add(spoken(sentences, [()]), Speech(silence(300), ()))
+
+        assert (timed[0].start_ms, timed[0].end_ms) == (1500, 1500)
+        assert set(samples(pcm)) <= {0}
+
+    def test_times_a_sentence_the_tts_gave_no_words_as_its_whole_audio(self):
+        sentences = [s("a", "Hello.", 0)]
+        assembler = ChapterAssembler(pauses_before(sentences, PAUSES))
+
+        _, timed = assembler.add(spoken(sentences, [()]), Speech(tone(400), ()))
 
         assert (timed[0].start_ms, timed[0].end_ms) == (1500, 1900)
+
+
+class TestPausesFromEnv:
+    def test_reads_the_three_pauses(self):
+        env = {"PAUSE_SENTENCE_MS": "250", "PAUSE_PARAGRAPH_MS": "700", "PAUSE_CHAPTER_START_MS": "1200"}
+        assert Pauses.from_env(env) == Pauses(sentence_ms=250, paragraph_ms=700, chapter_start_ms=1200)
+
+    def test_defaults_to_the_prd_values(self):
+        assert Pauses.from_env({}) == Pauses(sentence_ms=300, paragraph_ms=800, chapter_start_ms=1500)
+
+    @pytest.mark.parametrize("value", ["300ms", "-100", "1.5"])
+    def test_refuses_anything_but_a_whole_number_of_milliseconds(self, value: str):
+        with pytest.raises(ValueError, match="PAUSE_SENTENCE_MS"):
+            Pauses.from_env({"PAUSE_SENTENCE_MS": value})
 
 
 @pytest.mark.parametrize(
@@ -229,8 +283,8 @@ class TestChapterAssembler:
 def test_never_overlaps_sentences_even_with_tiny_pauses(pauses: Pauses):
     sentences = [s("a", "It is.", 0), s("b", "Fine.", 1)]
     assembler = ChapterAssembler(pauses_before(sentences, pauses))
-    words = TestChapterAssembler.chunk_words
+    words = TestChapterAssembler.passage_words
 
-    _, timed = assembler.add(sentences, Speech(TestChapterAssembler.chunk_pcm, words), [words[:2], words[2:]])
+    _, timed = assembler.add(spoken(sentences, [words[:2], words[2:]]), Speech(TestChapterAssembler.passage_pcm, words))
 
     assert timed[0].start_ms <= timed[0].end_ms <= timed[1].start_ms <= timed[1].end_ms

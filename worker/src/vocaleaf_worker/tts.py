@@ -39,7 +39,8 @@ class Word:
 
 @dataclass(frozen=True)
 class Speech:
-    """One Sentence's audio: 16-bit mono PCM at SAMPLE_RATE, and when each word is spoken."""
+    """Synthesized audio for one input (a Sentence or a passage of several): 16-bit mono PCM at SAMPLE_RATE,
+    and when each spoken word is said, from the start of the audio."""
 
     pcm: bytes
     words: tuple[Word, ...]

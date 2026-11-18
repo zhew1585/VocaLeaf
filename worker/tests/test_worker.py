@@ -3,7 +3,10 @@ the original file from object storage. There is no database anywhere in this pic
 
 from epub_factory import Doc, TocEntry, make_epub
 from fakes import FakeApi, FakeStorage, FakeTts, client
+from vocaleaf_worker.narration import Pauses
 from vocaleaf_worker.worker import run_once
+
+PAUSES = Pauses(sentence_ms=300, paragraph_ms=800, chapter_start_ms=1500)
 
 JOB = {
     "id": "11111111-1111-4111-8111-111111111111",
@@ -19,7 +22,7 @@ JOB = {
 def test_returns_false_when_no_job_is_queued():
     api = FakeApi(job=None)
 
-    assert run_once(client(api), FakeStorage(), FakeTts()) is False
+    assert run_once(client(api), FakeStorage(), FakeTts(), PAUSES) is False
     assert api.calls() == ["claim"]
 
 
@@ -32,7 +35,7 @@ def test_parses_the_claimed_book_and_reports_chapters_and_sentences():
     )
     api = FakeApi(job=JOB)
 
-    assert run_once(client(api), FakeStorage({"books/b/source.epub": epub}), FakeTts()) is True
+    assert run_once(client(api), FakeStorage({"books/b/source.epub": epub}), FakeTts(), PAUSES) is True
 
     assert api.calls() == ["claim", "parse-result"]
     body = api.bodies("parse-result")[0]
@@ -55,7 +58,7 @@ def test_parses_the_claimed_book_and_reports_chapters_and_sentences():
 def test_reports_a_failure_when_the_file_cannot_be_parsed():
     api = FakeApi(job=JOB)
 
-    assert run_once(client(api), FakeStorage({"books/b/source.epub": b"not an epub"}), FakeTts()) is True
+    assert run_once(client(api), FakeStorage({"books/b/source.epub": b"not an epub"}), FakeTts(), PAUSES) is True
 
     assert api.calls() == ["claim", "failure"]
     assert "BadZipFile" in api.bodies("failure")[0]["error"]
@@ -66,7 +69,7 @@ def test_moves_on_when_the_api_says_the_job_was_claimed_again(caplog):
     epub = make_epub([Doc("c1.xhtml", "<p>Body.</p>")], [TocEntry("Chapter", "c1.xhtml")])
     api = FakeApi(job=JOB, refuse=frozenset({"parse-result"}))
 
-    assert run_once(client(api), FakeStorage({"books/b/source.epub": epub}), FakeTts()) is True
+    assert run_once(client(api), FakeStorage({"books/b/source.epub": epub}), FakeTts(), PAUSES) is True
 
     assert api.calls() == ["claim", "parse-result"]
     assert "superseded" in caplog.text

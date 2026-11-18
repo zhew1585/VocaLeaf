@@ -5,7 +5,7 @@ import logging
 from vocaleaf_worker.api_client import ApiClient, Job, JobSuperseded, ParseJob, RenderJob
 from vocaleaf_worker.epub_parser import PARSER_VERSION, parse_epub
 from vocaleaf_worker.heartbeat import Heartbeat
-from vocaleaf_worker.narration import DEFAULT_PAUSES, Pauses
+from vocaleaf_worker.narration import Pauses
 from vocaleaf_worker.render import render_chapter
 from vocaleaf_worker.storage import ObjectStorage
 from vocaleaf_worker.tts import Tts
@@ -17,7 +17,7 @@ def run_once(
     api: ApiClient,
     storage: ObjectStorage,
     tts: Tts,
-    pauses: Pauses = DEFAULT_PAUSES,
+    pauses: Pauses,
     heartbeat_seconds: float | None = None,
 ) -> bool:
     """Claims and runs one job, keeping its lease alive meanwhile. Returns False when nothing was queued.

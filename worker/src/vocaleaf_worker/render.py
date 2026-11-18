@@ -11,39 +11,44 @@ from collections.abc import Callable, Iterator, Sequence
 
 from vocaleaf_worker.api_client import ApiClient, RenderJob, SentenceToSpeak, TimedSentence, WrittenSegment
 from vocaleaf_worker.hls import HlsEncoder, Segment
-from vocaleaf_worker.narration import ChapterAssembler, Pauses, align_words, pauses_before, plan_chunks
+from vocaleaf_worker.narration import (
+    ChapterAssembler,
+    Pauses,
+    SpokenSentence,
+    align_words,
+    pauses_before,
+    plan_passages,
+)
 from vocaleaf_worker.storage import ObjectStorage
-from vocaleaf_worker.tts import Speech, Tts, Voice, Word
+from vocaleaf_worker.tts import Speech, Tts, Voice
 
 log = logging.getLogger(__name__)
 
 SEGMENT_CONTENT_TYPE = "video/mp2t"
 
-Spoken = tuple[Sequence[SentenceToSpeak], Speech, Sequence[tuple[Word, ...]]]
-
 
 def speak(
-    tts: Tts, chunk: Sequence[SentenceToSpeak], voice: Voice, check_alive: Callable[[], None]
-) -> Iterator[Spoken]:
-    """Synthesizes a chunk in one call and splits its words by Sentence. If the words cannot be aligned with
-    the Sentences, the chunk is spoken again one Sentence at a time, which always aligns."""
-    speech = tts.synthesize(" ".join(s.spoken_text for s in chunk), voice)
-    aligned = align_words(chunk, speech.words)
+    tts: Tts, passage: Sequence[SentenceToSpeak], voice: Voice, check_alive: Callable[[], None]
+) -> Iterator[tuple[list[SpokenSentence], Speech]]:
+    """Synthesizes a passage in one call and splits its words by Sentence. If the words cannot be aligned with
+    the Sentences, the passage is spoken again one Sentence at a time, which always aligns."""
+    speech = tts.synthesize(" ".join(s.spoken_text for s in passage), voice)
+    aligned = align_words(passage, speech.words)
     if aligned is not None:
-        yield chunk, speech, aligned
+        yield [SpokenSentence(s, ws) for s, ws in zip(passage, aligned, strict=True)], speech
         return
-    if len(chunk) == 1:
-        yield chunk, speech, [speech.words]
+    if len(passage) == 1:
+        yield [SpokenSentence(passage[0], speech.words)], speech
         return
     log.warning(
         "could not align %d sentences spoken together (%.60s); speaking them one by one",
-        len(chunk),
-        chunk[0].spoken_text,
+        len(passage),
+        passage[0].spoken_text,
     )
-    for sentence in chunk:
+    for sentence in passage:
         check_alive()
         alone = tts.synthesize(sentence.spoken_text, voice)
-        yield [sentence], alone, [alone.words]
+        yield [SpokenSentence(sentence, alone.words)], alone
 
 
 def render_chapter(
@@ -67,10 +72,10 @@ def render_chapter(
         return written
 
     with HlsEncoder() as encoder:
-        for chunk in plan_chunks(job.sentences):
+        for passage in plan_passages(job.sentences):
             check_alive()
-            for sentences, speech, words in speak(tts, chunk, job.voice, check_alive):
-                pcm, timed = assembler.add(sentences, speech, words)
+            for spoken, speech in speak(tts, passage, job.voice, check_alive):
+                pcm, timed = assembler.add(spoken, speech)
                 unreported.extend(timed)
                 encoder.write(pcm)
                 if fresh := encoder.new_segments():
