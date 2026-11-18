@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
+import { loggingMailer, smtpMailer } from "./auth/mailer.js";
 import { connectDb } from "./db/client.js";
 import { loadEnv } from "./env.js";
 import { ensureBucket, s3Storage, type S3Config } from "./storage.js";
@@ -15,6 +16,15 @@ const s3: S3Config = {
 };
 await ensureBucket(s3);
 const storage = s3Storage(s3);
-const app = createApp({ db, storage, workerToken: env.WORKER_TOKEN, jobLeaseMs: env.JOB_LEASE_SECONDS * 1000 });
+const dev = env.APP_ENV === "development";
+const smtp = smtpMailer(env.SMTP_URL, env.MAIL_FROM);
+const app = createApp({
+  db,
+  storage,
+  mailer: dev ? loggingMailer(smtp) : smtp,
+  secureCookie: !dev,
+  workerToken: env.WORKER_TOKEN,
+  jobLeaseMs: env.JOB_LEASE_SECONDS * 1000,
+});
 
 serve({ fetch: app.fetch, port: env.PORT }, ({ port }) => console.log(`api listening on :${port}`));

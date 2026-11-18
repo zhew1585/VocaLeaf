@@ -9,6 +9,11 @@ const EnvSchema = z.object({
   S3_ACCESS_KEY_ID: z.string().min(1),
   S3_SECRET_ACCESS_KEY: z.string().min(1),
   WORKER_TOKEN: z.string().min(16),
+  // development: login codes also go to the log and the session cookie works over plain http.
+  APP_ENV: z.enum(["development", "production"]).default("production"),
+  // Where login codes are sent: a nodemailer SMTP URL, e.g. smtp://mailpit:1025 or smtps://user:pass@smtp.example.com:465.
+  SMTP_URL: z.string().min(1),
+  MAIL_FROM: z.string().min(1),
   // Technical config: how long a worker holds a claimed job before it may be claimed again.
   JOB_LEASE_SECONDS: z.coerce.number().int().positive().default(600),
 });

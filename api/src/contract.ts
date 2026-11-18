@@ -22,6 +22,27 @@ export const VOICES = ["us_female", "us_male", "uk_female", "uk_male"] as const;
 export const VoiceSchema = z.enum(VOICES);
 export const DEFAULT_VOICE = "us_female" satisfies (typeof VOICES)[number];
 
+// ---- Login (PRD 4.1.1, F1) ----
+
+/** Login code length, and how long after one code another may be sent (AC-AUTH-04). */
+export const LOGIN_CODE_LENGTH = 6;
+export const LOGIN_CODE_RESEND_SECONDS = 60;
+
+/** An email as typed; compared and stored trimmed and lower-cased. */
+export const EmailSchema = z.string().trim().toLowerCase().pipe(z.email());
+
+export const RequestCodeSchema = z.object({ email: EmailSchema }).openapi("RequestCode");
+
+export const LoginSchema = z
+  .object({ email: EmailSchema, code: z.string().regex(new RegExp(`^\\d{${LOGIN_CODE_LENGTH}}$`)) })
+  .openapi("Login");
+
+export const CodeSentSchema = z
+  .object({ /** When the client may offer to send another code. */ resendAfterSeconds: z.int().positive() })
+  .openapi("CodeSent");
+
+export const UserSchema = z.object({ id: z.uuid(), email: z.string() }).openapi("User");
+
 export const BookSchema = z
   .object({
     id: z.uuid(),
@@ -201,4 +222,6 @@ export type ClaimedParseJob = z.infer<typeof ClaimedParseJobSchema>;
 export type ClaimedRenderJob = z.infer<typeof ClaimedRenderJobSchema>;
 export type RenderReport = z.infer<typeof RenderReportSchema>;
 export type ParseResult = z.input<typeof ParseResultSchema>;
+export type User = z.infer<typeof UserSchema>;
+export type CodeSent = z.infer<typeof CodeSentSchema>;
 export type ApiError = z.infer<typeof ErrorSchema>;

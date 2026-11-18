@@ -65,6 +65,20 @@ export const CircleAlertIcon = ({ size = 12 }) => (
   </Icon>
 );
 
+export const MailIcon = ({ size = 18 }) => (
+  <Icon size={size}>
+    <path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7" />
+    <rect x="2" y="4" width="20" height="16" rx="2" />
+  </Icon>
+);
+
+export const LockIcon = ({ size = 13 }) => (
+  <Icon size={size}>
+    <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+  </Icon>
+);
+
 // Solid play / pause from the design's player (white on the green button), not Lucide outlines.
 function SolidIcon({ size, d, className }: { size: number; d: string; className?: string }) {
   return (

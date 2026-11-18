@@ -12,7 +12,8 @@ export const MIGRATIONS_FOLDER = new URL("../../drizzle", import.meta.url).pathn
 
 /** Connects to Postgres and applies pending migrations. */
 export async function connectDb(url: string): Promise<Db> {
-  const db = drizzle(postgres(url), { schema });
+  // Notices are only migrations saying "already exists, skipping"; they would clutter the API log and scripts.
+  const db = drizzle(postgres(url, { onnotice: () => {} }), { schema });
   await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
   return db;
 }

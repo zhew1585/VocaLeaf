@@ -22,11 +22,58 @@ export const voice = pgEnum("voice", VOICES);
 export const jobType = pgEnum("job_type", ["parse", "render_chapter"]);
 export const jobStatus = pgEnum("job_status", ["queued", "running", "succeeded", "failed"]);
 
+/** Invited emails (PRD 4.1.1): only these may ask for a login code. Managed by scripts/allowlist.ts. */
+export const allowlist = pgTable("allowlist", {
+  // Always stored trimmed and lower-cased, as EmailSchema (contract.ts) reads it.
+  email: text("email").primaryKey(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** An account, created on its first successful login (PRD 4.1.1). */
+export const users = pgTable("users", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  email: text("email").notNull().unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** The one outstanding login code of an email; a new code replaces it. */
+export const loginCodes = pgTable("login_codes", {
+  email: text("email").primaryKey(),
+  // SHA-256 of the six digits; the code itself is only ever in the email (and the development log).
+  codeHash: text("code_hash").notNull(),
+  sentAt: timestamp("sent_at", { withTimezone: true }).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  // Wrong guesses so far; the code is dropped once they reach the limit (auth/login.ts).
+  failedAttempts: integer("failed_attempts").notNull().default(0),
+});
+
+/** A logged-in device. Lives until that device logs out (PRD 4.1.1); one user may have many. */
+export const sessions = pgTable("sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  // SHA-256 of the token in the session cookie, so a database leak does not leak live sessions.
+  tokenHash: text("token_hash").notNull().unique(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Audit log (PRD 4.6.2): operator, time, action, target and result of each audited operation. */
+export const auditLog = pgTable("audit_log", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  actor: text("actor").notNull(),
+  action: text("action").notNull(),
+  target: text("target").notNull(),
+  result: text("result").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const books = pgTable("books", {
   id: uuid("id").primaryKey(),
   source: text("source", { enum: ["upload"] }).notNull().default("upload"),
-  // No users table yet: login and accounts arrive with #6, which adds the foreign key.
-  ownerId: uuid("owner_id").notNull(),
+  ownerId: uuid("owner_id")
+    .notNull()
+    .references(() => users.id),
   title: text("title").notNull(),
   author: text("author"),
   format: text("format", { enum: ["epub"] }).notNull().default("epub"),

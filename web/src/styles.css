@@ -40,6 +40,10 @@ button {
 .brand {
   max-width: 1200px;
   margin: 0 auto 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 .brand-name {
@@ -388,5 +392,228 @@ button {
 
   .chapters {
     padding-top: 16px;
+  }
+}
+
+/* App header account entry; 退出登录 moves to the settings page (F15) once it exists. */
+.account {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.account-email {
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-button {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.text-button:hover:not(:disabled) {
+  color: var(--leaf);
+}
+
+.text-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.app-error {
+  padding: 48px 16px;
+  text-align: center;
+}
+
+/* 02-1 login: art panel left, form panel right (desktop 1440 × 900); the art panel drops on narrow screens. */
+.login {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: var(--paper);
+}
+
+.login-art {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 14px;
+  padding: 56px;
+  background-size: cover;
+  background-position: center;
+  position: relative;
+  isolation: isolate;
+}
+
+/* Gradient over the painting so the quote reads: clear down to 35%, then ink at 80% at the bottom. */
+.login-art::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, rgb(28 33 29 / 0) 35%, rgb(28 33 29 / 0.8) 100%);
+}
+
+.login-quote {
+  margin: 0;
+  font-family: var(--font-read);
+  font-size: 30px;
+  font-style: italic;
+  line-height: 1.35;
+  color: var(--surface);
+}
+
+.login-quote-source {
+  margin: 0;
+  font-family: var(--font-read);
+  font-size: 15px;
+  color: rgb(255 253 248 / 0.7);
+}
+
+.login-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 40px 16px;
+}
+
+/* Top spacer of the design, so the column sits centered between it and the footnote. */
+.login-panel::before {
+  content: "";
+  height: 40px;
+}
+
+.login-column {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.login-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.login-logo {
+  display: block;
+  border-radius: 17px;
+}
+
+.login-name {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.login-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.login-tagline {
+  margin: 0;
+  font-size: 16px;
+  color: var(--ink-2);
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.login-field {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 18px;
+  background: var(--surface);
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  color: var(--ink-3);
+  cursor: text;
+}
+
+.login-field:focus-within {
+  border-color: var(--leaf);
+}
+
+.login-field input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: none;
+  background: none;
+  color: var(--ink);
+  font-family: var(--font-num);
+  font-size: 16px;
+}
+
+.login-field input::placeholder {
+  font-family: var(--font-ui);
+  color: var(--ink-3);
+}
+
+.login-field input[name="code"] {
+  letter-spacing: 0.3em;
+}
+
+.login-field input[name="code"]:placeholder-shown {
+  letter-spacing: normal;
+}
+
+.login-resend {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--leaf);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.login-resend:disabled {
+  color: var(--ink-3);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+}
+
+.login-note {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+@media (max-width: 900px) {
+  .login {
+    grid-template-columns: 1fr;
+  }
+
+  .login-art {
+    display: none;
   }
 }

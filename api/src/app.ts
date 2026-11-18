@@ -1,5 +1,8 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
+import type { Mailer } from "./auth/mailer.js";
+import { authRoutes } from "./auth/routes.js";
+import { requireSession } from "./auth/session.js";
 import { audioRoutes } from "./books/audio-routes.js";
 import { bookRoutes } from "./books/routes.js";
 import type { Db } from "./db/client.js";
@@ -11,17 +14,26 @@ export interface AppDeps {
   storage: ObjectStorage;
   /** Shared secret the worker presents as a bearer token on /internal routes. */
   workerToken: string;
+  /** Sends login codes by email. */
+  mailer: Mailer;
+  /** Whether the session cookie is Secure (HTTPS only); false only in development over plain http. */
+  secureCookie: boolean;
   /** How long a claimed job stays with its worker before another worker may claim it. */
   jobLeaseMs: number;
-  /** Current time; injectable so tests can expire leases without waiting. */
+  /** Current time; injectable so tests can expire leases and login codes without waiting. */
   now?: () => Date;
 }
 
-/** Builds the HTTP app. Every route lives under /api; the OpenAPI document is /api/openapi.json. */
+/**
+ * Builds the HTTP app. Every route lives under /api; the OpenAPI document is /api/openapi.json.
+ * Every route needs a session except login, health, the document and the worker's /internal routes.
+ */
 export function createApp(deps: AppDeps) {
   const app = new OpenAPIHono().basePath("/api");
   app.openAPIRegistry.registerComponent("securitySchemes", "workerToken", { type: "http", scheme: "bearer" });
+  app.use("*", requireSession(deps.db));
   app.get("/health", (c) => c.json({ ok: true }));
+  app.route("/", authRoutes(deps));
   app.route("/", bookRoutes(deps));
   app.route("/", audioRoutes(deps));
   app.route("/", jobRoutes(deps));

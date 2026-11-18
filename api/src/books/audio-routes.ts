@@ -2,9 +2,9 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import type { AppDeps } from "../app.js";
+import type { UserEnv } from "../auth/session.js";
 import { ErrorSchema } from "../contract.js";
 import { audioSegments, chapters } from "../db/schema.js";
-import { currentUser, type UserEnv } from "../dev-identity.js";
 import { validationHook } from "../validation.js";
 import { notFound, ownBook } from "./own-book.js";
 import { loadTimeline, toM3u8 } from "./timeline.js";
@@ -34,10 +34,9 @@ const segmentRoute = createRoute({
   },
 });
 
-/** Playlist and segment routes; both check that the Book belongs to the current user. */
+/** Playlist and segment routes, behind the session like every user route; both check that the Book belongs to the current user. */
 export function audioRoutes({ db, storage }: AppDeps) {
   const app = new OpenAPIHono<UserEnv>({ defaultHook: validationHook });
-  app.use("/books/*", currentUser);
 
   app.openapi(playlistRoute, async (c) => {
     const { id } = c.req.valid("param");

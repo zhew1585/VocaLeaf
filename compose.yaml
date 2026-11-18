@@ -1,7 +1,8 @@
 # Self-contained development stack (ADR 0003): `docker compose up`, then open http://localhost:8080.
 # Images come from public.ecr.aws (Docker official image mirror) and ghcr.io, so no Docker Hub access is needed.
 # Every external dependency is reached through environment variables only; to use Cloudflare R2,
-# point the S3_* values at R2 and drop the `storage` service.
+# point the S3_* values at R2 and drop the `storage` service; to send real email, point SMTP_URL at an SMTP
+# service and drop the `mailpit` service.
 name: vocaleaf
 
 x-s3: &s3
@@ -48,16 +49,30 @@ services:
       DATABASE_URL: postgres://vocaleaf:vocaleaf@postgres:5432/vocaleaf
       # How long a worker holds a claimed job before another worker may take it over.
       JOB_LEASE_SECONDS: ${JOB_LEASE_SECONDS:-600}
+      # development: login codes are also written to the API log, and the session cookie works over plain http.
+      # Set production for any deployment behind HTTPS.
+      APP_ENV: ${APP_ENV:-development}
+      # Login code email (ADR 0003). Mailpit catches everything locally; its inbox is http://localhost:8025.
+      SMTP_URL: ${SMTP_URL:-smtp://mailpit:1025}
+      MAIL_FROM: "${MAIL_FROM:-拾页 <login@vocaleaf.local>}"
     depends_on:
       postgres: { condition: service_healthy }
       storage: { condition: service_started }
+      mailpit: { condition: service_started }
     restart: on-failure
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
       interval: 2s
       timeout: 3s
       retries: 30
-    networks: [db, storage, app]
+    networks: [db, storage, app, mail]
+
+  # Catches every email the API sends (login codes) and shows it at http://localhost:8025; nothing leaves the machine.
+  mailpit:
+    image: ghcr.io/axllent/mailpit:v1.33.0
+    ports:
+      - "${MAILPIT_PORT:-8025}:8025"
+    networks: [mail]
 
   # Stateless: pulls jobs from the API, reads originals from and writes audio to storage; no database settings.
   worker:
@@ -102,6 +117,7 @@ networks:
   db: { internal: true }
   storage: {}
   app: {}
+  mail: {}
 
 volumes:
   pgdata: {}
