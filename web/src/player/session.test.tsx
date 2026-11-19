@@ -79,7 +79,7 @@ describe("the listening session", () => {
     act(() => s().toggle());
 
     expect(listeningCalls(fetchMock).map(([url, init]) => [url, init.method, JSON.parse(init.body as string)])).toEqual([
-      ["/api/books/b1/listening", "PUT", { positionMs: 12345 }],
+      ["/api/books/b1/listening", "PUT", { positionMs: 12346 }],
       ["/api/books/b1/listening", "PUT", { positionMs: 20000 }],
     ]);
   });
@@ -321,7 +321,7 @@ describe("syncing listening progress (PRD 4.4.1 进度同步, #10)", () => {
     expect(reported(fetchMock)).toEqual([]);
   });
 
-  it("syncs when the page is hidden or left, with a request that outlives the page", () => {
+  it("syncs when the page is hidden or left, with a request that outlives the page, once per position", () => {
     const fetchMock = serve();
     const s = session();
     act(() => s().open("b1"));
@@ -338,9 +338,8 @@ describe("syncing listening progress (PRD 4.4.1 进度同步, #10)", () => {
     });
 
     const calls = listeningCalls(fetchMock as never);
-    expect(calls).toHaveLength(2);
-    expect(calls.every(([, init]) => init.keepalive === true)).toBe(true);
-    expect(reported(fetchMock)[0]).toEqual(["/api/books/b1/listening", 42000]);
+    expect(calls.map(([, init]) => init.keepalive)).toEqual([true]);
+    expect(reported(fetchMock)).toEqual([["/api/books/b1/listening", 42000]]);
     Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
   });
 
@@ -357,11 +356,8 @@ describe("syncing listening progress (PRD 4.4.1 进度同步, #10)", () => {
     });
     expect(reported(fetchMock)).toEqual([]);
 
-    // A drag while paused is progress of this device's own: it is synced.
+    // A drag while paused is progress of this device's own: it is synced at once, and only once.
     act(() => s().seek(400));
-    act(() => {
-      window.dispatchEvent(new Event("pagehide"));
-    });
     act(() => {
       window.dispatchEvent(new Event("pagehide"));
     });
@@ -382,6 +378,86 @@ describe("syncing listening progress (PRD 4.4.1 进度同步, #10)", () => {
     expect(s()).toMatchObject({ bookId: "b2", playing: false });
   });
 
+  it("sends a paused position again at the next chance when its sync failed", async () => {
+    let down = true;
+    const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
+      if (url.endsWith("/listening") && down) throw new TypeError("offline");
+      return url.endsWith("/listening") ? new Response(null, { status: 204 }) : Response.json({ sentenceStartsMs: [], chapters: [], complete: true });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const s = session();
+    act(() => s().open("b1"));
+    audioWithGenerated(900);
+    act(() => s().seek(400));
+    await act(async () => {});
+    down = false;
+
+    act(() => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+
+    expect(reported(fetchMock as never)).toEqual([
+      ["/api/books/b1/listening", 400000],
+      ["/api/books/b1/listening", 400000],
+    ]);
+  });
+
+  describe("back on the page, paused", () => {
+    const starts = [0, 300_000, 612_500, 900_000];
+    const withListening = (startMs: number) => ({
+      id: "b1",
+      listening: { sentenceId: "s", chapterTitle: "Chapter 1", share: 0.5, startMs, listenedAt: "2026-11-18T00:00:00.000Z" },
+    });
+    const show = async () => {
+      Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+    };
+
+    /** A session paused at 5:00 as resumed from the API, with the other device now at `otherMs`. */
+    async function pausedAt300(otherMs: number) {
+      const fetchMock = serve((url) =>
+        url === "/api/books/b1" ? Response.json(withListening(otherMs)) : Response.json({ sentenceStartsMs: starts, chapters: [], complete: true }),
+      );
+      const s = session();
+      act(() => s().open("b1"));
+      act(() => s().requestStart({ id: "resume", seconds: 300, autoplay: false }));
+      const media = audioWithGenerated(1_200);
+      await act(async () => {}); // the timeline loads
+      return { s, fetchMock, ...media };
+    }
+
+    it("moves to the Sentence another device synced meanwhile, staying paused", async () => {
+      const { seeks } = await pausedAt300(900_000);
+
+      await show();
+
+      expect(seeks).toEqual([300, 900]);
+      expect(media.play).not.toHaveBeenCalled();
+    });
+
+    it("stays where it is when the API holds the same Sentence", async () => {
+      const { seeks } = await pausedAt300(300_000);
+      await show();
+      expect(seeks).toEqual([300]);
+    });
+
+    it("keeps a position this device moved and has not synced yet", async () => {
+      const { s, seeks, fetchMock } = await pausedAt300(900_000);
+      // The drag's sync is still on its way.
+      fetchMock.mockImplementation(async (url: string) =>
+        url.endsWith("/listening") ? new Promise<Response>(() => {}) : Response.json(withListening(900_000)),
+      );
+      act(() => s().seek(400));
+
+      await show();
+
+      expect(seeks.at(-1)).toBe(400);
+    });
+  });
+
   describe("after a reload", () => {
     const book = (rest: object = {}) => ({
       id: "b1",
@@ -394,7 +470,7 @@ describe("syncing listening progress (PRD 4.4.1 进度同步, #10)", () => {
 
     it("restores this device's session, paused at the last synced Sentence", async () => {
       localStorage.setItem("vocaleaf:listening-book", "b1");
-      const fetchMock = serve((url) => (url === "/api/books/b1" ? Response.json(book()) : Response.json({})));
+      const fetchMock = serve((url) => (url === "/api/books/b1" ? Response.json(book()) : Response.json({ sentenceStartsMs: [], chapters: [], complete: true })));
       const s = session();
       await vi.waitFor(() => expect(s().bookId).toBe("b1"));
 
@@ -422,7 +498,7 @@ describe("syncing listening progress (PRD 4.4.1 进度同步, #10)", () => {
     it("forgets a Book that is gone, and leaves a Book opened meanwhile alone", async () => {
       localStorage.setItem("vocaleaf:listening-book", "b1");
       serve((url) =>
-        url === "/api/books/b1" ? Response.json({ error: { code: "not_found", message: "没有这本书" } }, { status: 404 }) : Response.json({}),
+        url === "/api/books/b1" ? Response.json({ error: { code: "not_found", message: "没有这本书" } }, { status: 404 }) : Response.json({ sentenceStartsMs: [], chapters: [], complete: true }),
       );
       const s = session();
       await vi.waitFor(() => expect(localStorage.getItem("vocaleaf:listening-book")).toBeNull());

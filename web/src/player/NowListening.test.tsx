@@ -60,7 +60,13 @@ function serve(book: () => BookDetail = () => pride) {
     }
     if (url === "/api/books/b1") return Response.json(book());
     if (url.endsWith("/listening") || url === "/api/auth/logout") return new Response(null, { status: 204 });
-    if (url.endsWith("/timeline")) return Response.json({ sentenceStartsMs: [], chapters: [], complete: true });
+    if (url.endsWith("/timeline")) {
+      const chapters = [
+        { id: "c1", startMs: 0, endMs: 600_000 },
+        { id: "c2", startMs: 600_000, endMs: 1_200_000 },
+      ];
+      return Response.json({ sentenceStartsMs: [0, 612_500, 900_000], chapters, complete: true });
+    }
     return Response.json([]);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -127,8 +133,8 @@ describe("the sidebar's 当前收听 entry", () => {
     expect(hlsInstances).toHaveLength(1);
   });
 
-  it("forgets the session on logging out, so the next login starts without one", async () => {
-    serve();
+  it("syncs, then forgets the session on logging out, so the next login starts without one (G16)", async () => {
+    const fetchMock = serve();
     await listenThenGoBack();
     await entry();
 
@@ -136,6 +142,11 @@ describe("the sidebar's 当前收听 entry", () => {
     await screen.findByRole("button", { name: "发送验证码" });
 
     expect(localStorage.getItem("vocaleaf:listening-book")).toBeNull();
+    // Synced while the login still holds.
+    const calls = fetchMock.mock.calls.map(([url, init]) => `${url} ${init?.body ?? ""}`);
+    const synced = calls.indexOf('/api/books/b1/listening {"positionMs":612000}');
+    expect(synced).toBeGreaterThan(-1);
+    expect(synced).toBeLessThan(calls.indexOf("/api/auth/logout "));
   });
 });
 
