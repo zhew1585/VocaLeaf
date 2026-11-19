@@ -61,6 +61,8 @@ function postExplain(app: TestApp, sentenceId: string, body: ExplainRequest) {
 async function events(res: Response): Promise<ExplainEvent[]> {
   expect(res.status).toBe(200);
   expect(res.headers.get("Content-Type")).toContain("application/x-ndjson");
+  // Streamed through the web's nginx as it is generated.
+  expect(res.headers.get("X-Accel-Buffering")).toBe("no");
   const text = await res.text();
   return text
     .split("\n")

@@ -383,6 +383,52 @@
   color: var(--ink);
 }
 
+/* The Sentence 句子精读 is about (PRD 4.4.5 当前选中): a thin green frame on a light ground. */
+.sentence.is-selected {
+  padding: 2px 0;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--leaf);
+  cursor: default;
+}
+
+.sentence.is-selected.is-playing {
+  background: var(--leaf-soft);
+}
+
+.sentence:not(.is-selected) {
+  cursor: pointer;
+}
+
+.reading-paragraph {
+  position: relative;
+}
+
+/* 【从这里播放】 outside the selected Sentence's frame, centred on its lines (top set from its measured place). */
+.play-from-here {
+  position: absolute;
+  left: calc(100% + 4px);
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+
+.play-from-here-dot {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  padding-left: 1px;
+  display: grid;
+  place-items: center;
+  background: var(--leaf);
+  color: var(--surface);
+}
+
 .reading-placeholder {
   margin: 0 12px;
 }

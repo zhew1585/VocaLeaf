@@ -49,7 +49,7 @@ export function useChapterSentences(wanted: ChapterSummary[]): ReadonlyMap<strin
       getChapterSentences(chapter.id)
         .then((rows) => {
           if (latest.current.get(chapter.id) !== request) return;
-          const sentences = rows.map(({ id, paragraphIndex, text, startMs }) => ({ id, paragraphIndex, text, startMs }));
+          const sentences = rows.map(({ id, paragraphIndex, text, startMs, endMs }) => ({ id, paragraphIndex, text, startMs, endMs }));
           setLoaded((prev) => new Map(prev).set(chapter.id, { version, sentences }));
         })
         .catch((err: unknown) => {

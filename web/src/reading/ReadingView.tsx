@@ -12,6 +12,7 @@ import {
   type Ref,
 } from "react";
 import type { BookDetail, ChapterSummary } from "../api";
+import { PlaySolidIcon } from "../icons";
 import { currentSentenceId, paragraphs, type ReadingSentence } from "./timeline";
 import { useChapterSentences } from "./useChapterSentences";
 
@@ -34,6 +35,14 @@ export interface ReadingViewHandle {
   followPlayback(): void;
   /** Scrolls to a Chapter's start without playing it (a Skipped Chapter), leaving playback unfollowed. */
   showChapter(chapterId: string): void;
+  /** 【定位原文】: scrolls the Sentence into view without touching playback, leaving playback unfollowed. */
+  showSentence(chapterId: string, sentenceId: string): void;
+}
+
+/** The Sentence selected for 句子精读 and the Chapter it is in. */
+export interface SelectedSentence {
+  id: string;
+  chapterId: string;
 }
 
 interface Props {
@@ -46,6 +55,13 @@ interface Props {
   onToggleDirectory(): void;
   /** The floating player and its notices, at the bottom of the reading area. */
   dock: ReactNode;
+  selected: SelectedSentence | null;
+  /** A click on a Sentence (PRD 4.4.5 点击规则). */
+  onSelect(sentence: ReadingSentence, chapterId: string): void;
+  /** A click on the text's blank space. */
+  onDeselect(): void;
+  /** 【从这里播放】 beside the selected Sentence; null when it cannot play from here. */
+  onPlayFrom: ((sentence: ReadingSentence) => void) | null;
   ref?: Ref<ReadingViewHandle>;
 }
 
@@ -98,13 +114,28 @@ function keepInView(container: HTMLElement, target: Element, isSection: boolean)
  * while it is being read. Only Chapters near the reading position (and the playing one) are rendered; the rest
  * keep their height as placeholders, and the reading position is kept when heights change above it.
  */
-export function ReadingView({ book, positionMs, playingChapterId, columnWidth, directoryOpen, onToggleDirectory, dock, ref }: Props) {
+export function ReadingView({
+  book,
+  positionMs,
+  playingChapterId,
+  columnWidth,
+  directoryOpen,
+  onToggleDirectory,
+  dock,
+  selected,
+  onSelect,
+  onDeselect,
+  onPlayFrom,
+  ref,
+}: Props) {
   const container = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const [readingIndex, setReadingIndex] = useState(0);
   const [intoChapter, setIntoChapter] = useState(false);
   const [following, setFollowing] = useState(true);
   const heights = useRef(new Map<string, number>());
+  // A Sentence 【定位原文】 asked for whose Chapter is not rendered yet; shown once it is.
+  const revealing = useRef<string | null>(null);
   const anchor = useRef<{ el: Element; top: number } | null>(null);
 
   const { chapters } = book;
@@ -171,6 +202,15 @@ export function ReadingView({ book, positionMs, playingChapterId, columnWidth, d
     else if (section) keepInView(el, section, true);
   }, [followed, current, playingChapterId, sentences]);
 
+  // Shows the Sentence 【定位原文】 asked for once its Chapter has rendered.
+  useEffect(() => {
+    const id = revealing.current;
+    const target = id ? container.current!.querySelector(`[data-sentence-id="${id}"]`) : null;
+    if (!target) return;
+    revealing.current = null;
+    keepInView(container.current!, target, false);
+  }, [sentences]);
+
   useImperativeHandle(
     ref,
     () => ({
@@ -179,6 +219,16 @@ export function ReadingView({ book, positionMs, playingChapterId, columnWidth, d
         setFollowing(false);
         const section = container.current!.querySelector<HTMLElement>(`[data-chapter-id="${chapterId}"]`);
         if (section) container.current!.scrollTo({ top: section.offsetTop, behavior: "auto" });
+      },
+      showSentence: (chapterId, sentenceId) => {
+        setFollowing(false);
+        const el = container.current!;
+        const target = el.querySelector(`[data-sentence-id="${sentenceId}"]`);
+        if (target) return keepInView(el, target, false);
+        // Bring its Chapter near the reading position first; the effect above finishes once it rendered.
+        revealing.current = sentenceId;
+        const section = el.querySelector<HTMLElement>(`[data-chapter-id="${chapterId}"]`);
+        if (section) el.scrollTo({ top: section.offsetTop, behavior: "auto" });
       },
     }),
     [],
@@ -189,12 +239,24 @@ export function ReadingView({ book, positionMs, playingChapterId, columnWidth, d
     heights.current.get(`${columnWidth}:${c.id}`) ?? c.sentenceCount * SENTENCE_ESTIMATE_PX;
   const inWindow = new Set(wanted.map((c) => c.id));
 
+  /** A click on a Sentence selects it; one on blank text deselects. Selecting text or pressing a button is neither. */
+  const onClick = (e: React.MouseEvent) => {
+    const target = e.target as Element;
+    if (target.closest("button") || window.getSelection()?.toString()) return;
+    const span = target.closest<HTMLElement>("[data-sentence-id]");
+    if (!span) return onDeselect();
+    const chapterId = span.closest<HTMLElement>("[data-chapter-id]")!.dataset.chapterId!;
+    const sentence = sentences.get(chapterId)?.find((s) => s.id === span.dataset.sentenceId);
+    if (sentence) onSelect(sentence, chapterId);
+  };
+
   return (
     <div className="reading" style={{ "--column": `${columnWidth}px` } as React.CSSProperties}>
       <div
         ref={container}
         className="reading-scroll"
         onScroll={onScroll}
+        onClick={onClick}
         onWheel={stopFollowing}
         onTouchMove={stopFollowing}
         // A key the player shortcuts took (Space plays or pauses) does not scroll.
@@ -212,6 +274,8 @@ export function ReadingView({ book, positionMs, playingChapterId, columnWidth, d
               sentences={inWindow.has(c.id) ? sentences.get(c.id) : undefined}
               placeholderHeight={placeholderHeight(c)}
               currentSentenceId={c.id === playingChapterId ? current : null}
+              selectedSentenceId={c.id === selected?.chapterId ? selected.id : null}
+              onPlayFrom={c.id === selected?.chapterId ? onPlayFrom : null}
               faded={i === readingIndex && intoChapter}
               directoryOpen={directoryOpen}
               onToggleDirectory={onToggleDirectory}
@@ -237,6 +301,8 @@ interface SectionProps {
   sentences: ReadingSentence[] | undefined;
   placeholderHeight: number;
   currentSentenceId: string | null;
+  selectedSentenceId: string | null;
+  onPlayFrom: ((sentence: ReadingSentence) => void) | null;
   /** The text under the sticky title fades out once the Chapter is scrolled into (not at its start). */
   faded: boolean;
   directoryOpen: boolean;
@@ -249,6 +315,8 @@ const ChapterSection = memo(function ChapterSection({
   sentences,
   placeholderHeight,
   currentSentenceId,
+  selectedSentenceId,
+  onPlayFrom,
   faded,
   directoryOpen,
   onToggleDirectory,
@@ -284,13 +352,19 @@ const ChapterSection = memo(function ChapterSection({
                 {i > 0 && " "}
                 <span
                   data-sentence-id={s.id}
-                  className={s.id === currentSentenceId ? "sentence is-playing" : "sentence"}
+                  className={sentenceClass(s.id === currentSentenceId, s.id === selectedSentenceId)}
                   aria-current={s.id === currentSentenceId ? "true" : undefined}
                 >
                   {s.text}
                 </span>
               </Fragment>
             ))}
+            {onPlayFrom &&
+              para.map(
+                (s) =>
+                  s.id === selectedSentenceId &&
+                  s.startMs !== null && <PlayFromHere key="play-from" sentenceId={s.id} onPlay={() => onPlayFrom(s)} />,
+              )}
           </p>
         ))
       ) : (
@@ -299,3 +373,38 @@ const ChapterSection = memo(function ChapterSection({
     </section>
   );
 });
+
+function sentenceClass(playing: boolean, selected: boolean): string {
+  return ["sentence", playing && "is-playing", selected && "is-selected"].filter(Boolean).join(" ");
+}
+
+/**
+ * 【从这里播放】 outside the selected Sentence's frame on the right, centred on the Sentence's lines (design 01,
+ * 原文选中框). Placed by measuring the Sentence within its paragraph, again whenever the paragraph reflows.
+ */
+function PlayFromHere({ sentenceId, onPlay }: { sentenceId: string; onPlay(): void }) {
+  const button = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    const el = button.current!;
+    const paragraph = el.parentElement!;
+    const place = () => {
+      const span = paragraph.querySelector(`[data-sentence-id="${sentenceId}"]`);
+      if (!span) return;
+      const box = paragraph.getBoundingClientRect();
+      const rect = span.getBoundingClientRect();
+      el.style.top = `${(rect.top + rect.bottom) / 2 - box.top}px`;
+    };
+    place();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(place);
+    observer.observe(paragraph);
+    return () => observer.disconnect();
+  }, [sentenceId]);
+  return (
+    <button ref={button} type="button" className="play-from-here" aria-label="从这里播放" title="从这里播放" onClick={onPlay}>
+      <span className="play-from-here-dot">
+        <PlaySolidIcon size={16} />
+      </span>
+    </button>
+  );
+}

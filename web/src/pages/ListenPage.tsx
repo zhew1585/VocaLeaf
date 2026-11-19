@@ -7,8 +7,8 @@ import { useListening } from "../player/session";
 import { useShortcuts } from "../player/shortcuts";
 import { BackToShelf, ChapterDirectory } from "../reading/ChapterDirectory";
 import { ReadingView, type ReadingViewHandle } from "../reading/ReadingView";
-import { SentencePanel, SentencePanelToggle } from "../reading/SentencePanel";
-import { columnWidth, playingChapterId } from "../reading/timeline";
+import { SentencePanel, SentencePanelToggle, type AuditionControl, type MarkToggle } from "../reading/SentencePanel";
+import { columnWidth, playingChapterId, type ReadingSentence } from "../reading/timeline";
 import "../reading/focus.css";
 import { useBook } from "../useBook";
 import { usePlaylist } from "./usePlaylist";
@@ -75,6 +75,17 @@ function wideWindow(): boolean {
  * The Chapter playback waits for once it catches up with the generated audio: the last one in the playlist
  * while it is still generating, otherwise the next one with a wait estimate.
  */
+/** The Sentence selected for 句子精读 (PRD 4.4.5 当前选中) and its Chapter. */
+type Selected = ReadingSentence & { chapterId: string };
+
+/**
+ * The 叶片 toggle of 句子精读. Marks come with #13: wire its Mark state and toggle for the Sentence here. Until
+ * then there is none, and the leaf shows disabled.
+ */
+function useMarkToggle(_sentence: Selected | null): MarkToggle | null {
+  return null;
+}
+
 function nextToGenerate(book: BookDetail): Pick<ChapterSummary, "waitSeconds"> {
   const last = book.chapters.findLast((c) => c.startMs !== null);
   if (last && (last.audioStatus === "pending" || last.audioStatus === "generating")) return last;
@@ -88,6 +99,8 @@ function nextToGenerate(book: BookDetail): Pick<ChapterSummary, "waitSeconds"> {
  * until then it waits and checks again. Picking a Chapter (here or in the Chapter list) plays it from its
  * start; one not generated yet says how long that takes and starts by itself once it is (PRD 4.3.4,
  * AC-BOOK-03). Playback that catches up with the generated audio waits the same way and goes on by itself.
+ * Clicking a Sentence selects it and opens 句子精读 on it (AC-READ-15); clicking blank text or Esc deselects.
+ * Cards (#15) will open their floating card instead for Sentences that have one.
  */
 export function ListenPage({ id }: { id: string }) {
   const listening = useListening();
@@ -100,8 +113,23 @@ export function ListenPage({ id }: { id: string }) {
   const playlist = usePlaylist(book, here ? { seconds: listening.position, playing: listening.playing } : { seconds: 0, playing: false });
   const [directoryOpen, setDirectoryOpen] = useState(wideWindow);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [selected, setSelected] = useState<Selected | null>(null);
   const reading = useRef<ReadingViewHandle>(null);
-  useShortcuts(here ? { toggle: listening.toggle, replay: listening.replay, next: listening.next } : null);
+  const mark = useMarkToggle(selected);
+  const { stopAudition } = listening;
+  // Selecting another Sentence, deselecting or closing the panel stops a 试听 (PRD 4.4.1 试听 #5).
+  const select = (sentence: ReadingSentence, chapterId: string) => {
+    if (selected?.id !== sentence.id) stopAudition();
+    setSelected({ ...sentence, chapterId });
+    setPanelOpen(true);
+  };
+  const deselect = () => {
+    stopAudition();
+    setSelected(null);
+  };
+  useShortcuts(
+    here ? { toggle: listening.toggle, replay: listening.replay, next: listening.next, escape: deselect } : null,
+  );
   // Stable, so the reading view's memoized Chapters do not render again on every time update.
   const toggleDirectory = useCallback(() => setDirectoryOpen((o) => !o), []);
 
@@ -152,6 +180,16 @@ export function ListenPage({ id }: { id: string }) {
   const notice = targetPending ? waitMessage(target) : waitingForAudio ? waitMessage(nextToGenerate(book)) : null;
   const width = columnWidth({ directory: directoryOpen, sentencePanel: panelOpen });
 
+  const playFrom =
+    here && playable ? (sentence: ReadingSentence) => sentence.startMs !== null && listening.playFrom(sentence.startMs / 1000) : null;
+  const audition: AuditionControl | null =
+    here && selected && selected.startMs !== null && selected.endMs !== null
+      ? {
+          state: listening.audition?.sentenceId !== selected.id ? "idle" : listening.audition.loading ? "loading" : "playing",
+          play: () => listening.startAudition({ id: selected.id, startMs: selected.startMs!, endMs: selected.endMs! }),
+        }
+      : null;
+
   const onPick = (chapter: ChapterSummary) => {
     reading.current?.showChapter(chapter.id);
     if (isPlayableChapter(chapter)) chapterPick.pick(chapter.id);
@@ -200,10 +238,25 @@ export function ListenPage({ id }: { id: string }) {
           directoryOpen={directoryOpen}
           onToggleDirectory={toggleDirectory}
           dock={dock}
+          selected={selected}
+          onSelect={select}
+          onDeselect={deselect}
+          onPlayFrom={playFrom}
         />
         {!panelOpen && <SentencePanelToggle onOpen={() => setPanelOpen(true)} />}
       </main>
-      {panelOpen && <SentencePanel onClose={() => setPanelOpen(false)} />}
+      {panelOpen && (
+        <SentencePanel
+          sentence={selected}
+          onClose={() => {
+            stopAudition();
+            setPanelOpen(false);
+          }}
+          onLocate={() => selected && reading.current?.showSentence(selected.chapterId, selected.id)}
+          audition={audition}
+          mark={mark}
+        />
+      )}
     </div>
   );
 }

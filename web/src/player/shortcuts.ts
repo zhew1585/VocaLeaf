@@ -10,6 +10,8 @@ export interface ShortcutHandlers {
   next(): void;
   /** M; marking comes with #13, until then the key does nothing. */
   mark?(): void;
+  /** Esc: closes the topmost layer; on the 专注页 that deselects the selected Sentence (PRD 4.4.1). */
+  escape?(): void;
 }
 
 /** Where keys are typing (追问, 搜索, 验证码 and any other field): every shortcut is off there (AC-PLAY-18). */
@@ -28,10 +30,11 @@ const KEYS: Record<string, { action: Action; repeats: boolean }> = {
   ArrowRight: { action: "next", repeats: true },
   m: { action: "mark", repeats: false },
   M: { action: "mark", repeats: false },
+  Escape: { action: "escape", repeats: false },
 };
 
 /**
- * Desktop keys of the 专注页 while it is mounted: Space, ←, → and M. Keys held with a modifier, or typed into a
+ * Desktop keys of the 专注页 while it is mounted: Space, ←, →, M and Esc. Keys held with a modifier, or typed into a
  * field, are left alone, and so is every key while `handlers` is null (the page's Book is not the one playing).
  * Listens before the page's own handlers, so Space plays or pauses instead of scrolling the text or pressing the
  * focused button.

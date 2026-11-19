@@ -202,7 +202,8 @@ export function explanationRoutes({ db, ai, now = () => new Date() }: AppDeps) {
     c.req.raw.signal.addEventListener("abort", () => stop.abort(), { once: true });
     return new Response(stream, {
       status: 200,
-      headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" },
+      // nginx (web/nginx.conf) would otherwise hold the answer back until it is complete.
+      headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store", "X-Accel-Buffering": "no" },
     }) as never;
   });
 

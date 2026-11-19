@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { BOOK_DELETED_EVENT, saveListening } from "../api";
+import { useAudition, type AuditionSentence, type AuditionState } from "./audition";
 import { useHls } from "./hls";
 import { playableLength, useStartRequest, useWaitingForAudio, type StartRequest } from "./playback";
 import { useSleepTimer, type SleepChoice, type SleepTimer } from "./sleep";
@@ -14,7 +15,7 @@ import { useSentenceJumps } from "./useSentenceJumps";
  * player and the reading view read and steer it. Where playback is goes to the API when it starts and pauses, so
  * the Shelf can order Books and resume them (#7); the other sync moments and the sidebar entry come with #10.
  * It ends when its Book is deleted (#8). The speed and the sleep timer belong to the session, not the Book, so
- * they hold across Books (PRD 4.4.1, G9).
+ * they hold across Books (PRD 4.4.1, G9). A 试听 of one Sentence plays beside it on a second element (audition.ts).
  */
 export interface Listening {
   /** The Book whose audio is loaded, or null before any 专注页 opened one. */
@@ -48,6 +49,14 @@ export interface Listening {
   next(): void;
   /** Moves to a dragged position (PRD 4.4.1 进度拖动), not snapped to a Sentence start, keeping play or pause. */
   seek(seconds: number): void;
+  /** 【从这里播放】 (AC-PLAY-15): plays from `seconds` (a Sentence's start), playing even when paused; ends any 试听. */
+  playFrom(seconds: number): void;
+  /** The 试听 playing or loading, or null. */
+  audition: AuditionState | null;
+  /** 【试听本句】: plays only this Sentence (again from its start when it is already playing). */
+  startAudition(sentence: AuditionSentence): void;
+  /** Stops a 试听 without letting an interrupted main playback go on (another Sentence selected, panel closed). */
+  stopAudition(): void;
   setSpeed(speed: Speed): void;
   setSleep(choice: SleepChoice | null): void;
   /**
@@ -124,6 +133,16 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     sleep.jumped(seconds * 1000);
   };
   const starter = useStartRequest(audio, start.request, start.onSettled, (el) => play(el, true), landed);
+  const audition = useAudition({
+    main: audio,
+    src: bookId === null ? null : playlistUrl(bookId),
+    sentenceStartsMs: () => timeline.timeline?.sentenceStartsMs ?? [],
+    resumeMain: (el, seconds) => {
+      el.currentTime = seconds;
+      landed(seconds);
+      play(el);
+    },
+  });
   const waiting = useWaitingForAudio(audio, setWaitingForAudio);
 
   const sync = () => {
@@ -135,6 +154,7 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
 
   /** A fresh audio element: paused, nothing waited for. */
   const fresh = () => {
+    audition.stop();
     setPlaying(false);
     setNeedsTap(false);
     setError(null);
@@ -198,6 +218,8 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
   };
 
   const toggle = () => {
+    // Space or 暂停 during a 试听 stops it; the main playback stays paused (AC-PLAY-14).
+    if (audition.active) return audition.stop();
     const el = audio.current!;
     starter.drop();
     offline.forget();
@@ -206,22 +228,25 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
   };
 
   const seeks = useRef(0);
-  const seek = (seconds: number) => {
+  /** Moves to `seconds`, then plays when `autoplay`, otherwise keeps playing or paused. */
+  const moveTo = (seconds: number, autoplay: boolean) => {
     const el = audio.current;
     if (!el || openBookId.current === null) return;
     starter.drop();
+    audition.stop();
     if (seconds < playableLength(el) - GENERATED_EDGE_SECONDS) {
       el.currentTime = seconds;
       landed(seconds);
       // Show the new place at once rather than the old one until the next time update.
       setPosition(seconds);
+      if (autoplay && el.paused) play(el);
       return;
     }
     // Not generated yet: wait there (PRD 4.3.4), playing on once it is if it was playing.
     const wasPlaying = !el.paused;
     setSeekPending(true);
     setStart({
-      request: { id: `seek#${++seeks.current}`, seconds, autoplay: wasPlaying },
+      request: { id: `seek#${++seeks.current}`, seconds, autoplay: autoplay || wasPlaying },
       onSettled: () => setSeekPending(false),
     });
     if (wasPlaying) el.pause();
@@ -243,9 +268,19 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     open,
     reload,
     toggle,
-    replay: jumps.replay,
-    next: jumps.next,
-    seek,
+    replay: () => {
+      audition.stop();
+      jumps.replay();
+    },
+    next: () => {
+      audition.stop();
+      jumps.next();
+    },
+    seek: (seconds) => moveTo(seconds, false),
+    playFrom: (seconds) => moveTo(seconds, true),
+    audition: audition.state,
+    startAudition: audition.start,
+    stopAudition: audition.stop,
     setSpeed,
     setSleep: sleep.set,
     requestStart,
@@ -277,6 +312,7 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
         }}
         onProgress={sync}
       />
+      <audio ref={audition.element} preload="none" {...audition.events} />
       {children}
     </ListeningContext.Provider>
   );

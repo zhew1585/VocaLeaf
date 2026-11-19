@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { getMe, logOut, UNAUTHORIZED_EVENT, type User } from "./api";
+import { resetSentenceChats } from "./reading/chatStore";
 import logoUrl from "./assets/logo.webp";
 import { LibraryIcon } from "./icons";
 import { BookPage } from "./pages/BookPage";
@@ -35,6 +36,11 @@ function useSession() {
     };
   }, []);
   const setUser = (user: User | null) => setSession({ state: "ready", user });
+  // Explanations are private to a user: none stay in memory for whoever logs in next on this device.
+  const loggedOut = session.state === "ready" && session.user === null;
+  useEffect(() => {
+    if (loggedOut) resetSentenceChats();
+  }, [loggedOut]);
   return { session, setUser };
 }
 

@@ -213,3 +213,64 @@ export const MoonIcon = ({ size = 18 }) => (
     <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
   </Icon>
 );
+
+export const Volume2Icon = ({ size = 18 }) => (
+  <Icon size={size}>
+    <path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z" />
+    <path d="M16 9a5 5 0 0 1 0 6" />
+    <path d="M19.364 18.364a9 9 0 0 0 0-12.728" />
+  </Icon>
+);
+
+export const LocateIcon = ({ size = 18 }) => (
+  <Icon size={size}>
+    <line x1="2" x2="5" y1="12" y2="12" />
+    <line x1="19" x2="22" y1="12" y2="12" />
+    <line x1="12" x2="12" y1="2" y2="5" />
+    <line x1="12" x2="12" y1="19" y2="22" />
+    <circle cx="12" cy="12" r="7" />
+  </Icon>
+);
+
+export const LeafIcon = ({ size = 18 }) => (
+  <Icon size={size}>
+    <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
+    <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
+  </Icon>
+);
+
+export const SparklesIcon = ({ size = 14 }) => (
+  <Icon size={size}>
+    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+    <path d="M20 3v4" />
+    <path d="M22 5h-4" />
+    <path d="M4 17v2" />
+    <path d="M5 18H3" />
+  </Icon>
+);
+
+export const ArrowUpIcon = ({ size = 20 }) => (
+  <Icon size={size}>
+    <path d="m5 12 7-7 7 7" />
+    <path d="M12 19V5" />
+  </Icon>
+);
+
+export const ArrowDownIcon = ({ size = 14 }) => (
+  <Icon size={size}>
+    <path d="M12 5v14" />
+    <path d="m19 12-7 7-7-7" />
+  </Icon>
+);
+
+export const ChevronDownIcon = ({ size = 14 }) => (
+  <Icon size={size}>
+    <path d="m6 9 6 6 6-6" />
+  </Icon>
+);
+
+export const ChevronUpIcon = ({ size = 14 }) => (
+  <Icon size={size}>
+    <path d="m18 15-6-6-6 6" />
+  </Icon>
+);
