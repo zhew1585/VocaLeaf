@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
+import { and, eq, isNull } from "drizzle-orm";
 import type { AppDeps } from "../app.js";
 import {
   CodeSentSchema,
@@ -8,6 +9,7 @@ import {
   RequestCodeSchema,
   UserSchema,
 } from "../contract.js";
+import { users } from "../db/schema.js";
 import { validationHook } from "../validation.js";
 import { issueCode, logIn } from "./login.js";
 import { endSession, renewSessionCookie, sessionUser, setSessionCookie, unauthenticated, type UserEnv } from "./session.js";
@@ -56,9 +58,16 @@ const meRoute = createRoute({
   responses: { 200: json(UserSchema, "Current user"), 401: json(ErrorSchema, "Not logged in") },
 });
 
+const playGuideRoute = createRoute({
+  method: "put",
+  path: "/me/play-guide",
+  summary: "Records that the user saw the first-play guide (F2, AC-GUIDE-02), so it does not show on their next play",
+  responses: { 204: { description: "Recorded" } },
+});
+
 const badCode = { error: { code: "invalid_code", message: "验证码错误或已过期" } } as const;
 
-/** Login, logout and the current user. */
+/** Login, logout, the current user and what the app remembers about them. */
 export function authRoutes({ db, mailer, secureCookie, now = () => new Date() }: AppDeps) {
   const app = new OpenAPIHono<UserEnv>({ defaultHook: validationHook });
 
@@ -101,6 +110,15 @@ export function authRoutes({ db, mailer, secureCookie, now = () => new Date() }:
     if (!user) return c.json(unauthenticated, 401);
     renewSessionCookie(c, secureCookie);
     return c.json(user, 200);
+  });
+
+  app.openapi(playGuideRoute, async (c) => {
+    // The first time counts; reopening the guide later (settings, #18) changes nothing.
+    await db
+      .update(users)
+      .set({ playGuideSeenAt: now() })
+      .where(and(eq(users.id, c.get("userId")), isNull(users.playGuideSeenAt)));
+    return c.body(null, 204);
   });
 
   return app;

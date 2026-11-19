@@ -26,7 +26,7 @@ export async function loadProgress(db: Db, bookIds: string[]): Promise<Map<strin
 }
 
 /** The cover route of a Book whose EPUB had a cover (books/shelf-routes.ts). */
-function coverUrl(row: BookRow): string | null {
+export function coverUrl(row: Pick<BookRow, "id" | "coverType">): string | null {
   return row.coverType ? `/api/books/${row.id}/cover` : null;
 }
 
@@ -40,6 +40,7 @@ export function toBook(
     id: row.id,
     title: row.title,
     author: row.author,
+    source: row.source,
     status: row.status,
     playable: timeline ? hasAudio(timeline) : false,
     failureReason: row.failureReason,

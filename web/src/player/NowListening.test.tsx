@@ -38,6 +38,7 @@ const chapter = (id: string, index: number, startMs: number): BookDetail["chapte
 const pride: BookDetail = {
   id: "b1",
   title: "Pride and Prejudice",
+  source: "upload",
   author: "Jane Austen",
   status: "ready",
   playable: true,
@@ -53,7 +54,7 @@ const pride: BookDetail = {
 /** The app's API: the user, the Shelf, Book b1 as `book()` answers, progress reports. Returns the fetch mock. */
 function serve(book: () => BookDetail = () => pride) {
   const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
-    if (url === "/api/me") return Response.json({ id: "u1", email: "allen@vocaleaf.app" });
+    if (url === "/api/me") return Response.json({ id: "u1", email: "allen@vocaleaf.app", playGuideSeen: true });
     if (url === "/api/books") {
       const { chapters: _c, durationMs: _d, ...shelfBook } = book();
       return Response.json([shelfBook satisfies Book]);

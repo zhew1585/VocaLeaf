@@ -4,6 +4,7 @@ import { isPlayableChapter, waitMessage } from "../chapters";
 import type { StartRequest } from "../player/playback";
 import { Player } from "../player/Player";
 import { useListening } from "../player/session";
+import { usePlayGuide } from "../guide/PlayGuide";
 import { useShortcuts } from "../player/shortcuts";
 import { BackToShelf, ChapterDirectory } from "../reading/ChapterDirectory";
 import { ReadingView, type ReadingViewHandle } from "../reading/ReadingView";
@@ -20,14 +21,15 @@ function dropEntryParams() {
 
 /**
  * Where the 专注页 starts a Book the session does not hold yet: at the start of the Sentence the user last listened
- * to on any device (AC-SHELF-04, AC-PLAY-05, the Book's beginning if none), playing when opened from the Shelf
- * (`?autoplay`, shelfListenPath), paused otherwise (a reload). Only once. A Book the session already holds plays on
- * where it is, unless it is paused and opened from the Shelf: it then resumes like a Book not held, since another
- * device may have listened on since.
+ * to on any device (AC-SHELF-04, AC-PLAY-05, the Book's beginning if none), playing when opened from the Shelf or
+ * the 书库 (`?autoplay`, shelfListenPath) or by the first-play guide's 【开始听】, paused otherwise (a reload). Only
+ * once. A Book the session already holds plays on where it is, unless it is paused and opened from the Shelf: it
+ * then resumes like a Book not held, since another device may have listened on since.
  */
-function useResume(here: boolean, playing: boolean) {
-  const [autoplay] = useState(() => new URLSearchParams(window.location.search).has("autoplay"));
-  const [done, setDone] = useState(here && (playing || !autoplay));
+function useResume(here: boolean, playing: boolean, startedFromGuide: boolean) {
+  const [fromShelf] = useState(() => new URLSearchParams(window.location.search).has("autoplay"));
+  const autoplay = fromShelf || startedFromGuide;
+  const [done, setDone] = useState(here && (playing || !fromShelf));
   // Paused at the beginning is where a fresh player is anyway.
   const request = (book: BookDetail | null): StartRequest | null =>
     done || !book || (!autoplay && !book.listening)
@@ -66,6 +68,30 @@ function usePickedChapter() {
   return { picked, pick, settle, find };
 }
 
+/**
+ * The first-play guide (F2, AC-GUIDE-02): before the user's first play ever, the 专注页 shows it once its Book can
+ * play, and holds playback back until 【开始听】, which starts it. `passed` is true when there is nothing to hold.
+ */
+function useFirstPlayGuide(playable: boolean) {
+  const { seen, show, hide, showing } = usePlayGuide();
+  // Whether this page holds playback for the guide; its 【开始听】 then starts playback.
+  const [held] = useState(!seen);
+  const [passed, setPassed] = useState(!held);
+  const waiting = useRef(false);
+  waiting.current = held && !passed;
+  useEffect(() => {
+    if (playable && !passed && !showing) show(() => setPassed(true));
+  }, [playable, passed, showing, show]);
+  // Leaving the page before 【开始听】 takes the guide along; it shows again on the next first play.
+  useEffect(
+    () => () => {
+      if (waiting.current) hide();
+    },
+    [hide],
+  );
+  return { passed, startedFromGuide: held && passed, showing };
+}
+
 /** Below this width the side panels lie over the text, so the directory starts collapsed (G8). */
 const WIDE_WINDOW = "(min-width: 901px)";
 
@@ -95,7 +121,6 @@ export function ListenPage({ id }: { id: string }) {
   const listening = useListening();
   const here = listening.bookId === id;
   const chapterPick = usePickedChapter();
-  const resume = useResume(here, listening.playing);
   // Playback waits for audio still to generate: it caught up with it, or the bar was dragged past it.
   const waitingForAudio = here && (listening.waitingForAudio || listening.seekPending);
   const { book, error } = useBook(id, { eager: chapterPick.picked !== null || waitingForAudio });
@@ -103,11 +128,15 @@ export function ListenPage({ id }: { id: string }) {
   const [directoryOpen, setDirectoryOpen] = useState(wideWindow);
   const [panelOpen, setPanelOpen] = useState(false);
   const reading = useRef<ReadingViewHandle>(null);
-  useShortcuts(here ? { toggle: listening.toggle, replay: listening.replay, next: listening.next } : null);
+  const playable = book?.playable ?? false;
+  const guide = useFirstPlayGuide(playable);
+  const resume = useResume(here, listening.playing, guide.startedFromGuide);
+  useShortcuts(
+    here && !guide.showing ? { toggle: listening.toggle, replay: listening.replay, next: listening.next } : null,
+  );
   // Stable, so the reading view's memoized Chapters do not render again on every time update.
   const toggleDirectory = useCallback(() => setDirectoryOpen((o) => !o), []);
 
-  const playable = book?.playable ?? false;
   const { open, reload, requestStart } = listening;
   useEffect(() => {
     if (playable) open(id);
@@ -120,13 +149,15 @@ export function ListenPage({ id }: { id: string }) {
   const found = chapterPick.find(book);
   const target = found?.chapter;
   const targetPending = target !== undefined && target.startMs === null;
-  const startAt: StartRequest | null = found
+  const requested: StartRequest | null = found
     ? {
         id: `${found.chapter.id}#${found.n}`,
         seconds: found.chapter.startMs === null ? null : found.chapter.startMs / 1000,
         autoplay: true,
       }
     : (resume.request(book) ?? playlist.resume);
+  // Nothing starts before the first-play guide is passed.
+  const startAt = guide.passed ? requested : null;
   // Asked in the same commit as open (above), which drops any request of the Book opened before.
   useEffect(() => {
     if (!playable) return;

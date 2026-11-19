@@ -1,13 +1,26 @@
 // Typed calls to the VocaLeaf API. Types come straight from the API's zod contract (ADR 0002).
 // The session is an HttpOnly cookie the browser sends by itself (same origin), so no call handles a token.
-import type { ApiError, Book, BookDetail, BookTimeline, CodeSent, Sentence, UploadPolicy, User } from "@vocaleaf/api/contract";
+import type {
+  ApiError,
+  Book,
+  BookDetail,
+  BookTimeline,
+  CodeSent,
+  LibraryBook,
+  Sentence,
+  UploadPolicy,
+  User,
+} from "@vocaleaf/api/contract";
 
 export type {
   Book,
   BookDetail,
+  BookSource,
   BookStatus,
   BookTimeline,
   ChapterSummary,
+  Difficulty,
+  LibraryBook,
   Listening,
   Sentence,
   UploadPolicy,
@@ -17,7 +30,10 @@ export type {
 /** Fired on window whenever the API answers 401: the session ended, so the app shows the login page. */
 export const UNAUTHORIZED_EVENT = "vocaleaf:unauthorized";
 
-/** Fired on window once a Book is deleted, with its id as the CustomEvent's detail, so whatever holds it lets go. */
+/**
+ * Fired on window once a Book is deleted or a Library Book is taken off the Shelf, with its id as the CustomEvent's
+ * detail, so whatever holds it lets go.
+ */
 export const BOOK_DELETED_EVENT = "vocaleaf:book-deleted";
 
 export class ApiRequestError extends Error {
@@ -173,4 +189,28 @@ export async function deleteBook(id: string): Promise<void> {
     if (!(err instanceof ApiRequestError && err.status === 404)) throw err;
   }
   window.dispatchEvent(new CustomEvent(BOOK_DELETED_EVENT, { detail: id }));
+}
+
+/** Library Books ready to play, by difficulty and then title, each saying whether it is on the user's Shelf. */
+export function getLibrary(): Promise<LibraryBook[]> {
+  return request<LibraryBook[]>("/library");
+}
+
+/** Puts a Library Book on the user's Shelf; one already there keeps its progress. */
+export async function addToShelf(id: string): Promise<void> {
+  await send(`/books/${id}/shelf`, { method: "PUT" });
+}
+
+/**
+ * Takes a Library Book off the user's Shelf with their progress (PRD 4.2.3), then fires BOOK_DELETED_EVENT so the
+ * listening session lets go of it.
+ */
+export async function removeFromShelf(id: string): Promise<void> {
+  await send(`/books/${id}/shelf`, { method: "DELETE" });
+  window.dispatchEvent(new CustomEvent(BOOK_DELETED_EVENT, { detail: id }));
+}
+
+/** Records that the user saw the first-play guide, so it does not show on their next play (AC-GUIDE-02). */
+export async function markPlayGuideSeen(): Promise<void> {
+  await send("/me/play-guide", { method: "PUT" });
 }

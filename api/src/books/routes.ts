@@ -6,7 +6,7 @@ import { BookDetailSchema, ErrorSchema, SentenceSchema } from "../contract.js";
 import { books, chapters, sentences } from "../db/schema.js";
 import { retryFailedChapter } from "../jobs/lifecycle.js";
 import { validationHook } from "../validation.js";
-import { notFound, ownBook } from "./own-book.js";
+import { notFound, readableBook, readableBy } from "./readable-book.js";
 import { loadListening } from "./shelf.js";
 import { chapterStartMs, estimateDurationMs, loadTimeline } from "./timeline.js";
 import { progressOf, toBook } from "./view.js";
@@ -56,7 +56,7 @@ export function bookRoutes({ db }: AppDeps) {
 
   app.openapi(getRoute, async (c) => {
     const { id } = c.req.valid("param");
-    const book = await ownBook(db, id, c.get("userId"));
+    const book = await readableBook(db, id, c.get("userId"));
     if (!book) return c.json(notFound, 404);
 
     const rows = await db
@@ -101,6 +101,7 @@ export function bookRoutes({ db }: AppDeps) {
         .select({ id: chapters.id })
         .from(chapters)
         .innerJoin(books, eq(books.id, chapters.bookId))
+        // Only the uploader retries; a Library Book's generation is the operators' job (PRD 6.2).
         .where(and(eq(chapters.id, id), eq(books.ownerId, c.get("userId"))));
       if (!chapter) return "not_found";
       return (await retryFailedChapter(tx, id)) ? "retried" : "not_failed";
@@ -118,7 +119,7 @@ export function bookRoutes({ db }: AppDeps) {
       .select({ id: chapters.id, bookId: chapters.bookId })
       .from(chapters)
       .innerJoin(books, eq(books.id, chapters.bookId))
-      .where(and(eq(chapters.id, id), eq(books.ownerId, c.get("userId"))));
+      .where(and(eq(chapters.id, id), readableBy(c.get("userId"))));
     if (!chapter) return c.json(notFound, 404);
 
     const rows = await db
