@@ -15,11 +15,20 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
-import { AUDIO_STATUSES, BOOK_STATUSES, DEFAULT_VOICE, VOICES, type WordTiming } from "../contract.js";
+import {
+  AUDIO_STATUSES,
+  BOOK_SOURCES,
+  BOOK_STATUSES,
+  DEFAULT_VOICE,
+  DIFFICULTIES,
+  VOICES,
+  type WordTiming,
+} from "../contract.js";
 
 export const bookStatus = pgEnum("book_status", BOOK_STATUSES);
 export const audioStatus = pgEnum("audio_status", AUDIO_STATUSES);
 export const voice = pgEnum("voice", VOICES);
+export const difficulty = pgEnum("difficulty", DIFFICULTIES);
 export const jobType = pgEnum("job_type", ["parse", "render_chapter"]);
 export const jobStatus = pgEnum("job_status", ["queued", "running", "succeeded", "failed"]);
 
@@ -36,6 +45,8 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   // The UPLOAD_DECLARATION version (contract.ts) the user last confirmed; null before their first upload.
   uploadDeclarationVersion: text("upload_declaration_version"),
+  // When the user closed the first-play guide (F2, AC-GUIDE-02); null until then, so it shows on their first play.
+  playGuideSeenAt: timestamp("play_guide_seen_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -71,26 +82,41 @@ export const auditLog = pgTable("audit_log", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const books = pgTable("books", {
-  id: uuid("id").primaryKey(),
-  source: text("source", { enum: ["upload"] }).notNull().default("upload"),
-  ownerId: uuid("owner_id")
-    .notNull()
-    .references(() => users.id),
-  title: text("title").notNull(),
-  author: text("author"),
-  format: text("format", { enum: ["epub"] }).notNull().default("epub"),
-  fileSize: integer("file_size").notNull(),
-  status: bookStatus("status").notNull().default("parsing"),
-  // Fixed to the default until Voice selection (#19).
-  voice: voice("voice").notNull().default(DEFAULT_VOICE),
-  parserVersion: text("parser_version"),
-  // User-facing reason shown with parse_failed (PRD 4.3.5 #4 to #6, #10).
-  failureReason: text("failure_reason"),
-  // Content type of the cover image at coverKey(id) (storage.ts); null when the EPUB has none.
-  coverType: text("cover_type"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const books = pgTable(
+  "books",
+  {
+    id: uuid("id").primaryKey(),
+    // upload: one user's own Book, never shared. library: a Library Book whose text and audio every user shares (PRD 4.2.2).
+    source: text("source", { enum: BOOK_SOURCES }).notNull().default("upload"),
+    // The uploader; null for a Library Book.
+    ownerId: uuid("owner_id").references(() => users.id),
+    title: text("title").notNull(),
+    author: text("author"),
+    format: text("format", { enum: ["epub"] }).notNull().default("epub"),
+    fileSize: integer("file_size").notNull(),
+    status: bookStatus("status").notNull().default("parsing"),
+    // Fixed to the default until Voice selection (#19).
+    voice: voice("voice").notNull().default(DEFAULT_VOICE),
+    parserVersion: text("parser_version"),
+    // User-facing reason shown with parse_failed (PRD 4.3.5 #4 to #6, #10).
+    failureReason: text("failure_reason"),
+    // Content type of the cover image at coverKey(id) (storage.ts); null when the EPUB has none.
+    coverType: text("cover_type"),
+    // Library Books only (PRD 4.2.2): the Standard Ebooks identifier it was ingested from (library/catalog.ts),
+    // its difficulty group and the one-line blurb the 书库 shows.
+    libraryKey: text("library_key").unique(),
+    difficulty: difficulty("difficulty"),
+    blurb: text("blurb"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  // An uploaded Book always has its uploader; a Library Book belongs to no one and always has its catalog entry.
+  (t) => [
+    check(
+      "books_owner_matches_source",
+      sql`(${t.source} = 'upload' and ${t.ownerId} is not null) or (${t.source} = 'library' and ${t.ownerId} is null and ${t.libraryKey} is not null and ${t.difficulty} is not null)`,
+    ),
+  ],
+);
 
 export const chapters = pgTable(
   "chapters",
@@ -178,7 +204,7 @@ export const audioSegments = pgTable(
 );
 
 /**
- * A user's Shelf (PRD 4.2.3): the Books they uploaded (and, with #12, added from the Library), with where they
+ * A user's Shelf (PRD 4.2.3): the Books they uploaded and the Library Books they added, with where they
  * are in each. Listening progress is per user even for a shared Book, so it lives here, not on the Book.
  */
 export const shelfEntries = pgTable(

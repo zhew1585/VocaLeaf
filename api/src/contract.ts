@@ -22,6 +22,17 @@ export const VOICES = ["us_female", "us_male", "uk_female", "uk_male"] as const;
 export const VoiceSchema = z.enum(VOICES);
 export const DEFAULT_VOICE = "us_female" satisfies (typeof VOICES)[number];
 
+/**
+ * Where a Book comes from (PRD 4.2.1): uploaded by one user, or the Library, whose text and audio all users share.
+ * A Library Book keeps its Voice and its Skipped Chapters (AC-LIB-03), so the detail page hides those controls.
+ */
+export const BOOK_SOURCES = ["upload", "library"] as const;
+export const BookSourceSchema = z.enum(BOOK_SOURCES);
+
+/** The Library's difficulty groups (PRD 4.2.2) in display order: 入门, 中级, 进阶. Also the database enum. */
+export const DIFFICULTIES = ["beginner", "intermediate", "advanced"] as const;
+export const DifficultySchema = z.enum(DIFFICULTIES);
+
 // ---- Login (PRD 4.1.1, F1) ----
 
 /** Login code length, and how long after one code another may be sent (AC-AUTH-04). */
@@ -41,7 +52,14 @@ export const CodeSentSchema = z
   .object({ /** When the client may offer to send another code. */ resendAfterSeconds: z.int().positive() })
   .openapi("CodeSent");
 
-export const UserSchema = z.object({ id: z.uuid(), email: z.string() }).openapi("User");
+export const UserSchema = z
+  .object({
+    id: z.uuid(),
+    email: z.string(),
+    /** Whether the user already saw the first-play guide (F2, AC-GUIDE-02); it shows on their first play until then. */
+    playGuideSeen: z.boolean(),
+  })
+  .openapi("User");
 
 // ---- Upload (PRD 4.1.2, 4.3.2, 4.7.2) ----
 
@@ -108,6 +126,8 @@ export const BookSchema = z
     id: z.uuid(),
     title: z.string(),
     author: z.string().nullable(),
+    /** library: a shared Library Book, which can only be removed from the Shelf and never changes Voice or Skipped. */
+    source: BookSourceSchema,
     status: BookStatusSchema,
     /**
      * Whether the Book's audio can be played (PRD 4.3.3 invariant 3): the playlist has at least one segment.
@@ -155,6 +175,21 @@ export const ChapterSummarySchema = z
     waitSeconds: z.int().positive().nullable(),
   })
   .openapi("ChapterSummary");
+
+/** A Book in the 书库 (F6, PRD 4.2.2). Only Library Books whose audio is fully generated are listed. */
+export const LibraryBookSchema = z
+  .object({
+    id: z.uuid(),
+    title: z.string(),
+    author: z.string().nullable(),
+    difficulty: DifficultySchema,
+    /** One line about the Book and its English (简介). */
+    blurb: z.string(),
+    coverUrl: z.string().nullable(),
+    /** On the user's Shelf already: 【已在书架】 and 【继续收听】 instead of 【加入书架并播放】 (AC-LIB-02). */
+    onShelf: z.boolean(),
+  })
+  .openapi("LibraryBook");
 
 export const BookDetailSchema = BookSchema.extend({
   chapters: z.array(ChapterSummarySchema),
@@ -330,6 +365,9 @@ export const JobFailureSchema = z
 export type BookStatus = z.infer<typeof BookStatusSchema>;
 export type AudioStatus = z.infer<typeof AudioStatusSchema>;
 export type Book = z.infer<typeof BookSchema>;
+export type BookSource = z.infer<typeof BookSourceSchema>;
+export type Difficulty = z.infer<typeof DifficultySchema>;
+export type LibraryBook = z.infer<typeof LibraryBookSchema>;
 export type ChapterSummary = z.infer<typeof ChapterSummarySchema>;
 export type BookDetail = z.infer<typeof BookDetailSchema>;
 export type BookTimeline = z.infer<typeof BookTimelineSchema>;

@@ -125,6 +125,32 @@ docker compose run --rm --no-deps -v "$PWD/worker/scripts:/scripts:ro" -v "$PWD/
   worker python /scripts/voice_samples.py /out
 ```
 
+### Library
+
+The 书库 (Library) lists public-domain Books from [Standard Ebooks](https://standardebooks.org) whose audio is generated once with the default Voice and shared by every user (PRD 4.2.2).
+It groups them as 入门, 中级 and 进阶 (beginner, intermediate, advanced), each group by title, and lists a Book only once its audio is fully generated, so 加入书架并播放 (add to Shelf and play) plays at once.
+A Library Book belongs to no user: progress and everything else a user does with it stay theirs, and 移出书架 (remove from Shelf) on its detail page drops only that user's progress (`DELETE /api/books/{id}/shelf`).
+Library Books carry `source: "library"`, so the detail page shows no retry, Voice or Skipped controls for them, and they do not count against the upload quota.
+
+The book list, with each Book's difficulty and blurb, is `api/src/library/catalog.ts`.
+Operators ingest it with a script inside the `api` container, which downloads each EPUB from Standard Ebooks into object storage and queues it for parsing; the worker then parses and narrates it like an upload:
+
+```sh
+docker compose exec api node dist/scripts/library.js ingest                                   # every catalog Book
+docker compose exec api node dist/scripts/library.js ingest jane-austen/pride-and-prejudice   # only these keys
+docker compose exec api node dist/scripts/library.js list                                     # status and n/N per Book
+```
+
+Running `ingest` again is safe: a Book already in the Library is not downloaded again, only its difficulty and blurb follow the catalog.
+A failed download is reported and the other Books go on; the script then exits with status 1.
+Narration runs at about 3.5 times real time on a CPU-only Kokoro, so a whole novel takes hours; `list` shows how far each Book is, and it appears in the 书库 once it is 已就绪 (ready).
+
+### First-play guide
+
+The first time a user plays anything, the 专注页 shows the guide 没听懂？按一下 (标记, 重听, 下一句 and the headphone gestures) and holds playback until they click 开始听, which starts it (PRD F2, AC-GUIDE-02).
+Closing it is recorded on the account (`PUT /api/me/play-guide`, `playGuideSeen` in `GET /api/me`), so it shows once per user, not per device.
+Other pages reopen it with `usePlayGuide().show()` from `web/src/guide/PlayGuide.tsx`.
+
 ### Login
 
 Only invited emails can log in (PRD 4.1.1); there is no password and no sign-up.

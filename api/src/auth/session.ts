@@ -1,7 +1,7 @@
 // Sessions: an opaque random token in an HttpOnly cookie, stored only as its hash. A cookie rather than a bearer
 // header because the browser fetches HLS audio by itself (native HLS on iOS Safari cannot add headers).
 import { createHash, randomBytes } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { createMiddleware } from "hono/factory";
@@ -15,6 +15,13 @@ const COOKIE_MAX_AGE_SECONDS = 400 * 24 * 60 * 60;
 export type UserEnv = { Variables: { userId: string } };
 
 export const unauthenticated = { error: { code: "unauthenticated", message: "请先登录" } } as const;
+
+/** The columns of a user as the API returns them (contract.ts UserSchema). */
+export const userFields = {
+  id: users.id,
+  email: users.email,
+  playGuideSeen: sql<boolean>`${users.playGuideSeenAt} is not null`.mapWith(Boolean),
+};
 
 export function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -32,7 +39,7 @@ export async function sessionUser(db: Db, c: Context) {
   const token = getCookie(c, SESSION_COOKIE);
   if (!token) return undefined;
   const [row] = await db
-    .select({ id: users.id, email: users.email })
+    .select(userFields)
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
     .where(eq(sessions.tokenHash, sha256(token)));

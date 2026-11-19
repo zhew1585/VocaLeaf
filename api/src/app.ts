@@ -5,6 +5,7 @@ import { authRoutes } from "./auth/routes.js";
 import { requireSession } from "./auth/session.js";
 import { audioRoutes } from "./books/audio-routes.js";
 import { deleteBookRoutes } from "./books/delete.js";
+import { libraryRoutes } from "./books/library-routes.js";
 import { bookRoutes } from "./books/routes.js";
 import { bookTimelineRoutes } from "./books/timeline-routes.js";
 import { shelfRoutes } from "./books/shelf-routes.js";
@@ -40,6 +41,7 @@ export function createApp(deps: AppDeps) {
   app.route("/", authRoutes(deps));
   app.route("/", uploadRoutes(deps));
   app.route("/", shelfRoutes(deps));
+  app.route("/", libraryRoutes(deps));
   app.route("/", bookRoutes(deps));
   app.route("/", bookTimelineRoutes(deps));
   app.route("/", deleteBookRoutes(deps));

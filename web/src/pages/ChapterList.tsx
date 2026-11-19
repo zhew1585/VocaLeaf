@@ -73,7 +73,8 @@ export function ChapterList({
 }: {
   bookId: string;
   chapters: ChapterSummary[];
-  onRetried: () => void;
+  /** Offers 重试 on 生成失败 Chapters and reloads the Book after one; left out, nothing can be retried. */
+  onRetried?: () => void;
 }) {
   return (
     <ol className="chapters" aria-label="章节">
@@ -87,7 +88,7 @@ export function ChapterList({
             <span className="chapter-title">{c.title}</span>
           )}
           <ChapterState chapter={c} />
-          {c.audioStatus === "failed" && !c.skipped && <RetryButton chapter={c} onRetried={onRetried} />}
+          {onRetried && c.audioStatus === "failed" && !c.skipped && <RetryButton chapter={c} onRetried={onRetried} />}
         </li>
       ))}
     </ol>

@@ -30,7 +30,9 @@ function GenerationProgress({ progress }: { progress: Book["progress"] }) {
 /**
  * Book detail, design 04-2: the Book's status or generation progress, 开始收听 once it is playable, and its
  * Chapters with their state; a 生成失败 one can be retried. Kept current while the worker parses and generates.
- * 删除这本书 is there in every state, 解析中 and 生成中 included (PRD 4.3.6).
+ * 删除这本书 is there in every state, 解析中 and 生成中 included (PRD 4.3.6); a Library Book has 移出书架 instead.
+ * A Library Book never offers Voice changes or Skipped toggles (AC-LIB-03): those controls (#19, #20) show only
+ * for `source === "upload"`.
  */
 export function BookPage({ id }: { id: string }) {
   const { book, error, reload } = useBook(id);
@@ -78,11 +80,18 @@ export function BookPage({ id }: { id: string }) {
                 开始收听
               </button>
             )}
-            <DeleteBookButton bookId={id} />
+            <DeleteBookButton bookId={id} source={book.source} />
           </>
         )}
       </aside>
-      {book && book.chapters.length > 0 && <ChapterList bookId={id} chapters={book.chapters} onRetried={reload} />}
+      {book && book.chapters.length > 0 && (
+        <ChapterList
+          bookId={id}
+          chapters={book.chapters}
+          // A Library Book's generation is the operators' job (PRD 6.2).
+          onRetried={book.source === "upload" ? reload : undefined}
+        />
+      )}
     </div>
   );
 }

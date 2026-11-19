@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { S3Config } from "./storage.js";
 
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().default(3000),
@@ -27,4 +28,15 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     throw new Error(`Invalid environment:\n${z.prettifyError(parsed.error)}`);
   }
   return parsed.data;
+}
+
+/** The object storage settings (ADR 0003: S3-compatible config only). */
+export function s3Config(env: Env): S3Config {
+  return {
+    endpoint: env.S3_ENDPOINT,
+    region: env.S3_REGION,
+    bucket: env.S3_BUCKET,
+    accessKeyId: env.S3_ACCESS_KEY_ID,
+    secretAccessKey: env.S3_SECRET_ACCESS_KEY,
+  };
 }

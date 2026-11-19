@@ -5,7 +5,7 @@ import type { UserEnv } from "../auth/session.js";
 import { BookSchema, ErrorSchema, ListeningUpdateSchema } from "../contract.js";
 import { coverKey } from "../storage.js";
 import { validationHook } from "../validation.js";
-import { notFound, ownBook } from "./own-book.js";
+import { notFound, readableBook } from "./own-book.js";
 import { loadListening, recordListening, shelfBooks } from "./shelf.js";
 import { loadTimelines } from "./timeline.js";
 import { loadProgress, NO_PROGRESS, toBook } from "./view.js";
@@ -68,7 +68,7 @@ export function shelfRoutes({ db, storage, now = () => new Date() }: AppDeps) {
 
   app.openapi(coverRoute, async (c) => {
     const { id } = c.req.valid("param");
-    const book = await ownBook(db, id, c.get("userId"));
+    const book = await readableBook(db, id, c.get("userId"));
     const bytes = book?.coverType ? await storage.getObject(coverKey(id)) : undefined;
     if (!book?.coverType || !bytes) return c.json(notFound, 404);
     // A Book is parsed once (PRD 4.2.6), so its cover never changes.

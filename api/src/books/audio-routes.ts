@@ -6,7 +6,7 @@ import type { UserEnv } from "../auth/session.js";
 import { ErrorSchema } from "../contract.js";
 import { audioSegments, chapters } from "../db/schema.js";
 import { validationHook } from "../validation.js";
-import { notFound, ownBook } from "./own-book.js";
+import { notFound, readableBook } from "./own-book.js";
 import { loadTimeline, toM3u8 } from "./timeline.js";
 
 const playlistRoute = createRoute({
@@ -34,13 +34,13 @@ const segmentRoute = createRoute({
   },
 });
 
-/** Playlist and segment routes, behind the session like every user route; both check that the Book belongs to the current user. */
+/** Playlist and segment routes, behind the session like every user route; both check that the user may listen to the Book (own-book.ts). */
 export function audioRoutes({ db, storage }: AppDeps) {
   const app = new OpenAPIHono<UserEnv>({ defaultHook: validationHook });
 
   app.openapi(playlistRoute, async (c) => {
     const { id } = c.req.valid("param");
-    if (!(await ownBook(db, id, c.get("userId")))) return c.json(notFound, 404);
+    if (!(await readableBook(db, id, c.get("userId")))) return c.json(notFound, 404);
     const body = toM3u8(await loadTimeline(db, id));
     // Players reload the playlist while the Book is generating, so it must never be cached.
     return c.body(body, 200, { "Content-Type": "application/vnd.apple.mpegurl", "Cache-Control": "no-cache" });
@@ -49,7 +49,7 @@ export function audioRoutes({ db, storage }: AppDeps) {
   app.openapi(segmentRoute, async (c) => {
     const { id, segment: file } = c.req.valid("param");
     const segmentId = file.slice(0, -".ts".length);
-    if (!(await ownBook(db, id, c.get("userId")))) return c.json(notFound, 404);
+    if (!(await readableBook(db, id, c.get("userId")))) return c.json(notFound, 404);
     const [segment] = await db
       .select({ key: audioSegments.key })
       .from(audioSegments)

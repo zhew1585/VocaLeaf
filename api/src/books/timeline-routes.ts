@@ -5,7 +5,7 @@ import type { UserEnv } from "../auth/session.js";
 import { BookTimelineSchema, ErrorSchema, type AudioStatus, type BookTimeline } from "../contract.js";
 import { chapters, sentences } from "../db/schema.js";
 import { validationHook } from "../validation.js";
-import { notFound, ownBook } from "./own-book.js";
+import { notFound, readableBook } from "./own-book.js";
 import { entryEndMs, loadTimeline, type Timeline } from "./timeline.js";
 
 const timelineRoute = createRoute({
@@ -39,7 +39,7 @@ export function bookTimelineRoutes({ db }: AppDeps) {
 
   app.openapi(timelineRoute, async (c) => {
     const { id } = c.req.valid("param");
-    if (!(await ownBook(db, id, c.get("userId")))) return c.json(notFound, 404);
+    if (!(await readableBook(db, id, c.get("userId")))) return c.json(notFound, 404);
 
     const timeline = await loadTimeline(db, id);
     const offsets = new Map(timeline.entries.map((e) => [e.chapterId, e.offsetMs]));

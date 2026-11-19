@@ -1,6 +1,7 @@
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookDetail, Sentence } from "../api";
+import { PlayGuideProvider } from "../guide/PlayGuide";
 import { ListeningProvider } from "../player/session";
 import { audio, audioWithGenerated, grow, hlsInstances, stubMediaPlayback, timeUpdate } from "../test-media";
 import { ListenPage } from "./ListenPage";
@@ -30,6 +31,7 @@ const book: BookDetail = {
   id: "b1",
   title: "Pride and Prejudice",
   author: "Jane Austen",
+  source: "upload",
   status: "generating",
   playable: true,
   failureReason: null,
@@ -105,11 +107,20 @@ function serve(books: BookDetail[], sentences: Record<string, Sentence[]> = {}) 
   return fetchMock;
 }
 
-function renderPage() {
+/** Adds PUT /api/me/play-guide (204) in front of a fetch stand-in. */
+function withGuideRoute(next: (url: string, init?: RequestInit) => Promise<Response>) {
+  return async (url: string, init?: RequestInit) =>
+    url === "/api/me/play-guide" ? new Response(null, { status: 204 }) : next(url, init);
+}
+
+/** The 专注页 as the app holds it; `guideSeen: false` is a user who never played anything yet. */
+function renderPage({ guideSeen = true } = {}) {
   return render(
-    <ListeningProvider>
-      <ListenPage id="b1" />
-    </ListeningProvider>,
+    <PlayGuideProvider seen={guideSeen}>
+      <ListeningProvider>
+        <ListenPage id="b1" />
+      </ListeningProvider>
+    </PlayGuideProvider>,
   );
 }
 
@@ -193,6 +204,57 @@ describe("ListenPage (专注页)", () => {
 
       expect(seeks).toEqual([612.5]);
       expect(media.play).not.toHaveBeenCalled();
+    });
+
+    it("shows the first-play guide before a user's first play, and 【开始听】 starts playback (AC-GUIDE-02)", async () => {
+      window.history.pushState(null, "", "/books/b1/listen?autoplay");
+      const fetchMock = serve([listened]);
+      fetchMock.mockImplementation(withGuideRoute(fetchMock.getMockImplementation()!));
+      renderPage({ guideSeen: false });
+
+      const dialog = await screen.findByRole("dialog", { name: "没听懂？按一下" });
+      const { seeks } = audioWithGenerated(900);
+      // Held back while the guide is up, Space included.
+      expect(media.play).not.toHaveBeenCalled();
+      fireEvent.keyDown(window, { key: " ", code: "Space" });
+      expect(media.play).not.toHaveBeenCalled();
+      // 标记 comes first (PRD F2), then 重听 and 下一句 with their keys.
+      expect(within(dialog).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+        "标记没听懂就按，句子会留到拾起M",
+        "重听回到这句开头再听一遍←",
+        "下一句→",
+        "耳机按两下 下一句 · 按三下 重听（因设备而异）",
+      ]);
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "开始听" }));
+
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(seeks).toEqual([612.5]);
+      expect(media.play).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/me/play-guide", { method: "PUT" }));
+    });
+
+    it("starts playback from the guide even when opened paused (a reload)", async () => {
+      const fetchMock = serve([listened]);
+      fetchMock.mockImplementation(withGuideRoute(fetchMock.getMockImplementation()!));
+      renderPage({ guideSeen: false });
+      fireEvent.click(await screen.findByRole("button", { name: "开始听" }));
+
+      const { seeks } = audioWithGenerated(900);
+
+      expect(seeks).toEqual([612.5]);
+      expect(media.play).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not show the guide again once seen", async () => {
+      window.history.pushState(null, "", "/books/b1/listen?autoplay");
+      serve([listened]);
+      renderPage({ guideSeen: true });
+      await screen.findByRole("button", { name: "播放" });
+      audioWithGenerated(900);
+
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(media.play).toHaveBeenCalledTimes(1);
     });
 
     it("gives way to a Chapter picked to listen to", async () => {

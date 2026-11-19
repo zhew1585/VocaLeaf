@@ -13,7 +13,7 @@ import { useSentenceJumps } from "./useSentenceJumps";
  * above the pages, so leaving the 专注页 (【返回书架】) does not stop it. The 专注页 opens its Book here; the
  * player and the reading view read and steer it. Where playback is goes to the API when it starts and pauses, so
  * the Shelf can order Books and resume them (#7); the other sync moments and the sidebar entry come with #10.
- * It ends when its Book is deleted (#8). The speed and the sleep timer belong to the session, not the Book, so
+ * It ends when its Book is deleted (#8) or, for a Library Book, taken off the Shelf. The speed and the sleep timer belong to the session, not the Book, so
  * they hold across Books (PRD 4.4.1, G9).
  */
 export interface Listening {

@@ -91,6 +91,21 @@ function SolidIcon({ size, d, className }: { size: number; d: string; className?
 /** The triangle sits 1 px right of center to look centered (design note). */
 export const PlaySolidIcon = ({ size = 16 }) => <SolidIcon size={size} d="M6 3l15 9-15 9z" className="play-glyph" />;
 
+/** 继续收听 in the 书库: Lucide play, outlined. */
+export const PlayIcon = ({ size = 12 }) => (
+  <Icon size={size}>
+    <polygon points="6 3 20 12 6 21 6 3" />
+  </Icon>
+);
+
+/** 标记 in the first-play guide: Lucide leaf. */
+export const LeafIcon = ({ size = 26 }) => (
+  <Icon size={size}>
+    <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
+    <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
+  </Icon>
+);
+
 export const PauseSolidIcon = ({ size = 18 }) => <SolidIcon size={size} d="M6 4h4v16h-4z m8 0h4v16h-4z" />;
 
 export const RotateCwIcon = ({ size = 12 }) => (

@@ -9,9 +9,18 @@ import { books, chapters, sentences, shelfEntries } from "../db/schema.js";
 import type { Tx } from "../jobs/lifecycle.js";
 import { estimateDurationMs, loadTimeline, type Timeline } from "./timeline.js";
 
-/** Puts a Book on the user's Shelf. */
-export async function addToShelf(tx: Tx, userId: string, bookId: string, now: Date): Promise<void> {
-  await tx.insert(shelfEntries).values({ userId, bookId, addedAt: now });
+/** Puts a Book on the user's Shelf; one already there stays as it is, with its progress. */
+export async function addToShelf(tx: Db | Tx, userId: string, bookId: string, now: Date): Promise<void> {
+  await tx.insert(shelfEntries).values({ userId, bookId, addedAt: now }).onConflictDoNothing();
+}
+
+/**
+ * Takes a Library Book off the user's Shelf (PRD 4.2.3 移出规则): their progress goes with the Shelf entry, while the
+ * shared text and audio stay for everyone. The user's Marks and Explanations on it go too once they exist; Cards
+ * stay (PRD 4.5.2).
+ */
+export async function removeFromShelf(db: Db, userId: string, bookId: string): Promise<void> {
+  await db.delete(shelfEntries).where(and(eq(shelfEntries.userId, userId), eq(shelfEntries.bookId, bookId)));
 }
 
 /**

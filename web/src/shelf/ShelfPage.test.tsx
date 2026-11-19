@@ -11,6 +11,7 @@ const book = (id: string, rest: Partial<Book> = {}): Book => ({
   id,
   title: `Book ${id}`,
   author: null,
+  source: "upload",
   status: "ready",
   playable: true,
   failureReason: null,
