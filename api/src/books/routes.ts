@@ -87,6 +87,7 @@ export function bookRoutes({ db }: AppDeps) {
     return c.json(
       {
         ...toBook(book, timeline, progressOf(rows), listening),
+        source: book.source,
         chapters: chapterSummaries,
         durationMs: estimateDurationMs(rows.map((r) => ({ ...r, spokenChars: r.spokenChars ?? 0 }))),
       },

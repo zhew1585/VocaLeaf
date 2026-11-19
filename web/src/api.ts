@@ -192,6 +192,18 @@ export async function retryChapter(chapterId: string): Promise<void> {
 }
 
 /**
+ * Sets a Chapter Skipped or narrated (PRD 4.2.5). Narrating one without audio queues its generation; the
+ * playlist changes at once, which the listening session follows once the Book is loaded again.
+ */
+export async function setChapterSkipped(chapterId: string, skipped: boolean): Promise<void> {
+  await send(`/chapters/${chapterId}/skipped`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ skipped }),
+  });
+}
+
+/**
  * Deletes an uploaded Book in any state (PRD 4.3.6), then fires BOOK_DELETED_EVENT. A Book that is already gone
  * (404, deleted on another device) counts as deleted.
  */

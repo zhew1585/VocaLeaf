@@ -14,6 +14,7 @@ const TIMELINE: BookTimeline = {
   sentenceIds: ["s1", "s2", "s3", "s4", "s5"],
   chapters: [{ id: "c1", startMs: 0, endMs: 20000 }],
   complete: true,
+  settled: true,
 };
 /** The Sentence 试听 plays: 12 to 15.7 s of the Book's audio. */
 const FOURTH = { id: "s4", startMs: 12_000, endMs: 15_700 };

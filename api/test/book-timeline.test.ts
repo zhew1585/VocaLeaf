@@ -44,6 +44,7 @@ describe("GET /api/books/:id/timeline", () => {
         { id: two!.id, startMs: 8000, endMs: 20000 },
       ],
       complete: true,
+      settled: true,
     });
   });
 
@@ -97,7 +98,13 @@ describe("GET /api/books/:id/timeline", () => {
   it("is empty while the Book is parsing", async () => {
     const t = await testApp();
     const { id } = await uploadBook(t.app);
-    expect(await timeline(t.app, id)).toEqual({ sentenceStartsMs: [], sentenceIds: [], chapters: [], complete: true });
+    expect(await timeline(t.app, id)).toEqual({
+      sentenceStartsMs: [],
+      sentenceIds: [],
+      chapters: [],
+      complete: true,
+      settled: false,
+    });
   });
 
   it("returns 404 for another user's Book", async () => {

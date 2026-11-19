@@ -46,10 +46,43 @@ export async function onShelf(db: Db, userId: string, bookId: string): Promise<b
   return entry !== undefined;
 }
 
+/** Where playback resumes: a position in the Book's audio (null while it has none there), in a Chapter. */
+interface ResumeAt {
+  startMs: number | null;
+  chapterTitle: string;
+}
+
+/**
+ * Where a Chapter set Skipped resumes (PRD 4.2.5): the start of the next narrated Chapter in the playlist, or null
+ * while there is none yet.
+ */
+async function nextNarratedChapters(
+  db: Db,
+  skippedAt: { bookId: string; chapterIndex: number }[],
+  timelines: Map<string, Timeline>,
+): Promise<Map<string, ResumeAt | null>> {
+  if (skippedAt.length === 0) return new Map();
+  const rows = await db
+    .select({ id: chapters.id, index: chapters.index, title: chapters.title })
+    .from(chapters)
+    .where(inArray(chapters.bookId, skippedAt.map((s) => s.bookId)));
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return new Map(
+    skippedAt.map(({ bookId, chapterIndex }) => {
+      const next = timelines.get(bookId)?.entries.find((e) => {
+        const chapter = byId.get(e.chapterId);
+        return e.segments.length > 0 && chapter !== undefined && chapter.index > chapterIndex;
+      });
+      return [bookId, next ? { startMs: next.offsetMs, chapterTitle: byId.get(next.chapterId)!.title } : null];
+    }),
+  );
+}
+
 /**
  * Where the user is in each of the Books they listened to. `timelines` (of the same Books) place the Sentence in
- * the Book's audio. The share is of the Book's audio up to that Sentence, as the 专注页 shows how much was listened
- * to; while the Sentence has no audio in the playlist, it is the share of the narrated text before it.
+ * the Book's audio; a Sentence of a Chapter set Skipped since resumes at the next narrated Chapter's start. The
+ * share is of the Book's audio up to there, as the 专注页 shows how much was listened to; while that has no audio
+ * in the playlist, it is the share of the narrated text before the Sentence.
  */
 export async function loadListening(
   db: Db,
@@ -69,6 +102,8 @@ export async function loadListening(
       sentenceId: at.id,
       sentenceStartMs: at.startMs,
       chapterId: atChapter.id,
+      chapterIndex: atChapter.index,
+      chapterSkipped: atChapter.skipped,
       chapterTitle: atChapter.title,
       totalChars: sql<number>`coalesce(sum(${chars}), 0)`.mapWith(Number),
       charsBefore: sql<number>`coalesce(sum(${chars}) filter (where ${before}), 0)`.mapWith(Number),
@@ -84,16 +119,25 @@ export async function loadListening(
     .groupBy(shelfEntries.bookId, shelfEntries.lastListenedAt, at.id, atChapter.id);
 
   const durations = await loadDurations(db, rows.map((r) => r.bookId));
+  const skippedResumes = await nextNarratedChapters(db, rows.filter((r) => r.chapterSkipped), timelines);
+  /** The Sentence's own place, while its Chapter is narrated. */
+  const ownPlace = (r: (typeof rows)[number]): ResumeAt => {
+    const entry = timelines.get(r.bookId)?.entries.find((e) => e.chapterId === r.chapterId && e.segments.length > 0);
+    const startMs = entry && r.sentenceStartMs !== null ? entry.offsetMs + r.sentenceStartMs : null;
+    return { startMs, chapterTitle: r.chapterTitle };
+  };
   return new Map(
     rows.map((r) => {
-      const entry = timelines.get(r.bookId)?.entries.find((e) => e.chapterId === r.chapterId && e.segments.length > 0);
-      const startMs = entry && r.sentenceStartMs !== null ? entry.offsetMs + r.sentenceStartMs : null;
+      const resume = r.chapterSkipped
+        ? (skippedResumes.get(r.bookId) ?? { startMs: null, chapterTitle: r.chapterTitle })
+        : ownPlace(r);
+      const startMs = resume.startMs;
       const durationMs = durations.get(r.bookId) ?? null;
       const share =
         startMs !== null && durationMs ? startMs / durationMs : r.totalChars > 0 ? r.charsBefore / r.totalChars : 0;
       const listening: Listening = {
         sentenceId: r.sentenceId,
-        chapterTitle: r.chapterTitle,
+        chapterTitle: resume.chapterTitle,
         share: Math.min(share, 1),
         startMs,
         listenedAt: r.listenedAt!.toISOString(),
