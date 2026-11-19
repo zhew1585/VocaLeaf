@@ -76,7 +76,7 @@ function ContinueCard({ book, listening }: { book: Book; listening: Listening })
         aria-label={`继续收听 ${book.title}`}
         onClick={() => navigate(shelfListenPath(book.id))}
       >
-        <PlaySolidIcon size={26} />
+        <PlaySolidIcon size={20} />
       </button>
     </section>
   );

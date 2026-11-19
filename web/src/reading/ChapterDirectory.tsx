@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { BookDetail, ChapterSummary } from "../api";
-import { ArrowLeftIcon, ChevronLeftIcon } from "../icons";
+import { ArrowLeftIcon } from "../icons";
 import { navigate } from "../router";
 
 /** 【返回书架】: leaves the 专注页 while the audio goes on (PRD 4.4.1). */
@@ -15,8 +15,16 @@ export function BackToShelf({ compact = false }: { compact?: boolean }) {
         navigate("/");
       }}
     >
-      {compact ? <ArrowLeftIcon /> : <ChevronLeftIcon size={16} />}
-      {!compact && "返回书架"}
+      {compact ? (
+        <ArrowLeftIcon />
+      ) : (
+        <>
+          <span className="shelf-back-icon" aria-hidden="true">
+            <ArrowLeftIcon size={14} />
+          </span>
+          返回书架
+        </>
+      )}
     </a>
   );
 }
