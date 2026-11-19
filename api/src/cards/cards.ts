@@ -1,9 +1,9 @@
 // Making and reading Cards (PRD 4.5.2, F12, F16). A user makes Cards of Sentences of Books on their Shelf; every
 // Card belongs to that user alone and keeps its own copy of what it needs (text, neighbours, title, audio), so
-// Review (#16) and the Card list (#17) never need the Book.
-import { and, asc, eq, sql } from "drizzle-orm";
+// Review (#16) and the Card list (F14) never need the Book.
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { AiProvider } from "../ai/provider.js";
-import type { Card } from "../contract.js";
+import type { Card, CardListItem } from "../contract.js";
 import type { Db } from "../db/client.js";
 import { audioSegments, books, cards, chapters, sentences, shelfEntries } from "../db/schema.js";
 import { markProcessed } from "../marks/marks.js";
@@ -53,6 +53,42 @@ export async function bookCards(db: Db, userId: string, bookId: string): Promise
     .where(and(eq(cards.userId, userId), eq(chapters.bookId, bookId)))
     .orderBy(asc(chapters.index), asc(sentences.index), asc(cards.targetStart), asc(cards.targetEnd));
   return rows.map((r) => toCard(r.card));
+}
+
+/**
+ * Every Card of the user, soonest due first and newest first among equals (the Card list, F14), each with the Book
+ * it came from while that Book is on the user's Shelf; null once it was deleted or taken off (AC-CLIST-03).
+ */
+export async function userCards(db: Db, userId: string): Promise<CardListItem[]> {
+  const rows = await db
+    .select({ card: cards, bookId: shelfEntries.bookId })
+    .from(cards)
+    .leftJoin(sentences, eq(sentences.id, cards.sentenceId))
+    .leftJoin(chapters, eq(chapters.id, sentences.chapterId))
+    .leftJoin(shelfEntries, and(eq(shelfEntries.bookId, chapters.bookId), eq(shelfEntries.userId, userId)))
+    .where(eq(cards.userId, userId))
+    .orderBy(asc(cards.due), desc(cards.createdAt), asc(cards.id));
+  return rows.map((r) => ({ ...toCard(r.card), bookId: r.bookId }));
+}
+
+/**
+ * Deletes the user's Card for good (PRD 4.5.2 删除), then its audio; false when they have no such Card. Its
+ * Sentence's Mark stays as it is. A failure deleting the audio only leaves an object nothing points to.
+ */
+export async function deleteCard({ db, storage }: Pick<CardDeps, "db" | "storage">, userId: string, cardId: string): Promise<boolean> {
+  const [row] = await db
+    .delete(cards)
+    .where(and(eq(cards.id, cardId), eq(cards.userId, userId)))
+    .returning({ audioKey: cards.audioKey });
+  if (!row) return false;
+  if (row.audioKey) {
+    try {
+      await storage.deleteObjects([row.audioKey]);
+    } catch (err) {
+      console.error(`card_delete: audio ${row.audioKey} of Card ${cardId} not deleted`, err);
+    }
+  }
+  return true;
 }
 
 /** A Sentence the user may make Cards of (its Book is on their Shelf), with what a Card copies from it. */

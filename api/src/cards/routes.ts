@@ -1,13 +1,13 @@
-// Routes of Cards (PRD 4.5.2, F12, F16): making one, a Book's Cards, a Card's audio, generating its back again.
-// Review (#16) and the Card list (#17) build on these and on cards.ts.
+// Routes of Cards (PRD 4.5.2, F12, F14, F16): making one, a Book's Cards, the Card list, a Card's audio, generating its
+// back again, deleting one. Review (#16) builds on these and on cards.ts.
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import type { AppDeps } from "../app.js";
 import type { UserEnv } from "../auth/session.js";
 import { notFound } from "../books/readable-book.js";
 import { onShelf } from "../books/shelf.js";
-import { CARD_BACK_FAILED_MESSAGE, CardSchema, CreateCardSchema, ErrorSchema } from "../contract.js";
+import { CARD_BACK_FAILED_MESSAGE, CardListItemSchema, CardSchema, CreateCardSchema, ErrorSchema } from "../contract.js";
 import { validationHook } from "../validation.js";
-import { bookCards, createCard, ownCard, regenerateBack } from "./cards.js";
+import { bookCards, createCard, deleteCard, ownCard, regenerateBack, userCards } from "./cards.js";
 
 const sentenceNotFound = { error: { code: "not_found", message: "句子不存在" } } as const;
 const cardNotFound = { error: { code: "not_found", message: "卡片不存在" } } as const;
@@ -57,12 +57,31 @@ const audioRoute = createRoute({
 const backRoute = createRoute({
   method: "post",
   path: "/cards/{id}/back",
-  summary: "Generate the Card's back again (【释义生成失败，点击重试】); not counted against the daily AI limit",
+  summary:
+    "Generate the Card's back again (【释义生成失败，点击重试】, 【重新生成】 in the Card list); not counted against the daily AI limit, its next Review unchanged",
   request: { params: z.object({ id: z.uuid() }) },
   responses: {
     200: { description: "The Card with its new back", content: json(CardSchema) },
     404: { description: "No such Card", content: json(ErrorSchema) },
     502: { description: "Generating failed again; the Card is unchanged", content: json(ErrorSchema) },
+  },
+});
+
+const listRoute = createRoute({
+  method: "get",
+  path: "/cards",
+  summary: "Every Card of the user, soonest due first (卡片列表, F14); searching and filtering by Book is the client's",
+  responses: { 200: { description: "Cards", content: json(z.array(CardListItemSchema)) } },
+});
+
+const deleteRoute = createRoute({
+  method: "delete",
+  path: "/cards/{id}",
+  summary: "Delete a Card and its audio for good (PRD 4.5.2 删除); its Sentence's Mark stays as it is",
+  request: { params: z.object({ id: z.uuid() }) },
+  responses: {
+    204: { description: "Deleted" },
+    404: { description: "No such Card", content: json(ErrorSchema) },
   },
 });
 
@@ -95,6 +114,13 @@ export function cardRoutes({ db, storage, ai, now = () => new Date() }: AppDeps)
     const userId = c.get("userId");
     if (!(await onShelf(db, userId, id))) return c.json(notFound, 404);
     return c.json(await bookCards(db, userId, id), 200);
+  });
+
+  app.openapi(listRoute, async (c) => c.json(await userCards(db, c.get("userId")), 200));
+
+  app.openapi(deleteRoute, async (c) => {
+    if (!(await deleteCard({ db, storage }, c.get("userId"), c.req.valid("param").id))) return c.json(cardNotFound, 404);
+    return c.body(null, 204);
   });
 
   app.openapi(audioRoute, async (c) => {

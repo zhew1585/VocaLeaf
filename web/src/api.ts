@@ -7,6 +7,7 @@ import type {
   BookMarks,
   BookTimeline,
   Card,
+  CardListItem,
   CodeSent,
   CreateCard,
   ExplainEvent,
@@ -31,6 +32,7 @@ export type {
   BookTimeline,
   Card,
   CardBack,
+  CardListItem,
   ChapterSummary,
   ChatMessage,
   Difficulty,
@@ -350,9 +352,23 @@ export interface MadeCard {
   created: boolean;
 }
 
-/** Generates a Card's back again (【释义生成失败，点击重试】); rejects when it fails again. */
+/** Generates a Card's back again (【释义生成失败，点击重试】, 【重新生成】); rejects when it fails again. */
 export function regenerateCardBack(cardId: string): Promise<Card> {
   return request<Card>(`/cards/${cardId}/back`, { method: "POST" });
+}
+
+/** Every Card of the user, soonest due first, each with its Book while that is on the Shelf (卡片列表, F14). */
+export function listCards(): Promise<CardListItem[]> {
+  return request<CardListItem[]>("/cards");
+}
+
+/** Deletes a Card and its audio for good (PRD 4.5.2 删除); one already gone counts as deleted. */
+export async function deleteCard(cardId: string): Promise<void> {
+  try {
+    await send(`/cards/${cardId}`, { method: "DELETE" });
+  } catch (err) {
+    if (!(err instanceof ApiRequestError && err.status === 404)) throw err;
+  }
 }
 
 /** Where a Card's own copy of its Sentence's audio is (【卡片原声】). */

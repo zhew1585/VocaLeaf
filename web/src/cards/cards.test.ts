@@ -66,4 +66,12 @@ describe("due labels", () => {
     expect(dueLabel(new Date(2026, 10, 20, 1).toISOString(), now)).toBe("明天复习");
     expect(dueShort(new Date(2026, 10, 22, 8).toISOString(), now)).toBe("3 天后");
   });
+
+  it("counts in months from 30 days on (design 07: 1 个月后)", () => {
+    const now = new Date(2026, 10, 19, 12);
+    expect(dueShort(new Date(2026, 11, 18, 8).toISOString(), now)).toBe("29 天后");
+    expect(dueShort(new Date(2026, 11, 19, 8).toISOString(), now)).toBe("1 个月后");
+    expect(dueShort(new Date(2027, 1, 20, 8).toISOString(), now)).toBe("3 个月后");
+    expect(dueLabel(new Date(2027, 0, 1, 8).toISOString(), now)).toBe("1 个月后复习");
+  });
 });

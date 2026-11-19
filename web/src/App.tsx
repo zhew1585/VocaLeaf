@@ -3,7 +3,7 @@ import { getMe, logOut, UNAUTHORIZED_EVENT, type User } from "./api";
 import { resetSentenceChats } from "./reading/chatStore";
 import logoUrl from "./assets/logo.webp";
 import { PlayGuideProvider } from "./guide/PlayGuide";
-import { LeafIcon, LibraryIcon, SettingsIcon } from "./icons";
+import { LayersIcon, LeafIcon, LibraryIcon, SettingsIcon } from "./icons";
 import { GleaningsPage } from "./marks/GleaningsPage";
 import { startOutbox, stopOutbox } from "./marks/marks";
 import { badgeText, useGleaningCount } from "./marks/useMarks";
@@ -12,22 +12,31 @@ import { ListenPage } from "./pages/ListenPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NowListening } from "./player/NowListening";
 import { ListeningProvider } from "./player/session";
+import { CardsPage } from "./cards/CardsPage";
 import { followLink, navigate, usePathname } from "./router";
 import { SettingsPage } from "./settings/SettingsPage";
 import { LibraryPage } from "./shelf/LibraryPage";
 import { ShelfPage } from "./shelf/ShelfPage";
 
 /**
- * /books/:id is the Book's detail, /books/:id/listen its 专注页, /library the 书库, /gleanings 拾起, /settings 设置,
- * anything else the 书架.
+ * /books/:id is the Book's detail, /books/:id/listen its 专注页, /library the 书库, /gleanings 拾起, /cards 卡片,
+ * /settings 设置, anything else the 书架.
  */
-function route(path: string): { bookId?: string; listen: boolean; library: boolean; gleanings: boolean; settings: boolean } {
+function route(path: string): {
+  bookId?: string;
+  listen: boolean;
+  library: boolean;
+  gleanings: boolean;
+  cards: boolean;
+  settings: boolean;
+} {
   const [, bookId, listen] = /^\/books\/([^/]+)(\/listen)?$/.exec(path) ?? [];
   return {
     bookId,
     listen: listen !== undefined,
     library: path === "/library",
     gleanings: path === "/gleanings",
+    cards: path === "/cards",
     settings: path === "/settings",
   };
 }
@@ -95,7 +104,7 @@ export function App() {
     }
   }
 
-  const { bookId, listen, library, gleanings, settings } = route(path);
+  const { bookId, listen, library, gleanings, cards, settings } = route(path);
   const { email } = session.user;
   // The listening session outlives the pages (【返回书架】 keeps playing) and ends with logging out.
   return (
@@ -105,13 +114,15 @@ export function App() {
           // The 专注页 takes the whole window, without the app's header.
           <ListenPage id={bookId} />
         ) : (
-          <Shell email={email} section={gleanings ? "gleanings" : settings ? "settings" : "shelf"}>
+          <Shell email={email} section={gleanings ? "gleanings" : cards ? "cards" : settings ? "settings" : "shelf"}>
             {bookId ? (
               <BookPage id={bookId} />
             ) : library ? (
               <LibraryPage />
             ) : gleanings ? (
               <GleaningsPage />
+            ) : cards ? (
+              <CardsPage />
             ) : settings ? (
               <SettingsPage email={email} loggingOut={loggingOut} onLogOut={onLogOut} />
             ) : (
@@ -127,7 +138,7 @@ export function App() {
 /**
  * The app around a page (design 03-2): the sidebar with the brand, the navigation, the 当前收听 entry while
  * there is a listening session, and the account, which opens 设置 (design 08-1); on a phone it becomes a bar above
- * the page. 书架 and 拾起 so far; 复习 and 卡片 join them with their tickets. 拾起 shows how many Sentences wait
+ * the page. 书架, 拾起 and 卡片 so far; 复习 joins them with its ticket. 拾起 shows how many Sentences wait
  * there (PRD 4.4.4 计数).
  */
 function Shell({
@@ -137,7 +148,7 @@ function Shell({
 }: {
   email: string;
   /** The navigation entry of the page shown; the account entry stands for 设置. */
-  section: "shelf" | "gleanings" | "settings";
+  section: "shelf" | "gleanings" | "cards" | "settings";
   children: ReactNode;
 }) {
   const badge = badgeText(useGleaningCount());
@@ -163,6 +174,10 @@ function Shell({
             拾起
             {badge && <span className="side-badge">{badge}</span>}
           </a>
+          <a href="/cards" {...item("cards")}>
+            <LayersIcon />
+            卡片
+          </a>
         </nav>
         <NowListening />
         {/* Styled as .account, not .side-item; aria-current still marks 设置 as the page shown. */}
@@ -174,7 +189,7 @@ function Shell({
           <SettingsIcon />
         </a>
       </aside>
-      <main className={section === "gleanings" ? "shell-main is-flush" : "shell-main"}>{children}</main>
+      <main className={section === "gleanings" || section === "cards" ? "shell-main is-flush" : "shell-main"}>{children}</main>
     </div>
   );
 }

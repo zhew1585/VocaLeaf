@@ -2,9 +2,10 @@
 // 句子精读. One Card shows its detail; several show a list first, each row opening its detail in place, with
 // 【返回列表】 back to the list where it was scrolled. Closing (X, a click outside, Esc from the page) is the page's.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { regenerateCardBack, type Card } from "../api";
-import { ArrowLeftIcon, BookOpenIcon, ChevronRightIcon, Volume2Icon, XIcon } from "../icons";
+import type { Card } from "../api";
+import { ArrowLeftIcon, BookOpenIcon, ChevronRightIcon, XIcon } from "../icons";
 import type { AuditionState } from "../player/audition";
+import { CardAudioButton, CardBackView, HighlightedSentence, useRegenerateBack } from "./CardContent";
 import { BACK_MISSING, CARD_BACK_FAILED, cardMeaning, dueLabel, dueShort, KIND_LABELS } from "./cards";
 import "./cards.css";
 
@@ -110,18 +111,6 @@ function CardList({ cards, onOpen, onStudySentence }: { cards: Card[]; onOpen(id
   );
 }
 
-/** The Sentence with the Target highlighted. */
-function HighlightedSentence({ card }: { card: Card }) {
-  const text = card.sentenceText;
-  return (
-    <p className="card-sentence">
-      {text.slice(0, card.targetStart)}
-      <mark className="card-highlight">{text.slice(card.targetStart, card.targetEnd)}</mark>
-      {text.slice(card.targetEnd)}
-    </p>
-  );
-}
-
 interface DetailProps {
   card: Card;
   audio: CardAudio;
@@ -140,93 +129,26 @@ function CardDetail({ card, audio, onStudySentence, onCardChanged }: DetailProps
       <HighlightedSentence card={card} />
       <hr className="card-divider" />
       {card.targetKind !== "sentence" && <p className="card-target-text">{card.targetText}</p>}
-      {card.back ? <CardBackView card={card} /> : <RetryBack card={card} onCardChanged={onCardChanged} />}
+      {card.back ? <CardBackView back={card.back} /> : <RetryBack card={card} onCardChanged={onCardChanged} />}
       {playing?.failed && (
         <p className="card-audio-error" role="alert">
           音频加载失败
         </p>
       )}
       <div className="card-actions">
-        <button
-          type="button"
-          className="card-round"
-          aria-label="卡片原声"
-          title={card.hasAudio ? "卡片原声" : "这张卡片没有原声"}
-          disabled={!card.hasAudio}
-          aria-busy={playing?.loading ?? false}
-          onClick={() => audio.play(card)}
-        >
-          {playing?.loading ? <span className="panel-action-ring" aria-hidden="true" /> : <Volume2Icon />}
-        </button>
+        <CardAudioButton card={card} state={audio.state} className="card-round" onPlay={() => audio.play(card)} />
         <StudySentenceButton onClick={onStudySentence} />
       </div>
     </div>
   );
 }
 
-/** The back by the Card's kind (PRD 4.5.2 背面内容). */
-function CardBackView({ card }: { card: Card }) {
-  const back = card.back!;
-  switch (back.kind) {
-    case "word":
-      return (
-        <div className="card-back">
-          {(back.phonetic || back.partOfSpeech) && (
-            <p className="card-phonetic">{[back.phonetic, back.partOfSpeech].filter(Boolean).join(" · ")}</p>
-          )}
-          <p className="card-meaning">{back.meaning}</p>
-          {back.collocations.length > 0 && (
-            <ul className="card-notes" aria-label="常见搭配">
-              {back.collocations.map((c) => (
-                <li key={c}>{c}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      );
-    case "phrase":
-      return (
-        <div className="card-back">
-          <p className="card-meaning">{back.meaning}</p>
-          {back.usage && <p className="card-usage">{back.usage}</p>}
-          {back.example && <p className="card-example">{back.example}</p>}
-        </div>
-      );
-    case "sentence":
-      return (
-        <div className="card-back">
-          <p className="card-meaning">{back.translation}</p>
-          {back.grammar.length > 0 && (
-            <ul className="card-notes" aria-label="语法要点">
-              {back.grammar.map((g) => (
-                <li key={g}>{g}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      );
-  }
-}
-
 /** 【释义生成失败，点击重试】 (PRD 4.5.2 规则 6): generates the back again, not counted against the AI limit. */
 function RetryBack({ card, onCardChanged }: { card: Card; onCardChanged(card: Card): void }) {
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const retry = async () => {
-    setBusy(true);
-    setFailed(false);
-    try {
-      onCardChanged(await regenerateCardBack(card.id));
-    } catch (err) {
-      console.warn("generating the Card's back again failed", err);
-      setFailed(true);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const { busy, failed, regenerate } = useRegenerateBack(card.id, onCardChanged);
   return (
     <>
-      <button type="button" className="card-retry" disabled={busy} onClick={() => void retry()}>
+      <button type="button" className="card-retry" disabled={busy} onClick={() => void regenerate()}>
         {busy ? "正在生成释义…" : CARD_BACK_FAILED}
       </button>
       {failed && (
