@@ -3,17 +3,12 @@ import { getUsage, type Usage } from "../api";
 import { usePlayGuide } from "../guide/PlayGuide";
 import { ChevronRightIcon, InfoIcon, KeyboardIcon, LogOutIcon } from "../icons";
 import { useListening } from "../player/session";
+import { PLAYER_SHORTCUTS } from "../player/shortcuts";
 import "./settings.css";
 
-/**
- * Desktop shortcuts as the page lists them (design 08-1): the 专注页's (player/shortcuts.ts) and the 复习页's
- * (PRD F13, #16). Esc only closes layers, so it is not listed.
- */
-const SHORTCUTS: { name: string; keys: string[] }[] = [
-  { name: "播放 / 暂停", keys: ["空格"] },
-  { name: "重听", keys: ["←"] },
-  { name: "下一句", keys: ["→"] },
-  { name: "标记", keys: ["M"] },
+/** Desktop shortcuts as the page lists them (design 08-1): the 专注页's, then the 复习页's (PRD F13, #16). */
+const SHORTCUTS: readonly { name: string; keys: readonly string[] }[] = [
+  ...PLAYER_SHORTCUTS,
   { name: "显示答案", keys: ["空格"] },
   { name: "评分", keys: ["1", "2", "3", "4"] },
 ];
@@ -90,7 +85,7 @@ export function SettingsPage({
       <div className="settings-columns">
         <section className="settings-column" aria-label="账号">
           <div className="settings-account">
-            <span className="settings-avatar" aria-hidden="true">
+            <span className="avatar is-large" aria-hidden="true">
               {email.slice(0, 1).toUpperCase()}
             </span>
             <span className="settings-account-text">

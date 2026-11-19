@@ -33,6 +33,14 @@ const KEYS: Record<string, { action: Action; repeats: boolean }> = {
   Escape: { action: "escape", repeats: false },
 };
 
+/** The keys above as the settings page lists them (design 08-1); Esc only closes layers, so it is not listed. */
+export const PLAYER_SHORTCUTS = [
+  { name: "播放 / 暂停", keys: ["空格"] },
+  { name: "重听", keys: ["←"] },
+  { name: "下一句", keys: ["→"] },
+  { name: "标记", keys: ["M"] },
+] as const;
+
 /**
  * Desktop keys of the 专注页 while it is mounted: Space, ←, →, M and Esc. Keys held with a modifier, or typed into a
  * field, are left alone, and so is every key while `handlers` is null (the page's Book is not the one playing).

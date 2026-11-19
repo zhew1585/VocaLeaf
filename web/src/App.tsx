@@ -165,6 +165,7 @@ function Shell({
           </a>
         </nav>
         <NowListening />
+        {/* Styled as .account, not .side-item; aria-current still marks 设置 as the page shown. */}
         <a href="/settings" aria-label="设置" title="设置" {...item("settings")} className="account">
           <span className="avatar" aria-hidden="true">
             {email.slice(0, 1).toUpperCase()}
