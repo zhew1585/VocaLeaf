@@ -10,7 +10,7 @@ import {
   RenderReportSchema,
   type ClaimedJob,
 } from "../contract.js";
-import { sourceKey } from "../storage.js";
+import { coverKey, sourceKey } from "../storage.js";
 import { validationHook } from "../validation.js";
 import { claimNextJob, failAttempt, lockCurrentAttempt, renewLease, succeedJob, type Job, type Tx } from "./lifecycle.js";
 import { storeParseResult } from "./parse.js";
@@ -93,7 +93,7 @@ export function jobRoutes({ db, workerToken, jobLeaseMs, now = () => new Date() 
       const job = await claimNextJob(tx, now(), jobLeaseMs);
       if (!job) return undefined;
       const base = { id: job.id, bookId: job.bookId, attempt: job.attempt, leaseMs: jobLeaseMs };
-      if (job.type === "parse") return { ...base, type: "parse", sourceKey: sourceKey(job.bookId) };
+      if (job.type === "parse") return { ...base, type: "parse", sourceKey: sourceKey(job.bookId), coverKey: coverKey(job.bookId) };
       return { ...base, type: "render_chapter", ...(await startRender(tx, job)) };
     });
     if (!claimed) return c.body(null, 204);

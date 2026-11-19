@@ -15,6 +15,7 @@ JOB = {
     "type": "parse",
     "bookId": "b",
     "sourceKey": "books/b/source.epub",
+    "coverKey": "books/b/cover",
     # A re-claimed job: the worker must echo this attempt so the API can refuse reports from older claims.
     "attempt": 2,
     "leaseMs": 600_000,
@@ -64,6 +65,34 @@ def test_parses_the_claimed_book_and_reports_chapters_and_sentences():
             ],
         },
     ]
+
+
+def test_stores_the_cover_under_the_claimed_key_and_reports_its_type():
+    jpeg = b"\xff\xd8\xff" + b"\0" * 16
+    epub = make_epub(
+        [Doc("c1.xhtml", "<p>It is a truth.</p>")],
+        [TocEntry("Chapter 1", "c1.xhtml")],
+        cover=("cover.jpg", "image/jpeg", jpeg),
+    )
+    api = FakeApi(job=JOB)
+    storage = FakeStorage({"books/b/source.epub": epub})
+
+    run_once(client(api), storage, FakeTts(), PAUSES)
+
+    assert storage.objects["books/b/cover"] == jpeg
+    assert storage.content_types["books/b/cover"] == "image/jpeg"
+    assert api.bodies("parse-result")[0]["cover"] == {"contentType": "image/jpeg"}
+
+
+def test_reports_no_cover_when_the_epub_has_none():
+    epub = make_epub([Doc("c1.xhtml", "<p>It is a truth.</p>")], [TocEntry("Chapter 1", "c1.xhtml")])
+    api = FakeApi(job=JOB)
+    storage = FakeStorage({"books/b/source.epub": epub})
+
+    run_once(client(api), storage, FakeTts(), PAUSES)
+
+    assert "books/b/cover" not in storage.objects
+    assert api.bodies("parse-result")[0]["cover"] is None
 
 
 def test_reports_a_failure_when_the_file_cannot_be_parsed():

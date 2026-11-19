@@ -12,6 +12,32 @@ import "../reading/focus.css";
 import { useBook } from "../useBook";
 import { usePlaylist } from "./usePlaylist";
 
+/** Drops the 专注页's one-off URL parameters (?chapter, ?autoplay) once they did their job, so a reload does not redo it. */
+function dropEntryParams() {
+  if (window.location.search) window.history.replaceState(null, "", window.location.pathname);
+}
+
+/**
+ * Where the 专注页 starts a Book the session does not hold yet: at the start of the Sentence the user last listened
+ * to (AC-SHELF-04, the Book's beginning if none), playing when opened from the Shelf (`?autoplay`, shelfListenPath), paused
+ * otherwise (a reload). Only once; a Book the session already holds plays on where it is.
+ */
+function useResume(here: boolean) {
+  const [autoplay] = useState(() => new URLSearchParams(window.location.search).has("autoplay"));
+  const [done, setDone] = useState(here);
+  // Paused at the beginning is where a fresh player is anyway.
+  const request = (book: BookDetail | null): StartRequest | null =>
+    done || !book || (!autoplay && !book.listening)
+      ? null
+      : { id: "resume", seconds: (book.listening?.startMs ?? 0) / 1000, autoplay };
+  const settle = () => {
+    setDone(true);
+    // Settling can come after the user left the page; only this page's URL has the parameter.
+    if (new URLSearchParams(window.location.search).has("autoplay")) dropEntryParams();
+  };
+  return { request, settle };
+}
+
 /**
  * The Chapter picked to play from its start: from the URL (`?chapter=`, opened from the Chapter list) or the
  * directory, until it has started or the user took over; `settle` then forgets it, in the URL too, so a reload
@@ -27,9 +53,7 @@ function usePickedChapter() {
   const settle = () => {
     setPicked(null);
     // Settling can come after the user left the page; only this page's URL has the parameter.
-    if (new URLSearchParams(window.location.search).has("chapter")) {
-      window.history.replaceState(null, "", window.location.pathname);
-    }
+    if (new URLSearchParams(window.location.search).has("chapter")) dropEntryParams();
   };
   /** The picked Chapter and its pick count, if the Book has it and it can be played. */
   const find = (book: BookDetail | null) => {
@@ -58,7 +82,8 @@ function nextToGenerate(book: BookDetail): Pick<ChapterSummary, "waitSeconds"> {
 
 /**
  * 专注页 (design 01, PRD 4.4.5): the Chapter directory, the Book's text following the audio, the floating
- * player, and the collapsed 句子精读. The page opens its Book in the listening session once it has audio;
+ * player, and the collapsed 句子精读. The page opens its Book in the listening session once it has audio, at the
+ * Sentence the user last listened to;
  * until then it waits and checks again. Picking a Chapter (here or in the Chapter list) plays it from its
  * start; one not generated yet says how long that takes and starts by itself once it is (PRD 4.3.4,
  * AC-BOOK-03). Playback that catches up with the generated audio waits the same way and goes on by itself.
@@ -67,6 +92,7 @@ export function ListenPage({ id }: { id: string }) {
   const listening = useListening();
   const here = listening.bookId === id;
   const chapterPick = usePickedChapter();
+  const resume = useResume(here);
   const waitingForAudio = here && listening.waitingForAudio;
   const { book, error } = useBook(id, { eager: chapterPick.picked !== null || waitingForAudio });
   const playlist = usePlaylist(book, here ? { seconds: listening.position, playing: listening.playing } : { seconds: 0, playing: false });
@@ -95,13 +121,14 @@ export function ListenPage({ id }: { id: string }) {
         seconds: found.chapter.startMs === null ? null : found.chapter.startMs / 1000,
         autoplay: true,
       }
-    : playlist.resume;
+    : (resume.request(book) ?? playlist.resume);
   // Asked in the same commit as open (above), which drops any request of the Book opened before.
   useEffect(() => {
     if (!playable) return;
     requestStart(startAt, () => {
       // A Chapter picked to listen to replaces any resume still waiting.
       chapterPick.settle();
+      resume.settle();
       playlist.clearResume();
       reading.current?.followPlayback();
     });

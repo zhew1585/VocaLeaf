@@ -1,6 +1,6 @@
 import type { Book, BookStatus } from "../api";
 import { AudioLinesIcon, ChevronLeftIcon, CircleAlertIcon, LoaderIcon, PlaySolidIcon } from "../icons";
-import { navigate } from "../router";
+import { followLink, navigate } from "../router";
 import { useBook } from "../useBook";
 import { ChapterList } from "./ChapterList";
 
@@ -56,13 +56,10 @@ export function BookPage({ id }: { id: string }) {
         <a
           href="/"
           className="back-link"
-          onClick={(e) => {
-            e.preventDefault();
-            navigate("/");
-          }}
+          onClick={followLink}
         >
           <ChevronLeftIcon />
-          上传
+          书架
         </a>
         {error && (
           <p className="form-error" role="alert">

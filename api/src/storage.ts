@@ -58,6 +58,11 @@ export function sourceKey(bookId: string): string {
   return `books/${bookId}/source.epub`;
 }
 
+/** Where the worker puts a Book's cover image, when its EPUB has one. */
+export function coverKey(bookId: string): string {
+  return `books/${bookId}/cover`;
+}
+
 /**
  * Where a render claim writes a Chapter's HLS segments. Each claim gets its own prefix, so a claim that lost
  * its lease can never overwrite the segments of the claim that took over.

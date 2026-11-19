@@ -1,7 +1,7 @@
 // Shared helpers for the end-to-end tests against the running compose stack.
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import type { Book, BookDetail } from "../api/src/contract.js";
+import type { Book, BookDetail, UploadPolicy } from "../api/src/contract.js";
 
 export const BASE = process.env.E2E_BASE_URL ?? "http://localhost:8080";
 /** Mailpit's web UI and API, where the stack's login code emails land. */
@@ -83,19 +83,43 @@ export function sessionCookie(): Promise<string> {
   return session;
 }
 
-/** Calls a user route as this test file's logged-in user. */
-export async function api<T>(path: string, init?: RequestInit): Promise<{ status: number; body: T }> {
-  const headers = new Headers(init?.headers);
-  headers.set("Cookie", await sessionCookie());
-  const { status, body } = await anonApi<T>(path, { ...init, headers });
-  return { status, body };
+type UploadResult = Book & { error?: { code: string; message: string } };
+
+/**
+ * A user's view of the API: `api` calls a user route with their session, `upload` uploads a file as the dialog
+ * does, confirming the upload declaration (PRD 4.1.2) unless `declare` is false.
+ */
+export function userApi(cookie: () => Promise<string>) {
+  async function api<T>(path: string, init?: RequestInit): Promise<{ status: number; body: T }> {
+    const headers = new Headers(init?.headers);
+    headers.set("Cookie", await cookie());
+    const { status, body } = await anonApi<T>(path, { ...init, headers });
+    return { status, body };
+  }
+  async function upload(name: string, bytes: BlobPart, { declare = true } = {}) {
+    const form = new FormData();
+    form.append("file", new File([bytes], name));
+    if (declare) form.append("declarationVersion", (await api<UploadPolicy>("/upload-policy")).body.declaration.version);
+    return api<UploadResult>("/books", { method: "POST", body: form });
+  }
+  return { api, upload };
 }
 
-export function upload(name: string, bytes: BlobPart) {
-  const form = new FormData();
-  form.append("file", new File([bytes], name));
-  return api<Book & { error?: { code: string; message: string } }>("/books", { method: "POST", body: form });
+/** A user of their own, logged in through the stack, for tests that need an empty Shelf or a fresh quota. */
+export async function newUser(label: string) {
+  const email = freshEmail(label);
+  allowlist("add", email);
+  const cookie = await logIn(email);
+  return { email, cookie, ...userApi(async () => cookie) };
 }
+
+const fileUser = userApi(sessionCookie);
+
+/** Calls a user route as this test file's logged-in user. */
+export const api = fileUser.api;
+
+/** Uploads a file as this test file's logged-in user. */
+export const upload = fileUser.upload;
 
 /** Calls a worker-only route the way the worker does. */
 export function asWorker<T>(path: string, body?: unknown) {
@@ -153,7 +177,7 @@ export function endOpenJobs() {
 }
 
 /** Bytes of a URL under the web origin as the logged-in user's browser gets them, with the content type. */
-export async function fetchBytes(path: string) {
-  const res = await fetch(`${BASE}${path}`, { headers: { Cookie: await sessionCookie() } });
+export async function fetchBytes(path: string, cookie?: string) {
+  const res = await fetch(`${BASE}${path}`, { headers: { Cookie: cookie ?? (await sessionCookie()) } });
   return { status: res.status, type: res.headers.get("content-type"), bytes: new Uint8Array(await res.arrayBuffer()) };
 }

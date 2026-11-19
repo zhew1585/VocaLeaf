@@ -13,6 +13,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 /** Renders the provider and hands back the live session, and the render result to unmount it. */
@@ -57,6 +58,23 @@ describe("the listening session", () => {
     expect(hlsInstances.map((h) => [h.source, h.destroyed])).toEqual([
       ["/api/books/b1/audio.m3u8", true],
       ["/api/books/b2/audio.m3u8", false],
+    ]);
+  });
+
+  it("tells the API where playback is when it starts and when it pauses, so the Shelf can resume there", () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const s = session();
+    act(() => s().open("b1"));
+    timeUpdate(12.3456);
+
+    act(() => s().toggle());
+    timeUpdate(20);
+    act(() => s().toggle());
+
+    expect(fetchMock.mock.calls.map(([url, init]) => [url, init.method, JSON.parse(init.body as string)])).toEqual([
+      ["/api/books/b1/listening", "PUT", { positionMs: 12345 }],
+      ["/api/books/b1/listening", "PUT", { positionMs: 20000 }],
     ]);
   });
 

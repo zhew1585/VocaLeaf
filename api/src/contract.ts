@@ -43,6 +43,60 @@ export const CodeSentSchema = z
 
 export const UserSchema = z.object({ id: z.uuid(), email: z.string() }).openapi("User");
 
+// ---- Upload (PRD 4.1.2, 4.3.2, 4.7.2) ----
+
+/** Single file size limit (PRD 4.7.2): 50MB. */
+export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+/** Uploaded Books one user may hold at a time (PRD 4.7.2); deleting one frees its place. */
+export const MAX_UPLOADED_BOOKS = 20;
+/**
+ * The upload rights declaration (PRD 4.1.2). A user confirms it before their first upload, and again after its
+ * version changes; each confirmation goes to the audit log. Change the version whenever the text changes.
+ */
+export const UPLOAD_DECLARATION = {
+  version: "1",
+  text: "我确认拥有该文件的合法使用权，文件不含 DRM，仅供本人收听学习",
+} as const;
+
+/** What the upload dialog checks before sending a file, so a file it would refuse is not sent at all. */
+export const UploadPolicySchema = z
+  .object({
+    maxFileBytes: z.int().positive(),
+    maxBooks: z.int().positive(),
+    /** Uploaded Books the user holds now. */
+    uploadedBooks: z.int().min(0),
+    declaration: z.object({
+      version: z.string(),
+      text: z.string(),
+      /** Whether the user confirmed this version already; the dialog then does not ask again. */
+      accepted: z.boolean(),
+    }),
+  })
+  .openapi("UploadPolicy");
+
+// ---- Books and the Shelf ----
+
+/** Cover image types the worker keeps (anything else gets the app's default cover). */
+export const COVER_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
+
+/** Where the user is in a Book they listened to (PRD 4.2.3, 4.4.1 进度同步). */
+export const ListeningSchema = z
+  .object({
+    /** The Sentence playback resumes at, from its start. */
+    sentenceId: z.uuid(),
+    /** Title of that Sentence's Chapter (【继续收听】: Chapter 1 · 34%). */
+    chapterTitle: z.string(),
+    /** Share of the Book's narrated text before that Sentence, 0 to 1. */
+    share: z.number().min(0).max(1),
+    /** Where that Sentence starts in the Book's audio, in milliseconds; null while its Chapter has no audio there. */
+    startMs: z.int().min(0).nullable(),
+    listenedAt: z.iso.datetime(),
+  })
+  .openapi("Listening");
+
+/** Reported by the player: where playback is in the Book's audio. The API records the Sentence there. */
+export const ListeningUpdateSchema = z.object({ positionMs: z.int().min(0) }).openapi("ListeningUpdate");
+
 export const BookSchema = z
   .object({
     id: z.uuid(),
@@ -65,6 +119,10 @@ export const BookSchema = z
         narrated: z.int().min(0),
       })
       .openapi("BookProgress"),
+    /** The cover image, or null when the EPUB has none (the app draws a default cover). */
+    coverUrl: z.string().nullable(),
+    /** The user's place in the Book, or null when they never listened to it. */
+    listening: ListeningSchema.nullable(),
     createdAt: z.iso.datetime(),
   })
   .openapi("Book");
@@ -126,6 +184,8 @@ export const SentenceSchema = z
 
 export const UploadBookSchema = z.object({
   file: z.instanceof(File).openapi({ type: "string", format: "binary" }),
+  /** The UPLOAD_DECLARATION version the user just confirmed; needed while they have not confirmed it before. */
+  declarationVersion: z.string().optional(),
 });
 
 // ---- Worker protocol (/internal), bearer-token protected ----
@@ -150,6 +210,8 @@ export const ClaimedParseJobSchema = z
     type: z.literal("parse"),
     /** Object key of the original EPUB in the bucket. */
     sourceKey: z.string(),
+    /** Where the worker writes the Book's cover image, when the EPUB has one. */
+    coverKey: z.string(),
   })
   .openapi("ClaimedParseJob");
 
@@ -190,6 +252,8 @@ export const ParseResultSchema = z
     parserVersion: z.string().min(1),
     title: z.string().nullable(),
     author: z.string().nullable(),
+    /** The cover the worker wrote to the claim's coverKey, or null when the EPUB has none it could use. */
+    cover: z.object({ contentType: z.enum(COVER_TYPES) }).nullable().default(null),
     chapters: z.array(ParsedChapterSchema).min(1),
   })
   .openapi("ParseResult");
@@ -257,5 +321,7 @@ export type RenderReport = z.infer<typeof RenderReportSchema>;
 export type ParseFailureReason = (typeof PARSE_FAILURE_REASONS)[number];
 export type ParseResult = z.input<typeof ParseResultSchema>;
 export type User = z.infer<typeof UserSchema>;
+export type UploadPolicy = z.infer<typeof UploadPolicySchema>;
+export type Listening = z.infer<typeof ListeningSchema>;
 export type CodeSent = z.infer<typeof CodeSentSchema>;
 export type ApiError = z.infer<typeof ErrorSchema>;

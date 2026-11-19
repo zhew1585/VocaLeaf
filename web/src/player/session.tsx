@@ -1,11 +1,13 @@
 import Hls from "hls.js";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { saveListening } from "../api";
 import { playableLength, useStartRequest, useWaitingForAudio, type StartRequest } from "./playback";
 
 /**
  * The one listening session (PRD 4.4.1): one Book's continuous audio, played by one audio element that lives
  * above the pages, so leaving the 专注页 (【返回书架】) does not stop it. The 专注页 opens its Book here; the
- * player and the reading view read and steer it. Progress sync and the sidebar entry come with #10.
+ * player and the reading view read and steer it. Where playback is goes to the API when it starts and pauses, so
+ * the Shelf can order Books and resume them (#7); the other sync moments and the sidebar entry come with #10.
  */
 export interface Listening {
   /** The Book whose audio is loaded, or null before any 专注页 opened one. */
@@ -145,6 +147,16 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     setStart({ request, onSettled });
   }, []);
 
+  /** Reports where playback is; the API keeps the Sentence there as the place to resume (PRD 4.4.1). */
+  const reportPosition = () => {
+    const id = openBookId.current;
+    if (id === null) return;
+    saveListening(id, audio.current!.currentTime * 1000).catch((err: unknown) => {
+      // Losing one report only loses a little progress; the next play or pause reports again.
+      console.warn("saving listening progress failed", err);
+    });
+  };
+
   const toggle = () => {
     const el = audio.current!;
     starter.drop();
@@ -175,10 +187,12 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
         onPlay={() => {
           setPlaying(true);
           setNeedsTap(false);
+          reportPosition();
         }}
         onPause={() => {
           setPlaying(false);
           waiting.onPause();
+          reportPosition();
         }}
         onPlaying={waiting.onPlaying}
         onWaiting={waiting.onWaiting}

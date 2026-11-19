@@ -22,11 +22,16 @@ describe("App", () => {
     expect(await screen.findByRole("button", { name: "发送验证码" })).toBeTruthy();
   });
 
-  it("shows the app with the account when logged in, and goes back to login when a request answers 401", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ id: "u1", email: "allen@vocaleaf.app" })));
+  it("shows the Shelf with the account when logged in, and goes back to login when a request answers 401", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url === "/api/me" ? Response.json({ id: "u1", email: "allen@vocaleaf.app" }) : Response.json([]),
+      ),
+    );
     render(<App />);
     expect(await screen.findByText("allen@vocaleaf.app")).toBeTruthy();
-    expect(screen.getByText("上传书籍")).toBeTruthy();
+    expect(await screen.findByText("书架还空着")).toBeTruthy();
 
     act(() => {
       window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
@@ -61,6 +66,8 @@ describe("App", () => {
       status: "ready",
       playable: true,
       failureReason: null,
+      coverUrl: null,
+      listening: null,
       progress: { generated: 1, narrated: 1 },
       createdAt: "2026-11-18T00:00:00.000Z",
       chapters: [],
@@ -82,7 +89,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("link", { name: "返回书架" }));
 
     expect(window.location.pathname).toBe("/");
-    expect(await screen.findByText("上传书籍")).toBeTruthy();
+    expect(await screen.findByText("书架还空着")).toBeTruthy();
     expect(media.pause).not.toHaveBeenCalled();
     expect(hlsInstances.map((h) => h.destroyed)).toEqual([false]);
 
