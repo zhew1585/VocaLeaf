@@ -3,7 +3,7 @@ import { getMe, logOut, UNAUTHORIZED_EVENT, type User } from "./api";
 import logoUrl from "./assets/logo.webp";
 import { LeafIcon, LibraryIcon } from "./icons";
 import { GleaningsPage } from "./marks/GleaningsPage";
-import { startOutbox } from "./marks/marks";
+import { startOutbox, stopOutbox } from "./marks/marks";
 import { badgeText, useGleaningCount } from "./marks/useMarks";
 import { BookPage } from "./pages/BookPage";
 import { ListenPage } from "./pages/ListenPage";
@@ -49,11 +49,13 @@ export function App() {
   const path = usePathname();
   const { session, setUser } = useSession();
   const [loggingOut, setLoggingOut] = useState(false);
-  const loggedIn = session.state === "ready" && session.user !== null;
-  // Marks made offline on an earlier visit go out once someone is logged in (PRD F8).
+  const userId = session.state === "ready" ? (session.user?.id ?? null) : null;
+  // The logged-in user's Marks made offline (also on an earlier visit) go out once the network allows (PRD F8).
   useEffect(() => {
-    if (loggedIn) startOutbox();
-  }, [loggedIn]);
+    if (userId === null) return;
+    startOutbox(userId);
+    return stopOutbox;
+  }, [userId]);
 
   if (session.state === "loading") return null;
   if (session.state === "failed") {

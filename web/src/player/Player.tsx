@@ -1,4 +1,5 @@
 import { LeafIcon, LoaderIcon, NextSentenceIcon, PauseSolidIcon, PlaySolidIcon, ReplayIcon } from "../icons";
+import "../marks/marks.css";
 import { SleepMenu, SpeedMenu } from "./PlayerMenus";
 import { Progress } from "./Progress";
 import { useListening } from "./session";

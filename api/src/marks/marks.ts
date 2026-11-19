@@ -4,7 +4,7 @@ import { and, count, desc, eq } from "drizzle-orm";
 import type { Gleaning, MarkResult } from "../contract.js";
 import type { Db } from "../db/client.js";
 import { books, chapters, marks, sentences, shelfEntries } from "../db/schema.js";
-import { loadTimelines } from "../books/timeline.js";
+import { chapterStartMs, loadTimelines } from "../books/timeline.js";
 
 /** The Book of a Sentence the user may mark (its Book is on their Shelf), or undefined. */
 async function markableBookId(db: Db, userId: string, sentenceId: string): Promise<string | undefined> {
@@ -17,7 +17,8 @@ async function markableBookId(db: Db, userId: string, sentenceId: string): Promi
   return row?.bookId;
 }
 
-const ofUser = (userId: string, sentenceId: string) => and(eq(marks.userId, userId), eq(marks.sentenceId, sentenceId));
+/** The user's Mark of a Sentence. */
+const markOf = (userId: string, sentenceId: string) => and(eq(marks.userId, userId), eq(marks.sentenceId, sentenceId));
 
 /**
  * Marks a Sentence (PRD 4.4.2 规则 1 to 3): creates a pending Mark, leaves a pending one as it is, and puts a
@@ -32,10 +33,10 @@ export async function markSentence(
   const bookId = await markableBookId(db, userId, sentenceId);
   if (!bookId) return undefined;
   return db.transaction(async (tx) => {
-    const [existing] = await tx.select({ status: marks.status }).from(marks).where(ofUser(userId, sentenceId)).for("update");
+    const [existing] = await tx.select({ status: marks.status }).from(marks).where(markOf(userId, sentenceId)).for("update");
     if (existing?.status === "pending") return "already";
     if (existing) {
-      await tx.update(marks).set({ status: "pending", updatedAt: now }).where(ofUser(userId, sentenceId));
+      await tx.update(marks).set({ status: "pending", updatedAt: now }).where(markOf(userId, sentenceId));
       return "reopened";
     }
     // A concurrent first Mark of the same Sentence (two devices) already made it pending.
@@ -50,7 +51,7 @@ export async function markSentence(
 
 /** Undoes a Mark or 取消标记 (PRD 4.4.2 规则 4): the Mark is deleted. Deleting a missing Mark does nothing. */
 export async function unmarkSentence(db: Db, userId: string, sentenceId: string): Promise<void> {
-  await db.delete(marks).where(ofUser(userId, sentenceId));
+  await db.delete(marks).where(markOf(userId, sentenceId));
 }
 
 /**
@@ -58,12 +59,14 @@ export async function unmarkSentence(db: Db, userId: string, sentenceId: string)
  * False when the user has no Mark on the Sentence.
  */
 export async function dismissMark(db: Db, userId: string, sentenceId: string, now: Date): Promise<boolean> {
-  const [existing] = await db.select({ status: marks.status }).from(marks).where(ofUser(userId, sentenceId));
-  if (!existing) return false;
-  if (existing.status === "pending") {
-    await db.update(marks).set({ status: "dismissed", updatedAt: now }).where(ofUser(userId, sentenceId));
-  }
-  return true;
+  const dismissed = await db
+    .update(marks)
+    .set({ status: "dismissed", updatedAt: now })
+    .where(and(markOf(userId, sentenceId), eq(marks.status, "pending")))
+    .returning({ sentenceId: marks.sentenceId });
+  if (dismissed.length > 0) return true;
+  const [existing] = await db.select({ status: marks.status }).from(marks).where(markOf(userId, sentenceId));
+  return existing !== undefined;
 }
 
 /**
@@ -74,7 +77,7 @@ export async function markProcessed(db: Db, userId: string, sentenceId: string, 
   await db
     .update(marks)
     .set({ status: "processed", updatedAt: now })
-    .where(and(ofUser(userId, sentenceId), eq(marks.status, "pending")));
+    .where(and(markOf(userId, sentenceId), eq(marks.status, "pending")));
 }
 
 /** Sentences of the Book with a pending Mark of the user. */
@@ -117,10 +120,11 @@ export async function loadGleanings(db: Db, userId: string): Promise<Gleaning[]>
   // Stored times count from the Chapter's start; the Book's audio places the Chapter after the ones before it.
   const timelines = await loadTimelines(db, [...new Set(rows.map((r) => r.bookId))]);
   return rows.map(({ startMs, markedAt, ...r }) => {
-    const entry = timelines.get(r.bookId)?.entries.find((e) => e.chapterId === r.chapterId && e.segments.length > 0);
+    const timeline = timelines.get(r.bookId);
+    const chapterStart = timeline ? chapterStartMs(timeline, r.chapterId) : null;
     return {
       ...r,
-      startMs: entry && startMs !== null ? entry.offsetMs + startMs : null,
+      startMs: chapterStart !== null && startMs !== null ? chapterStart + startMs : null,
       markedAt: markedAt.toISOString(),
     };
   });

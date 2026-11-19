@@ -1,15 +1,20 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { LeafIcon } from "../icons";
-import type { BookMarks } from "./useMarks";
+import "./marks.css";
+import type { MarksInBook } from "./useMarks";
 
 /** How long a Mark's Toast stays (PRD 4.4.2 前台反馈). */
 const TOAST_MS = 4000;
+const MARK_FAILED = "标记失败，请稍后再试";
 /** The Toast shows this many characters of the Sentence (PRD 4.4.2 规则 5). */
 const PREVIEW_CHARS = 30;
 
-/** 已标记：{the Sentence's first 30 characters}…, without the ellipsis when the Sentence is that short. */
+/**
+ * 已标记：{the Sentence's first 30 characters}…, without the ellipsis when the Sentence is that short. A Sentence
+ * whose text is not loaded still reads differently from 【已标记】 (already pending).
+ */
 export function markedText(sentence: string | undefined): string {
-  if (sentence === undefined) return "已标记";
+  if (sentence === undefined) return "已标记这一句";
   const chars = [...sentence];
   return `已标记：${chars.length > PREVIEW_CHARS ? `${chars.slice(0, PREVIEW_CHARS).join("")}…` : sentence}`;
 }
@@ -21,7 +26,7 @@ interface Options {
   target(): Promise<string | null>;
   /** The text of a loaded Sentence, for the Toast. */
   textOf(sentenceId: string): string | undefined;
-  marks: BookMarks;
+  marks: MarksInBook;
 }
 
 /**
@@ -58,6 +63,7 @@ export function useMarkPress({ target, textOf, marks }: Options): { press(): voi
     } catch (err) {
       // Refused by the API (the Sentence is gone); the leaf and underline were taken back.
       console.warn("marking failed", err);
+      show(MARK_FAILED);
     }
   };
 

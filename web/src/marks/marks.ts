@@ -1,6 +1,6 @@
 // Marks on this device (PRD 4.4.2, F8 异常处理). Marking and unmarking go to the API at once; while the network is
-// down (or the API fails for a moment) they wait in an outbox in localStorage and go out once the network is back,
-// without bothering the user if that fails. Every change is announced on window (MARKS_CHANGED_EVENT), so each view
+// down they wait in the logged-in user's outbox in localStorage and go out once it is back (the browser says so, or
+// a retry a little later gets through), without bothering the user if that fails. Every change is announced on window (MARKS_CHANGED_EVENT), so each view
 // of Marks follows: the reading view's underlines, 句子精读's leaf, the navigation's count.
 import { ApiRequestError, deleteMark, dismissMark, putMark, type MarkResult } from "../api";
 
@@ -17,20 +17,25 @@ interface QueuedOp {
   op: "mark" | "unmark";
 }
 
-const OUTBOX_KEY = "vocaleaf:mark-outbox";
+/** How long a failed send waits before the outbox tries again, for outages the browser does not notice. */
+const RETRY_MS = 30_000;
+
+/** The outbox of the user logged in on this device (startOutbox); null while nobody is. */
+let outboxKey: string | null = null;
 
 function announce(change: MarksChange): void {
   window.dispatchEvent(new CustomEvent<MarksChange>(MARKS_CHANGED_EVENT, { detail: change }));
 }
 
-/** A failure worth trying again later: no network, or the API failing for a moment. */
+/** A failure worth trying again later: the request never reached the API. */
 function retryable(err: unknown): boolean {
-  return err instanceof ApiRequestError && (err.status === null || err.status >= 500);
+  return err instanceof ApiRequestError && err.status === null;
 }
 
 function readOutbox(): QueuedOp[] {
+  if (outboxKey === null) return [];
   try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(OUTBOX_KEY) ?? "[]");
+    const parsed: unknown = JSON.parse(localStorage.getItem(outboxKey) ?? "[]");
     return Array.isArray(parsed) ? parsed.filter(isQueuedOp) : [];
   } catch {
     return [];
@@ -43,9 +48,10 @@ function isQueuedOp(value: unknown): value is QueuedOp {
 }
 
 function writeOutbox(ops: QueuedOp[]): void {
+  if (outboxKey === null) return;
   try {
-    if (ops.length === 0) localStorage.removeItem(OUTBOX_KEY);
-    else localStorage.setItem(OUTBOX_KEY, JSON.stringify(ops));
+    if (ops.length === 0) localStorage.removeItem(outboxKey);
+    else localStorage.setItem(outboxKey, JSON.stringify(ops));
   } catch (err) {
     // Storage full or blocked: the op is lost, as it would be without an outbox.
     console.warn("saving the mark outbox failed", err);
@@ -60,7 +66,18 @@ function dropQueued(sentenceId: string): void {
 
 function enqueue(op: QueuedOp): void {
   writeOutbox([...readOutbox().filter((o) => o.sentenceId !== op.sentenceId), op]);
-  watchNetwork();
+  retryLater();
+}
+
+let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Tries the outbox again in a while, unless a try is already planned. */
+function retryLater(): void {
+  if (retryTimer !== undefined) return;
+  retryTimer = setTimeout(() => {
+    retryTimer = undefined;
+    void flushOutbox();
+  }, RETRY_MS);
 }
 
 /**
@@ -78,33 +95,34 @@ export function withQueued(pending: Iterable<string>): Set<string> {
 
 let flushing: Promise<void> | null = null;
 
-/** Sends what waits in the outbox, oldest first; stops at the first retryable failure and drops the others. */
+/**
+ * Sends what waits in the outbox, oldest first. An op the API refuses is dropped; at the first one that does not
+ * reach the API, the rest stay for a later try.
+ */
 export function flushOutbox(): Promise<void> {
-  flushing ??= (async () => {
-    try {
-      let sent = false;
-      for (let ops = readOutbox(); ops.length > 0; ops = readOutbox()) {
-        const next = ops[0]!;
-        try {
-          if (next.op === "mark") await putMark(next.sentenceId);
-          else await deleteMark(next.sentenceId);
-          sent = true;
-        } catch (err) {
-          if (retryable(err)) return;
-          // PRD F8: a replay that fails does not bother the user (the Sentence's Book may be gone).
-          console.warn(`replaying a queued ${next.op} of Sentence ${next.sentenceId} failed`, err);
-        }
-        const now = readOutbox();
-        // A newer op on the Sentence may have replaced this one meanwhile; leave that one waiting.
-        writeOutbox(now.filter((o) => !(o.sentenceId === next.sentenceId && o.op === next.op)));
-      }
-      // The API now knows; let every view load its Marks again.
-      if (sent) announce(null);
-    } finally {
-      flushing = null;
-    }
-  })();
+  // Cleared in finally, which runs after this assignment even when there is nothing to send.
+  if (flushing === null) flushing = sendQueued().finally(() => (flushing = null));
   return flushing;
+}
+
+async function sendQueued(): Promise<void> {
+  let replayed = false;
+  for (let ops = readOutbox(); ops.length > 0; ops = readOutbox()) {
+    const next = ops[0]!;
+    try {
+      if (next.op === "mark") await putMark(next.sentenceId);
+      else await deleteMark(next.sentenceId);
+    } catch (err) {
+      if (retryable(err)) return retryLater();
+      // PRD F8: a replay that fails does not bother the user (the Sentence's Book may be gone).
+      console.warn(`replaying a queued ${next.op} of Sentence ${next.sentenceId} failed`, err);
+    }
+    replayed = true;
+    // A newer op on the Sentence may have replaced this one meanwhile; leave that one waiting.
+    writeOutbox(readOutbox().filter((o) => !(o.sentenceId === next.sentenceId && o.op === next.op)));
+  }
+  // The API has the last word now, also on ops it refused; let every view load its Marks again.
+  if (replayed) announce(null);
 }
 
 let watching = false;
@@ -116,10 +134,21 @@ function watchNetwork(): void {
   window.addEventListener("online", () => void flushOutbox());
 }
 
-/** Starts the outbox for the logged-in app: sends what a previous visit left, and from then on after outages. */
-export function startOutbox(): void {
+/**
+ * Starts the outbox of the user logged in on this device: sends what their previous visit left, and from then on
+ * after outages. Each user has their own, so nobody replays another user's Marks.
+ */
+export function startOutbox(userId: string): void {
+  outboxKey = `vocaleaf:mark-outbox:${userId}`;
   watchNetwork();
   void flushOutbox();
+}
+
+/** Logged out: what waits stays for that user's next login on this device. */
+export function stopOutbox(): void {
+  outboxKey = null;
+  clearTimeout(retryTimer);
+  retryTimer = undefined;
 }
 
 /**
@@ -153,8 +182,8 @@ export async function unmarkSentence(sentenceId: string): Promise<void> {
   }
 }
 
-/** Dismisses a pending Mark (PRD 4.4.4); needs the network, the caller shows a failure. */
-export async function dismissSentence(sentenceId: string): Promise<void> {
+/** Dismisses the pending Mark of a Sentence (PRD 4.4.4); needs the network, the caller shows a failure. */
+export async function dismissFromGleanings(sentenceId: string): Promise<void> {
   await dismissMark(sentenceId);
   announce({ sentenceId, pending: false });
 }

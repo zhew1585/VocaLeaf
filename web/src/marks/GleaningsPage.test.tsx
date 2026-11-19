@@ -179,7 +179,7 @@ describe("拾起 (F10)", () => {
     fireEvent.click(screen.getByRole("button", { name: "定位原文" }));
 
     expect(window.location.pathname).toBe("/books/b1/listen");
-    expect(window.location.search).toBe("?locate=s2&in=b1-c1");
+    expect(window.location.search).toBe("?locate=s2&locateChapter=b1-c1");
   });
 
   it("says everything is picked up when nothing waits", async () => {

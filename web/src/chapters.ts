@@ -33,5 +33,5 @@ export function shelfListenPath(bookId: string): string {
  * the Book's last progress rather than the Sentence).
  */
 export function locatePath(bookId: string, chapterId: string, sentenceId: string): string {
-  return `/books/${bookId}/listen?${new URLSearchParams({ locate: sentenceId, in: chapterId })}`;
+  return `/books/${bookId}/listen?${new URLSearchParams({ locate: sentenceId, locateChapter: chapterId })}`;
 }

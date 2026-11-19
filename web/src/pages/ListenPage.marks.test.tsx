@@ -3,6 +3,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookDetail, Sentence } from "../api";
+import { startOutbox, stopOutbox } from "../marks/marks";
 import { ListeningProvider } from "../player/session";
 import { audioWithGenerated, hlsInstances, stubMediaPlayback } from "../test-media";
 import { ListenPage } from "./ListenPage";
@@ -63,6 +64,7 @@ let online: boolean;
 let writes: string[];
 
 beforeEach(() => {
+  startOutbox("u1");
   hlsInstances.length = 0;
   media = stubMediaPlayback();
   Element.prototype.scrollTo = vi.fn() as never;
@@ -103,6 +105,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  stopOutbox();
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -237,7 +240,7 @@ describe("marking while listening (PRD 4.4.2)", () => {
 
 describe("opened by 定位原文 (F10)", () => {
   it("shows the Sentence without following playback, paused, and forgets the parameters", async () => {
-    window.history.pushState(null, "", "/books/b1/listen?locate=t2&in=c2");
+    window.history.pushState(null, "", "/books/b1/listen?locate=t2&locateChapter=c2");
     render(
       <ListeningProvider>
         <ListenPage id="b1" />

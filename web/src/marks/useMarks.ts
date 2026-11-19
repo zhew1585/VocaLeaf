@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { getBookMarks, getGleaningCount } from "../api";
 import { MARKS_CHANGED_EVENT, markSentence, unmarkSentence, withQueued, type MarkOutcome, type MarksChange } from "./marks";
 
-/** Calls `onChange` with every MARKS_CHANGED_EVENT while mounted. */
-function useMarksChanged(onChange: (change: MarksChange) => void) {
+/** Calls `onChange` (keep it stable) with every MARKS_CHANGED_EVENT while mounted. */
+export function useMarksChanged(onChange: (change: MarksChange) => void) {
   useEffect(() => {
     const listener = (e: Event) => onChange((e as CustomEvent<MarksChange>).detail);
     window.addEventListener(MARKS_CHANGED_EVENT, listener);
@@ -12,7 +12,7 @@ function useMarksChanged(onChange: (change: MarksChange) => void) {
 }
 
 /** The Marks of one Book as its views use them; see useBookMarks. */
-export interface BookMarks {
+export interface MarksInBook {
   /** Sentences with a pending Mark: underlined in the reading view (PRD 4.4.5), a filled leaf in 句子精读. */
   pending: ReadonlySet<string>;
   isMarked(sentenceId: string): boolean;
@@ -27,7 +27,7 @@ export interface BookMarks {
  * the leaf in 句子精读, Gleanings). The one entry point for marking a Sentence: 句子精读's leaf toggle is
  * `isMarked(id) ? unmark(id) : mark(id)`.
  */
-export function useBookMarks(bookId: string): BookMarks {
+export function useBookMarks(bookId: string): MarksInBook {
   const [pending, setPending] = useState<ReadonlySet<string>>(() => withQueued([]));
   const [reloads, setReloads] = useState(0);
 

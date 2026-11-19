@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { dismissSentence } from "./marks";
+import { dismissFromGleanings } from "./marks";
 
 interface Props {
   sentenceId: string;
@@ -24,7 +24,7 @@ export function ConfirmDismiss({ sentenceId, onCancel, onDismissed }: Props) {
     setBusy(true);
     setError(null);
     try {
-      await dismissSentence(sentenceId);
+      await dismissFromGleanings(sentenceId);
       onDismissed();
     } catch (err) {
       setError(err instanceof Error ? err.message : "忽略失败，请稍后再试");

@@ -5,7 +5,8 @@ import { LocateIcon, PlaySolidIcon, TextCursorInputIcon, XIcon } from "../icons"
 import { useListening } from "../player/session";
 import { navigate } from "../router";
 import { ConfirmDismiss } from "./ConfirmDismiss";
-import { MARKS_CHANGED_EVENT, type MarksChange } from "./marks";
+import type { MarksChange } from "./marks";
+import { useMarksChanged } from "./useMarks";
 import "./gleanings.css";
 
 const EMPTY = "都拾起来了。听书时点标记，句子会出现在这里";
@@ -25,11 +26,7 @@ function useGleanings() {
       active = false;
     };
   }, [reloads]);
-  useEffect(() => {
-    const onChanged = (e: Event) => (e as CustomEvent<MarksChange>).detail === null && setReloads((n) => n + 1);
-    window.addEventListener(MARKS_CHANGED_EVENT, onChanged);
-    return () => window.removeEventListener(MARKS_CHANGED_EVENT, onChanged);
-  }, []);
+  useMarksChanged(useCallback((change: MarksChange) => change === null && setReloads((n) => n + 1), []));
   const remove = useCallback((sentenceId: string) => {
     setItems((prev) => prev && prev.filter((g) => g.sentenceId !== sentenceId));
   }, []);
@@ -89,22 +86,7 @@ export function GleaningsPage() {
           <p className="gleanings-empty">{EMPTY}</p>
         ) : (
           <>
-            <div className="gleanings-filter" role="group" aria-label="按书筛选">
-              <button type="button" className="filter-chip" aria-pressed={filter === null} onClick={() => setBookFilter(null)}>
-                全部
-              </button>
-              {books.map((b) => (
-                <button
-                  key={b.id}
-                  type="button"
-                  className="filter-chip book-chip"
-                  aria-pressed={filter === b.id}
-                  onClick={() => setBookFilter(b.id)}
-                >
-                  {b.title}
-                </button>
-              ))}
-            </div>
+            <BookFilter books={books} value={filter} onChange={setBookFilter} />
             <ul className="gleaning-list" aria-label="拾起列表">
               {shown.map((g) => (
                 <GleaningItem
@@ -136,6 +118,35 @@ export function GleaningsPage() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+interface FilterProps {
+  books: { id: string; title: string }[];
+  /** The Book filtered by, or null for 全部. */
+  value: string | null;
+  onChange(bookId: string | null): void;
+}
+
+/** 全部 and one chip per Book with items (PRD 4.4.4 筛选). */
+function BookFilter({ books, value, onChange }: FilterProps) {
+  return (
+    <div className="gleanings-filter" role="group" aria-label="按书筛选">
+      <button type="button" className="filter-chip" aria-pressed={value === null} onClick={() => onChange(null)}>
+        全部
+      </button>
+      {books.map((b) => (
+        <button
+          key={b.id}
+          type="button"
+          className="filter-chip book-chip"
+          aria-pressed={value === b.id}
+          onClick={() => onChange(b.id)}
+        >
+          {b.title}
+        </button>
+      ))}
     </div>
   );
 }

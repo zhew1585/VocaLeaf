@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BookDetail, ChapterSummary } from "../api";
 import { isPlayableChapter, waitMessage } from "../chapters";
-import { useMarkPress } from "../marks/MarkToast";
+import { useMarkPress } from "../marks/useMarkPress";
 import { useBookMarks } from "../marks/useMarks";
 import type { StartRequest } from "../player/playback";
 import { Player } from "../player/Player";
@@ -69,13 +69,19 @@ function usePickedChapter() {
   return { picked, pick, settle, find };
 }
 
-/** The Sentence 【定位原文】 opened the page at (`?locate=<Sentence>&in=<Chapter>`, locatePath), if any. */
+/** What an id from the URL may look like (UUIDs in practice); anything else could break a selector. */
+const ID = /^[\w-]{1,64}$/;
+
+/**
+ * The Sentence 【定位原文】 opened the page at (`?locate=<Sentence>&locateChapter=<Chapter>`, locatePath), if any.
+ * Malformed ids are ignored: they come from the URL and end up in selectors.
+ */
 function useLocatedSentence() {
   const [located] = useState(() => {
     const params = new URLSearchParams(window.location.search);
-    const sentenceId = params.get("locate");
-    const chapterId = params.get("in");
-    return sentenceId && chapterId ? { sentenceId, chapterId } : null;
+    const sentenceId = params.get("locate") ?? "";
+    const chapterId = params.get("locateChapter") ?? "";
+    return ID.test(sentenceId) && ID.test(chapterId) ? { sentenceId, chapterId } : null;
   });
   return located;
 }
