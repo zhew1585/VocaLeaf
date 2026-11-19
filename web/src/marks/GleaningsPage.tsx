@@ -95,20 +95,20 @@ export function GleaningsPage() {
   const shown = filter === null ? items : items.filter((g) => g.bookId === filter);
   const pending = (g: Gleaning | null) => g !== null && items.some((i) => i.sentenceId === g.sentenceId);
 
-  /** 【试听本句】 (PRD 4.4.1 试听): the Sentence alone, from its own Book's audio, whichever Book the session holds. */
-  const audition = (g: Gleaning): AuditionControl | null => {
+  /**
+   * The Sentence alone (PRD 4.4.1 试听), from its own Book's audio, whichever Book the session holds. The item's
+   * 播放这一句 and 句子精读's speaker are separate: each shows only its own playing. Only the item's pauses and plays
+   * on from where it paused; the speaker always reads from the Sentence's start.
+   */
+  const audition = (g: Gleaning, from: "item" | "panel"): AuditionControl | null => {
     const { startMs, endMs } = g;
     if (startMs === null || endMs === null) return null;
-    const own = listening.audition?.id === g.sentenceId ? listening.audition : null;
-    // Paused, it shows as not playing, and playing goes on from where it paused.
+    const id = `${from}:${g.sentenceId}`;
+    const own = listening.audition?.id === id ? listening.audition : null;
     const state = !own || own.paused ? "idle" : own.loading ? "loading" : "playing";
-    return {
-      state,
-      play: () =>
-        own?.paused
-          ? listening.resumeAudition()
-          : listening.startAudition({ id: g.sentenceId, startMs, endMs, playlist: playlistUrl(g.bookId) }),
-    };
+    const play = () =>
+      own?.paused ? listening.resumeAudition() : listening.startAudition({ id, startMs, endMs, playlist: playlistUrl(g.bookId) });
+    return { state, play };
   };
 
   return (
@@ -133,7 +133,7 @@ export function GleaningsPage() {
                     if (g.sentenceId !== selected?.sentenceId) closePopover();
                     setSelected(g);
                   }}
-                  audition={audition(g)}
+                  audition={audition(g, "item")}
                   onPause={listening.pauseAudition}
                   onDismiss={() => setAsking(g)}
                 />
@@ -158,7 +158,7 @@ export function GleaningsPage() {
           gleaning={selected}
           pending={pending(selected)}
           cards={selected ? cards.of(selected.sentenceId) : []}
-          audition={selected && audition(selected)}
+          audition={selected && audition(selected, "panel")}
           onLocate={(g) => navigate(locatePath(g.bookId, g.chapterId, g.sentenceId))}
           onDismiss={setAsking}
           onOpenCards={(shown) => popover.show(shown, null)}

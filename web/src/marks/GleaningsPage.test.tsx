@@ -198,6 +198,31 @@ describe("拾起 (F10)", () => {
     expect(within(list()).getByRole("button", { name: "暂停" })).toBeTruthy();
   });
 
+  it("keeps 播放这一句 and 句子精读's speaker apart; the speaker always reads from the start", async () => {
+    await openPage();
+    fireEvent.click(screen.getByText("I went to the woods because I wished to live deliberately."));
+    const speaker = () => screen.getByRole("button", { name: "试听本句" });
+
+    // The item plays and pauses partway; the speaker does not show it as its own.
+    fireEvent.click(within(list()).getByRole("button", { name: "播放这一句" }));
+    const first = hlsInstances.at(-1)!;
+    act(() => (first.media as HTMLAudioElement).dispatchEvent(new Event("playing")));
+    expect(speaker().getAttribute("aria-busy")).toBe("false");
+    fireEvent.click(within(list()).getByRole("button", { name: "暂停" }));
+
+    // The speaker reads the Sentence from its start, not on from the pause.
+    fireEvent.click(speaker());
+    expect(hlsInstances.at(-1)).not.toBe(first);
+    expect(hlsInstances.at(-1)!.config).toMatchObject({ startPosition: 64 });
+    expect(speaker().getAttribute("aria-busy")).toBe("true");
+    // The item's button is not the speaker's pause: it offers to play, from the start again.
+    expect(within(list()).getByRole("button", { name: "播放这一句" })).toBeTruthy();
+    const loads = hlsInstances.length;
+    fireEvent.click(within(list()).getByRole("button", { name: "播放这一句" }));
+    expect(hlsInstances).toHaveLength(loads + 1);
+    expect(hlsInstances.at(-1)!.config).toMatchObject({ startPosition: 64 });
+  });
+
   it("offers 播放这一句 only once the Sentence has audio", async () => {
     await openPage();
     fireEvent.click(screen.getByText("It is a truth universally acknowledged."));
