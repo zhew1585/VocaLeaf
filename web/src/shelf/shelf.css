@@ -276,7 +276,7 @@
 
 .cover-actions:hover,
 .cover-actions:focus-within {
-  background-color: rgb(23 38 30 / 0.55);
+  background-color: var(--cover-dim);
 }
 
 .cover-action {
