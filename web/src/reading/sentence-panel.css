@@ -160,6 +160,11 @@
   mask-image: linear-gradient(to bottom, transparent, #000 24px);
 }
 
+/* The bar starts below the top fade and ends above the floating 追问 bar and its chips (.chat-dock, up to 130 px). */
+.chat-scroll::-webkit-scrollbar-track:vertical {
+  margin-block: 16px 140px;
+}
+
 .chat-scroll > .sentence-panel-empty {
   flex: 1;
 }

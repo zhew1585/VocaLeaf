@@ -307,7 +307,8 @@
 }
 
 .reading-content {
-  width: min(var(--column), 100% - 64px);
+  /* 48 px kept on each side: room for 【从这里播放】 outside a Sentence's right edge (4 + 40 px), never clipped. */
+  width: min(var(--column), 100% - 96px);
   margin: 0 auto;
   /* room for the floating player under the last Sentence */
   padding-bottom: 50vh;

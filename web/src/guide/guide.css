@@ -25,7 +25,7 @@
 }
 
 /* The scrollbar stops short of the rounded corners. */
-.guide-dialog::-webkit-scrollbar-track {
+.guide-dialog::-webkit-scrollbar-track:vertical {
   margin-block: 24px;
 }
 

@@ -84,7 +84,7 @@
 }
 
 /* The scrollbar stops short of the rounded corners. */
-.card-popover::-webkit-scrollbar-track {
+.card-popover::-webkit-scrollbar-track:vertical {
   margin-block: 16px;
 }
 
