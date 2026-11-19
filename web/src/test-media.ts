@@ -7,6 +7,8 @@ export interface FakeHlsRecord {
   source?: string;
   media?: HTMLMediaElement;
   destroyed: boolean;
+  /** startLoad asked hls.js to load again (the network came back). */
+  restarted?: boolean;
   handlers: Record<string, (event: string, data: { fatal: boolean }) => void>;
 }
 
@@ -30,6 +32,9 @@ export class FakeHls {
   }
   attachMedia(media: HTMLMediaElement) {
     this.record.media = media;
+  }
+  startLoad() {
+    this.record.restarted = true;
   }
   destroy() {
     this.record.destroyed = true;

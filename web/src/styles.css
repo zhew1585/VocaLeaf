@@ -519,11 +519,169 @@ button.chapter-title:hover {
   text-align: center;
 }
 
+/* Speed and sleep timer | 重听, play / pause, 下一句 | room for 【标记 M】 (#13). */
 .player-controls {
   height: 44px;
   display: flex;
   align-items: center;
+}
+
+/* Both sides share what the transport leaves, so it stays centered at any width. */
+.player-side {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.player-transport {
+  flex: none;
+  display: flex;
+  align-items: center;
   justify-content: center;
+  gap: 24px;
+}
+
+.player-speed,
+.player-icon-button {
+  height: 36px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.player-speed {
+  padding: 0 12px;
+  border-radius: 18px;
+  font-family: var(--font-num);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.player-icon-button {
+  width: 36px;
+  padding: 0;
+  border-radius: 10px;
+}
+
+.player-speed:hover,
+.player-icon-button:hover {
+  background: var(--sunken);
+}
+
+.player-icon-button.active {
+  background: var(--leaf-soft);
+}
+
+.player-speed:focus-visible,
+.player-icon-button:focus-visible,
+.player-option:focus-visible {
+  outline: 2px solid var(--leaf);
+  outline-offset: 2px;
+}
+
+/* A menu opening above its button (design 01 ④ 睡眠定时浮层). */
+.player-menu {
+  position: relative;
+}
+
+.player-popover {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  bottom: calc(100% + 10px);
+  width: 232px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  box-shadow: 0 16px 40px rgb(28 33 29 / 0.2);
+}
+
+.player-popover-title,
+.player-popover-header {
+  margin: 0;
+  height: 40px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.player-countdown {
+  font-family: var(--font-read);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--leaf);
+  font-variant-numeric: tabular-nums;
+}
+
+.player-option {
+  height: 42px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  text-align: left;
+}
+
+.player-option:hover {
+  background: var(--paper);
+}
+
+.player-option.checked {
+  background: var(--leaf-soft);
+  color: var(--leaf);
+  font-weight: 500;
+}
+
+.player-option.quiet {
+  color: var(--ink-2);
+}
+
+.player-popover-divider {
+  margin: 6px 12px;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+/* Phone width: tighter padding and gaps. */
+@media (max-width: 520px) {
+  .player {
+    padding: 12px 14px;
+  }
+
+  .player-side {
+    gap: 0;
+  }
+
+  .player-speed {
+    padding: 0 8px;
+  }
+
+  .player-icon-button {
+    width: 32px;
+  }
+
+  .player-transport {
+    gap: 10px;
+  }
 }
 
 .play-button {
@@ -564,6 +722,19 @@ button.chapter-title:hover {
   position: relative;
   flex: 1;
   height: 10px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+/* A taller hit area than the 4 px line, so the bar is easy to grab. */
+.player-track::after {
+  content: "";
+  position: absolute;
+  inset: -8px 0;
+}
+
+.player-track.dragging .player-knob {
+  transform: scale(1.3);
 }
 
 .player-track::before,

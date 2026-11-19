@@ -48,7 +48,7 @@ _Avoid_: Player (the controls), playback queue
 A Sentence the user deliberately flagged while listening, to study later.
 _Avoid_: Highlight, bookmark, annotation, note
 
-Jumping back with ⏮ only replays audio; it records nothing and never creates a Mark.
+Jumping back with ⏮ (重听) only replays audio; it records nothing and never creates a Mark.
 
 **Gleanings** (拾起):
 The cross-book queue of unprocessed Marks waiting to be turned into Cards or dismissed.

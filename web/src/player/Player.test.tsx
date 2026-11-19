@@ -2,7 +2,8 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { audio, audioWithGenerated, hlsInstances, stubMediaPlayback, timeUpdate } from "../test-media";
-import { formatElapsed, formatRemaining, Player, type PlayerProps } from "./Player";
+import { Player, type PlayerProps } from "./Player";
+import { formatElapsed, formatRemaining } from "./Progress";
 import { ListeningProvider, useListening } from "./session";
 
 vi.mock("hls.js", async () => ({ default: (await import("../test-media")).FakeHls }));
@@ -53,7 +54,7 @@ describe("Player", () => {
 
     timeUpdate(252, 41_752);
 
-    const bar = screen.getByRole("progressbar", { name: "整本进度" });
+    const bar = screen.getByRole("slider", { name: "整本进度" });
     expect(bar.getAttribute("aria-valuenow")).toBe("252");
     expect(bar.getAttribute("aria-valuemax")).toBe("41752");
     expect(screen.getByText("0:04:12")).toBeTruthy();
@@ -66,7 +67,7 @@ describe("Player", () => {
 
     timeUpdate(30);
 
-    expect(screen.getByRole("progressbar").getAttribute("aria-valuemax")).toBe("120");
+    expect(screen.getByRole("slider").getAttribute("aria-valuemax")).toBe("120");
     expect(screen.getByText("−0:01:30")).toBeTruthy();
   });
 
@@ -75,7 +76,7 @@ describe("Player", () => {
 
     timeUpdate(252, 600); // only 10 minutes are generated so far
 
-    expect(screen.getByRole("progressbar").getAttribute("aria-valuemax")).toBe("41752");
+    expect(screen.getByRole("slider").getAttribute("aria-valuemax")).toBe("41752");
     expect(screen.getByText("−11:31:40")).toBeTruthy();
   });
 
@@ -99,6 +100,87 @@ describe("Player", () => {
     expect(screen.getByRole("status").textContent).toBe("已可以收听，点播放开始");
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByRole("button", { name: "播放" })).toBeTruthy();
+  });
+});
+
+describe("Player controls (design 01 ④)", () => {
+  it("lays out speed, sleep timer, 重听, play / pause and 下一句 from left to right", () => {
+    renderPlayer();
+    const names = screen.getAllByRole("button").map((b) => b.getAttribute("aria-label"));
+    expect(names).toEqual(["倍速 1.0×", "睡眠定时", "重听", "播放", "下一句"]);
+  });
+
+  it("picks a speed from the menu above the button", () => {
+    renderPlayer();
+    fireEvent.click(screen.getByRole("button", { name: "倍速 1.0×" }));
+    const options = screen.getAllByRole("menuitemradio");
+    expect(options.map((o) => o.textContent)).toEqual(["0.5×", "0.75×", "1.0×", "1.25×", "1.5×", "1.75×", "2.0×"]);
+    expect(options[2]!.getAttribute("aria-checked")).toBe("true");
+
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "1.5×" }));
+
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(screen.getByRole("button", { name: "倍速 1.5×" })).toBeTruthy();
+    expect(audio().playbackRate).toBe(1.5);
+  });
+
+  it("sets the sleep timer, shows the time left when opened again, and turns it off", () => {
+    renderPlayer();
+    const moon = () => screen.getByRole("button", { name: "睡眠定时" });
+    fireEvent.click(moon());
+    expect(screen.getAllByRole("menuitemradio").map((o) => o.textContent)).toEqual([
+      "15 分钟",
+      "30 分钟",
+      "45 分钟",
+      "60 分钟",
+      "本章结束",
+    ]);
+    expect(screen.queryByRole("menuitem", { name: "关闭定时" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "30 分钟" }));
+    expect(moon().className).toContain("active");
+
+    fireEvent.click(moon());
+    expect(screen.getByRole("menu").textContent).toMatch(/睡眠定时(30:00|29:59)/);
+    expect(screen.getByRole("menuitemradio", { name: "30 分钟" }).getAttribute("aria-checked")).toBe("true");
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "关闭定时" }));
+    expect(moon().className).not.toContain("active");
+  });
+
+  it("closes a menu on a press outside it and on Esc", () => {
+    renderPlayer();
+    fireEvent.click(screen.getByRole("button", { name: "睡眠定时" }));
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("menu")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "睡眠定时" }));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("follows the pointer while the bar is dragged and seeks where it is released (AC-PLAY-21)", () => {
+    renderPlayer();
+    const { seeks } = audioWithGenerated(1000);
+    const bar = screen.getByRole("slider", { name: "整本进度" });
+    bar.getBoundingClientRect = () => ({ left: 100, width: 200 }) as DOMRect;
+
+    fireEvent.pointerDown(bar, { clientX: 150, pointerId: 1 });
+    fireEvent.pointerMove(bar, { clientX: 200, pointerId: 1 });
+    expect(bar.getAttribute("aria-valuenow")).toBe("500");
+    expect(screen.getByText("0:08:20")).toBeTruthy();
+    expect(seeks).toEqual([]);
+
+    fireEvent.pointerUp(bar, { clientX: 201, pointerId: 1 });
+    expect(seeks).toEqual([505]);
+  });
+
+  it("says when the network is down", () => {
+    renderPlayer();
+    act(() => {
+      window.dispatchEvent(new Event("offline"));
+    });
+    expect(screen.getByRole("status").textContent).toBe("网络已断开，恢复后继续播放");
   });
 });
 

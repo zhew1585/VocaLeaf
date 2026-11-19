@@ -185,3 +185,31 @@ export const TrashIcon = ({ size = 15 }) => (
     <line x1="14" x2="14" y1="11" y2="17" />
   </Icon>
 );
+
+/** The design's "1" inside the 重听 / 下一句 arrows (VocalLeaf V1.0.0.pen, 数字 1). */
+const ONE = "M9.5 10.1l2.5-1.9h1.6v8h-1.75v-5.95l-1.5 1.15z";
+
+/** 重听: Lucide rotate-ccw with a 1 in its middle. */
+export const ReplayIcon = ({ size = 22 }) => (
+  <Icon size={size}>
+    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+    <path d="M3 3v5h5" />
+    <path d={ONE} fill="currentColor" stroke="none" />
+  </Icon>
+);
+
+/** 下一句: Lucide rotate-cw with a 1 in its middle. */
+export const NextSentenceIcon = ({ size = 22 }) => (
+  <Icon size={size}>
+    <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+    <path d="M21 3v5h-5" />
+    <path d={ONE} fill="currentColor" stroke="none" />
+  </Icon>
+);
+
+/** 睡眠定时: Lucide moon. */
+export const MoonIcon = ({ size = 18 }) => (
+  <Icon size={size}>
+    <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+  </Icon>
+);

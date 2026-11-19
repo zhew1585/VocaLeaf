@@ -17,6 +17,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** The calls that told the API where playback is (the session also loads the Book's timeline). */
+function listeningCalls(fetchMock: { mock: { calls: [string, RequestInit][] } }) {
+  return fetchMock.mock.calls.filter(([url]) => url.endsWith("/listening"));
+}
+
 /** Renders the provider and hands back the live session, and the render result to unmount it. */
 function session() {
   const ref: { current: Listening | null } = { current: null };
@@ -73,7 +78,7 @@ describe("the listening session", () => {
     timeUpdate(20);
     act(() => s().toggle());
 
-    expect(fetchMock.mock.calls.map(([url, init]) => [url, init.method, JSON.parse(init.body as string)])).toEqual([
+    expect(listeningCalls(fetchMock).map(([url, init]) => [url, init.method, JSON.parse(init.body as string)])).toEqual([
       ["/api/books/b1/listening", "PUT", { positionMs: 12345 }],
       ["/api/books/b1/listening", "PUT", { positionMs: 20000 }],
     ]);
@@ -93,7 +98,7 @@ describe("the listening session", () => {
     act(() => {
       audio().dispatchEvent(new Event("pause"));
     });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(listeningCalls(fetchMock)).toEqual([]);
 
     // Once the new Book's playlist is loaded, its own positions are reported.
     timeUpdate(0);
@@ -101,7 +106,7 @@ describe("the listening session", () => {
       audio().dispatchEvent(new Event("loadedmetadata"));
     });
     act(() => s().toggle());
-    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(["/api/books/b2/listening"]);
+    expect(listeningCalls(fetchMock).map(([url]) => url)).toEqual(["/api/books/b2/listening"]);
   });
 
   it("plays and pauses with toggle", () => {

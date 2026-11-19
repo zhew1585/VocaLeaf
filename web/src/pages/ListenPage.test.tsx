@@ -83,6 +83,12 @@ const sentence = (id: string, paragraphIndex: number, text: string, startMs: num
   wordTimings: null,
 });
 
+/** The Book timeline the served Sentences make (GET /api/books/b1/timeline). */
+function timelineOf(sentences: Record<string, Sentence[]>) {
+  const starts = Object.values(sentences).flatMap((list) => list.flatMap((s) => (s.startMs === null ? [] : [s.startMs])));
+  return { sentenceStartsMs: starts.sort((a, b) => a - b), chapters: [], complete: true };
+}
+
 /**
  * Answers GET /api/books/b1 with each Book in turn, the last one from then on, and a Chapter's Sentences from
  * `sentences` (none when missing). Returns the fetch mock.
@@ -92,6 +98,7 @@ function serve(books: BookDetail[], sentences: Record<string, Sentence[]> = {}) 
   const fetchMock = vi.fn(async (url: string) => {
     const chapterId = /^\/api\/chapters\/([^/]+)\/sentences$/.exec(url)?.[1];
     if (chapterId) return Response.json(sentences[chapterId] ?? []);
+    if (url.endsWith("/timeline")) return Response.json(timelineOf(sentences));
     return Response.json(queue.length > 1 ? queue.shift() : queue[0]);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -113,7 +120,7 @@ describe("ListenPage (专注页)", () => {
 
     expect(await screen.findByRole("heading", { name: "Pride and Prejudice" })).toBeTruthy();
     expect(await screen.findByRole("button", { name: "播放" })).toBeTruthy();
-    expect(screen.getByRole("progressbar", { name: "整本进度" })).toBeTruthy();
+    expect(screen.getByRole("slider", { name: "整本进度" })).toBeTruthy();
   });
 
   it("waits for the first segment, then offers the player without a reload", async () => {
@@ -488,5 +495,45 @@ describe("ListenPage reading view (F7, F9)", () => {
     expect(loaded.sort()).toEqual(["/api/chapters/k0/sentences", "/api/chapters/k1/sentences"]);
     // The rest wait as placeholders of about their height.
     expect(document.querySelectorAll("[data-rendered='false']").length).toBeGreaterThanOrEqual(58);
+  });
+});
+
+describe("ListenPage controls (#9)", () => {
+  it("plays and pauses with Space, and moves by Sentence with ← and →", async () => {
+    serve([book], {
+      c1: [sentence("s1", 0, "It is a truth.", 0), sentence("s2", 0, "However little known.", 4000), sentence("s3", 1, "My dear.", 8000)],
+    });
+    renderPage();
+    await screen.findByRole("button", { name: "播放" });
+    const { seeks } = audioWithGenerated(600);
+
+    fireEvent.keyDown(document.body, { key: " " });
+    expect(media.play).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(document.body, { key: " " });
+    expect(media.pause).toHaveBeenCalledTimes(1);
+
+    seeks.push(5);
+    await act(async () => {
+      fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    });
+    expect(seeks.at(-1)).toBe(8);
+    seeks.push(10);
+    await act(async () => {
+      fireEvent.keyDown(document.body, { key: "ArrowLeft" });
+    });
+    expect(seeks.at(-1)).toBe(8);
+  });
+
+  it("says how long it takes when the bar is dragged past the generated audio", async () => {
+    serve([generating]);
+    renderPage();
+    const bar = await screen.findByRole("slider", { name: "整本进度" });
+    audioWithGenerated(600);
+    bar.getBoundingClientRect = () => ({ left: 0, width: 1000 }) as DOMRect;
+
+    fireEvent.pointerDown(bar, { clientX: 500, pointerId: 1 });
+    fireEvent.pointerUp(bar, { clientX: 500, pointerId: 1 });
+
+    expect((await screen.findByRole("status")).textContent).toBe("该章节生成中，预计约 40 秒");
   });
 });
