@@ -84,7 +84,8 @@ function RetryButton({ chapter, onChanged }: { chapter: ChapterSummary; onChange
  * Whether the Chapter is narrated (on) or Skipped (off), design 04-2 and PRD 4.2.5. `onChanged` reloads the Book,
  * which shows the Chapter's new state and lets the listening session follow its playlist.
  */
-function NarrationSwitch({ chapter, onChanged }: { chapter: ChapterSummary; onChanged: () => void }) {
+/** The 朗读 switch of a Chapter; `locked` while the Book's Voice changes, as the API refuses changes then. */
+function NarrationSwitch({ chapter, locked, onChanged }: { chapter: ChapterSummary; locked: boolean; onChanged: () => void }) {
   const { busy, error, run } = useChapterAction(onChanged, "修改失败，请稍后再试");
   return (
     <>
@@ -94,7 +95,8 @@ function NarrationSwitch({ chapter, onChanged }: { chapter: ChapterSummary; onCh
         className="narration-switch"
         aria-checked={!chapter.skipped}
         aria-label={`朗读 ${chapter.title}`}
-        disabled={busy}
+        disabled={busy || locked}
+        title={locked ? "正在更换音色，完成后再调整" : undefined}
         onClick={() => run(() => setChapterSkipped(chapter.id, !chapter.skipped))}
       >
         <span className="narration-knob" />
@@ -113,12 +115,15 @@ export function ChapterList({
   bookId,
   chapters,
   editable,
+  voiceChanging = false,
   onChanged,
 }: {
   bookId: string;
   chapters: ChapterSummary[];
   /** An uploaded Book's: offers 重试 on 生成失败 Chapters and the 朗读 switches; a Library Book's has neither. */
   editable: boolean;
+  /** The Book's Voice is changing (#19): the 朗读 switches wait until it is done. */
+  voiceChanging?: boolean;
   /** Reloads the Book after a retry or a switch. */
   onChanged: () => void;
 }) {
@@ -135,7 +140,7 @@ export function ChapterList({
           )}
           <ChapterState chapter={c} />
           {editable && c.audioStatus === "failed" && !c.skipped && <RetryButton chapter={c} onChanged={onChanged} />}
-          {editable && <NarrationSwitch chapter={c} onChanged={onChanged} />}
+          {editable && <NarrationSwitch chapter={c} locked={voiceChanging} onChanged={onChanged} />}
         </li>
       ))}
     </ol>

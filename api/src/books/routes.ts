@@ -5,11 +5,12 @@ import type { UserEnv } from "../auth/session.js";
 import { BookDetailSchema, ErrorSchema, SentenceSchema } from "../contract.js";
 import { books, chapters, sentences } from "../db/schema.js";
 import { retryFailedChapter } from "../jobs/lifecycle.js";
+import { isVoiceChanging } from "../jobs/voice-change.js";
 import { validationHook } from "../validation.js";
 import { notFound, readableBook, readableBy } from "./readable-book.js";
 import { loadListening } from "./shelf.js";
 import { chapterStartMs, estimateDurationMs, loadTimeline } from "./timeline.js";
-import { progressOf, toBook } from "./view.js";
+import { progressOf, toBook, voiceOf } from "./view.js";
 import { loadChapterWaits } from "./wait.js";
 
 const sentencesRoute = createRoute({
@@ -31,7 +32,10 @@ const retryRoute = createRoute({
   responses: {
     204: { description: "Chapter queued again" },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-    409: { description: "The Chapter is not 生成失败", content: { "application/json": { schema: ErrorSchema } } },
+    409: {
+      description: "The Chapter is not 生成失败, or the Book's Voice is changing",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
@@ -49,6 +53,8 @@ const getRoute = createRoute({
 
 
 const chapterNotFailed = { error: { code: "chapter_not_failed", message: "该章节没有生成失败，无需重试" } } as const;
+// A retried Chapter would generate in the old Voice while the change replaces the others (jobs/voice-change.ts).
+const voiceChanging = { error: { code: "voice_change_running", message: "正在更换音色，完成后再重试" } } as const;
 
 /** User-facing routes of one Book: its detail, its Chapters' Sentences, retrying a Chapter. */
 export function bookRoutes({ db }: AppDeps) {
@@ -88,6 +94,7 @@ export function bookRoutes({ db }: AppDeps) {
       {
         ...toBook(book, timeline, progressOf(rows), listening),
         source: book.source,
+        ...voiceOf(book),
         chapters: chapterSummaries,
         durationMs: estimateDurationMs(rows.map((r) => ({ ...r, spokenChars: r.spokenChars ?? 0 }))),
       },
@@ -99,18 +106,19 @@ export function bookRoutes({ db }: AppDeps) {
     const { id } = c.req.valid("param");
     const outcome = await db.transaction(async (tx) => {
       const [chapter] = await tx
-        .select({ id: chapters.id })
+        .select({ id: chapters.id, voiceChangeTo: books.voiceChangeTo, voiceChangeFailed: books.voiceChangeFailed })
         .from(chapters)
         .innerJoin(books, eq(books.id, chapters.bookId))
         // Only the uploader retries; a Library Book's generation is the operators' job (PRD 6.2).
-        .where(and(eq(chapters.id, id), eq(books.ownerId, c.get("userId"))));
+        .where(and(eq(chapters.id, id), eq(books.ownerId, c.get("userId"))))
+        .for("update", { of: books });
       if (!chapter) return "not_found";
+      if (isVoiceChanging(chapter)) return "voice_changing";
       return (await retryFailedChapter(tx, id)) ? "retried" : "not_failed";
     });
     if (outcome === "not_found") return c.json(notFound, 404);
-    if (outcome === "not_failed") {
-      return c.json(chapterNotFailed, 409);
-    }
+    if (outcome === "not_failed") return c.json(chapterNotFailed, 409);
+    if (outcome === "voice_changing") return c.json(voiceChanging, 409);
     return c.body(null, 204);
   });
 

@@ -181,6 +181,9 @@ describe("the listening session", () => {
     const detail = (chapters: Chapter[]): BookDetail => ({
       id: "b1",
       source: "upload",
+      voice: "us_female",
+      voiceChange: null,
+      voiceChangeable: true,
       title: "Pride and Prejudice",
       author: null,
       status: "ready",

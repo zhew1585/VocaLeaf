@@ -6,11 +6,15 @@ const WAITING_POLL_MS = 1500;
 /** Generating with audio to play: progress (生成中 n/N) and Chapter statuses move every few seconds. */
 const GENERATING_POLL_MS = 5000;
 
-/** Whether the worker still has work on the Book: parsing, or a narrated Chapter still to generate. */
+/**
+ * Whether the worker still has work on the Book: parsing, a narrated Chapter still to generate, or a Voice change
+ * (whose completion switches the Book's audio).
+ */
 export function isWorking(book: BookDetail): boolean {
   return (
     book.status === "parsing" ||
     book.status === "generating" ||
+    book.voiceChange?.status === "running" ||
     // A retried or newly narrated Chapter generates in a Book that is already 已就绪.
     book.chapters.some((c) => !c.skipped && (c.audioStatus === "pending" || c.audioStatus === "generating"))
   );

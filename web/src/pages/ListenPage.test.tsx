@@ -40,6 +40,9 @@ const book: BookDetail = {
   failureReason: null,
   coverUrl: null,
   listening: null,
+  voice: "us_female",
+  voiceChange: null,
+  voiceChangeable: true,
   progress: { generated: 0, narrated: 0 },
   createdAt: "2026-11-18T00:00:00.000Z",
   chapters: [],
@@ -406,6 +409,71 @@ describe("ListenPage (专注页)", () => {
       expect(reloaded.seeks).toEqual([600]);
       expect(media.play).toHaveBeenCalledTimes(1);
     });
+  });
+
+  describe("when the Book's Voice changes while it plays (PRD 4.2.4 rule 3, AC-BOOK-06)", () => {
+    // One Chapter; its Sentences start every 4 s in 美音女声 and every 5 s in 美音男声.
+    const oneChapter = [chapter("c1", 0, { audioStatus: "generated", durationMs: 16_000, startMs: 0 })];
+    const changing: BookDetail = {
+      ...book,
+      status: "ready",
+      voiceChange: { to: "us_male", status: "running" },
+      chapters: oneChapter,
+    };
+    const switched: BookDetail = { ...changing, voice: "us_male", voiceChange: null };
+
+    /** Answers the Book with `changing` first, then `switched`; the timeline is the Voice's the Book has by then. */
+    function serveVoiceChange() {
+      let served: BookDetail = changing;
+      const queue = [changing, switched];
+      /** The Voices progress reports said their positions are in. */
+      const reportedVoices: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init?: RequestInit) => {
+          if (url.endsWith("/listening")) {
+            reportedVoices.push(JSON.parse(init!.body as string).voice);
+            return new Response(null, { status: 204 });
+          }
+          if (url.endsWith("/timeline")) {
+            const step = served.voice === "us_male" ? 5000 : 4000;
+            return Response.json({
+              sentenceStartsMs: [0, 1, 2, 3].map((i) => i * step),
+              sentenceIds: ["s1", "s2", "s3", "s4"],
+              chapters: layoutOf(served),
+              complete: true,
+              settled: true,
+            });
+          }
+          if (url.includes("/chapters/")) return Response.json([]);
+          if (url.endsWith("/marks")) return Response.json({ pending: [] });
+          served = queue.length > 1 ? queue.shift()! : queue[0]!;
+          return Response.json(served);
+        }),
+      );
+      return reportedVoices;
+    }
+
+    it("loads the new audio and goes on from the start of the Sentence that was playing, still playing", async () => {
+      const reportedVoices = serveVoiceChange();
+      renderPage();
+      fireEvent.click(await screen.findByRole("button", { name: "播放" }));
+      const { el } = audioWithGenerated(16);
+      // 9 s in the old Voice: the third Sentence (8 s).
+      Object.defineProperty(el, "currentTime", { value: 9, configurable: true });
+      act(() => el.dispatchEvent(new Event("timeupdate")));
+
+      // Polls every 5 seconds while the Voice changes.
+      await vi.waitFor(() => expect(hlsInstances).toHaveLength(2), { timeout: 7000 });
+      // The new Voice's timeline puts the third Sentence at 10 s.
+      await vi.waitFor(() => expect(audioWithGenerated(20).seeks).toEqual([10]));
+      expect(media.play).toHaveBeenCalledTimes(2);
+      // Positions are reported again once the new audio's metadata is in.
+      act(() => audio().dispatchEvent(new Event("loadedmetadata")));
+      act(() => audio().dispatchEvent(new Event("play")));
+      // Each position goes to the API with the Voice it is in, so one in the old audio is never misplaced.
+      await vi.waitFor(() => expect(reportedVoices).toEqual(["us_female", "us_male"]));
+    }, 10_000);
   });
 
   it("asks for a tap when the browser does not let the Chapter start on its own", async () => {

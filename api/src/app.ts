@@ -12,6 +12,7 @@ import { bookTimelineRoutes } from "./books/timeline-routes.js";
 import { shelfRoutes } from "./books/shelf-routes.js";
 import { skipRoutes } from "./books/skip.js";
 import { uploadRoutes } from "./books/upload-routes.js";
+import { voiceRoutes } from "./books/voice-routes.js";
 import type { Db } from "./db/client.js";
 import { explanationRoutes } from "./explanations/routes.js";
 import { jobRoutes } from "./jobs/routes.js";
@@ -52,6 +53,7 @@ export function createApp(deps: AppDeps) {
   app.route("/", skipRoutes(deps));
   app.route("/", bookTimelineRoutes(deps));
   app.route("/", deleteBookRoutes(deps));
+  app.route("/", voiceRoutes(deps));
   app.route("/", audioRoutes(deps));
   app.route("/", markRoutes(deps));
   app.route("/", explanationRoutes(deps));

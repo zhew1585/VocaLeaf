@@ -39,6 +39,9 @@ const pride: BookDetail = {
   id: "b1",
   title: "Pride and Prejudice",
   source: "upload",
+  voice: "us_female",
+  voiceChange: null,
+  voiceChangeable: true,
   author: "Jane Austen",
   status: "ready",
   playable: true,
@@ -145,7 +148,7 @@ describe("the sidebar's 当前收听 entry", () => {
     expect(localStorage.getItem("vocaleaf:listening-book")).toBeNull();
     // Synced while the login still holds.
     const calls = fetchMock.mock.calls.map(([url, init]) => `${url} ${init?.body ?? ""}`);
-    const synced = calls.indexOf('/api/books/b1/listening {"positionMs":612000}');
+    const synced = calls.indexOf('/api/books/b1/listening {"positionMs":612000,"voice":"us_female"}');
     expect(synced).toBeGreaterThan(-1);
     expect(synced).toBeLessThan(calls.indexOf("/api/auth/logout "));
   });

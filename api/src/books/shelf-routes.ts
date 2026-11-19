@@ -61,8 +61,8 @@ export function shelfRoutes({ db, storage, now = () => new Date() }: AppDeps) {
 
   app.openapi(listeningRoute, async (c) => {
     const { id } = c.req.valid("param");
-    const { positionMs } = c.req.valid("json");
-    const recorded = await recordListening(db, c.get("userId"), id, positionMs, now());
+    const { positionMs, voice } = c.req.valid("json");
+    const recorded = await recordListening(db, c.get("userId"), id, positionMs, now(), voice);
     return recorded ? c.body(null, 204) : c.json(notFound, 404);
   });
 

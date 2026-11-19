@@ -3,9 +3,13 @@ import { and, asc, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import type { ParseFailureReason } from "../contract.js";
 import type { Db } from "../db/client.js";
 import { books, chapters, jobs } from "../db/schema.js";
+import { failVoiceChange } from "./voice-change.js";
 
 export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 export type Job = typeof jobs.$inferSelect;
+
+/** Jobs that render a Chapter: a Book's own, and a Voice change's (voice-change.ts). They share the workers. */
+export const RENDER_JOB_TYPES = ["render_chapter", "render_voice_change"] as const satisfies Job["type"][];
 
 /** PRD 4.3.1 and 4.7.2: a job is attempted at most 3 times, whether its attempts fail or time out. */
 export const MAX_JOB_ATTEMPTS = 3;
@@ -60,20 +64,22 @@ export async function failAttempt(tx: Tx, job: Job, error: string, now: Date, re
 }
 
 /**
- * Puts a job back in the queue for its next attempt; a Chapter goes back to 待生成. A Chapter set Skipped while
- * it was being generated is not queued again (PRD 4.3.3): its job goes, and narrating it again queues a new one.
+ * Puts a job back in the queue for its next attempt; a render_chapter job's Chapter goes back to 待生成 (a Voice
+ * change leaves the playing Chapter as it is). A Chapter set Skipped while it was being generated is not queued
+ * again (PRD 4.3.3): its job goes, and narrating it again queues a new one.
  */
 async function requeue(tx: Tx, job: Job, error: string, now: Date) {
-  if (job.chapterId) await tx.update(chapters).set({ audioStatus: "pending" }).where(eq(chapters.id, job.chapterId));
-  const [skipped] = job.chapterId
-    ? await tx
-        .select({ id: chapters.id })
-        .from(chapters)
-        .where(and(eq(chapters.id, job.chapterId), eq(chapters.skipped, true)))
-    : [];
-  if (skipped) {
-    await tx.delete(jobs).where(eq(jobs.id, job.id));
-    return;
+  if (job.type === "render_chapter") {
+    const chapterId = job.chapterId!;
+    await tx.update(chapters).set({ audioStatus: "pending" }).where(eq(chapters.id, chapterId));
+    const [skipped] = await tx
+      .select({ id: chapters.id })
+      .from(chapters)
+      .where(and(eq(chapters.id, chapterId), eq(chapters.skipped, true)));
+    if (skipped) {
+      await tx.delete(jobs).where(eq(jobs.id, job.id));
+      return;
+    }
   }
   await tx
     .update(jobs)
@@ -83,9 +89,11 @@ async function requeue(tx: Tx, job: Job, error: string, now: Date) {
 
 /**
  * Marks a job failed. A failed parse job leaves its Book parse_failed; a failed render job leaves its
- * Chapter 生成失败 and the Book carries on (PRD 4.3.5 #9) until the user retries it (retryFailedChapter).
+ * Chapter 生成失败 and the Book carries on (PRD 4.3.5 #9) until the user retries it (retryFailedChapter);
+ * a failed Voice change job drops the change (PRD 4.3.5 #11).
  */
 export async function failJob(tx: Tx, job: Job, error: string, now: Date, reason: string | null = null) {
+  if (job.type === "render_voice_change") return failVoiceChange(tx, job, error, now);
   await tx.update(jobs).set({ status: "failed", error, leaseExpiresAt: null, updatedAt: now }).where(eq(jobs.id, job.id));
   if (job.type === "parse") {
     await tx.update(books).set({ status: "parse_failed", failureReason: reason }).where(eq(books.id, job.bookId));

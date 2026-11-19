@@ -122,7 +122,16 @@ export const ListeningSchema = z
   .openapi("Listening");
 
 /** Reported by the player: where playback is in the Book's audio. The API records the Sentence there. */
-export const ListeningUpdateSchema = z.object({ positionMs: z.int().min(0) }).openapi("ListeningUpdate");
+export const ListeningUpdateSchema = z
+  .object({
+    positionMs: z.int().min(0),
+    /**
+     * The Voice of the audio the player has. A position in another Voice than the Book's (a player still on the
+     * audio from before a Voice change) cannot be placed, so only the listening time is recorded.
+     */
+    voice: VoiceSchema.optional(),
+  })
+  .openapi("ListeningUpdate");
 
 export const BookSchema = z
   .object({
@@ -193,8 +202,28 @@ export const LibraryBookSchema = z
     onShelf: z.boolean(),
   })
   .openapi("LibraryBook");
+/** A Voice change under way, or the last one, which failed (PRD 4.2.4, 4.3.5 #11). */
+export const VoiceChangeSchema = z
+  .object({
+    /** The Voice the Book is changing to. */
+    to: VoiceSchema,
+    /**
+     * running: the new audio is being generated while the old one plays (正在更换为 {音色}，完成前仍使用原音色);
+     * failed: the Book kept its Voice (音色更换失败，已保留原音色). A completed change leaves no VoiceChange.
+     */
+    status: z.enum(["running", "failed"]),
+  })
+  .openapi("VoiceChange");
 
 export const BookDetailSchema = BookSchema.extend({
+  /** The Voice of the audio that plays. */
+  voice: VoiceSchema,
+  voiceChange: VoiceChangeSchema.nullable(),
+  /**
+   * Whether the user may change the Book's Voice at all: an uploaded Book can, a Library Book cannot (PRD 4.2.2).
+   * A change is also refused while another runs and before the Book is 已就绪.
+   */
+  voiceChangeable: z.boolean(),
   chapters: z.array(ChapterSummarySchema),
   /**
    * Length of the Book's whole audio. Exact once ready; while generating, the Chapters not generated yet are
@@ -300,6 +329,8 @@ export const ExplainEventSchema = z.discriminatedUnion("type", [
 
 export const UploadBookSchema = z.object({
   file: z.instanceof(File).openapi({ type: "string", format: "binary" }),
+  /** The Voice to narrate the Book with (PRD 4.2.4); the default Voice when left out. */
+  voice: VoiceSchema.optional(),
   /** The UPLOAD_DECLARATION version the user just confirmed; needed while they have not confirmed it before. */
   declarationVersion: z.string().optional(),
 });
@@ -338,6 +369,8 @@ export const GleaningSchema = z
 
 /** The navigation's badge: how many Sentences wait in Gleanings. */
 export const GleaningCountSchema = z.object({ count: z.int().min(0) }).openapi("GleaningCount");
+/** Asks for the Book's audio in another Voice (PRD 4.2.4). */
+export const ChangeVoiceSchema = z.object({ voice: VoiceSchema }).openapi("ChangeVoice");
 
 // ---- Worker protocol (/internal), bearer-token protected ----
 
@@ -366,6 +399,10 @@ export const ClaimedParseJobSchema = z
   })
   .openapi("ClaimedParseJob");
 
+/**
+ * Render a Chapter's Sentences in `voice`. Also how a Voice change (PRD 4.3.4 render_voice_change) is handed
+ * out: the worker does the same either way, and the API keeps a Voice change's results aside until it completes.
+ */
 export const ClaimedRenderJobSchema = z
   .object({
     ...claimedJobBase,
@@ -468,6 +505,7 @@ export type BookDetail = z.infer<typeof BookDetailSchema>;
 export type BookTimeline = z.infer<typeof BookTimelineSchema>;
 export type Sentence = z.infer<typeof SentenceSchema>;
 export type Voice = z.infer<typeof VoiceSchema>;
+export type VoiceChange = z.infer<typeof VoiceChangeSchema>;
 export type WordTiming = z.infer<typeof WordTimingSchema>;
 export type ClaimedJob = z.infer<typeof ClaimedJobSchema>;
 export type ClaimedParseJob = z.infer<typeof ClaimedParseJobSchema>;

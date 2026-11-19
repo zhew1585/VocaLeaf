@@ -13,11 +13,21 @@ import {
 import { discardDeletedJobSegments } from "../books/delete.js";
 import { coverKey, sourceKey } from "../storage.js";
 import { validationHook } from "../validation.js";
-import { claimNextJob, failAttempt, lockCurrentAttempt, renewLease, succeedJob, type Job, type Tx } from "./lifecycle.js";
+import {
+  claimNextJob,
+  failAttempt,
+  lockCurrentAttempt,
+  RENDER_JOB_TYPES,
+  renewLease,
+  succeedJob,
+  type Job,
+  type Tx,
+} from "./lifecycle.js";
 import { storeParseResult } from "./parse.js";
 import { finishRender, startRender, storeRenderReport } from "./render.js";
 
 const security = [{ workerToken: [] }];
+
 const jobParams = z.object({ id: z.uuid() });
 const jobNotRunning = {
   error: { code: "job_not_running", message: "Job is not running under this attempt" },
@@ -73,18 +83,18 @@ export function jobRoutes({ db, storage, workerToken, jobLeaseMs, now = () => ne
   app.use("/internal/*", bearerAuth({ token: workerToken }));
 
   /**
-   * Runs `fn` on the job if it is still running under `attempt` and of the expected type;
+   * Runs `fn` on the job if it is still running under `attempt` and of an expected type (any when null);
    * answers 204 when it ran and 409 when the claim is no longer current.
    */
   const withCurrentJob = async (
     id: string,
     attempt: number,
-    type: Job["type"] | null,
+    types: readonly Job["type"][] | null,
     fn: (tx: Tx, job: Job) => Promise<void>,
   ) =>
     db.transaction(async (tx) => {
       const job = await lockCurrentAttempt(tx, id, attempt);
-      if (!job || (type && job.type !== type)) return false;
+      if (!job || (types && !types.includes(job.type))) return false;
       await fn(tx, job);
       return true;
     });
@@ -95,6 +105,7 @@ export function jobRoutes({ db, storage, workerToken, jobLeaseMs, now = () => ne
       if (!job) return undefined;
       const base = { id: job.id, bookId: job.bookId, attempt: job.attempt, leaseMs: jobLeaseMs };
       if (job.type === "parse") return { ...base, type: "parse", sourceKey: sourceKey(job.bookId), coverKey: coverKey(job.bookId) };
+      // A Voice change renders a Chapter like any other; only the API tells where the result goes.
       return { ...base, type: "render_chapter", ...(await startRender(tx, job)) };
     });
     if (!claimed) return c.body(null, 204);
@@ -104,7 +115,7 @@ export function jobRoutes({ db, storage, workerToken, jobLeaseMs, now = () => ne
   app.openapi(parseResultRoute, async (c) => {
     const { id } = c.req.valid("param");
     const { attempt, ...result } = c.req.valid("json");
-    const stored = await withCurrentJob(id, attempt, "parse", async (tx, job) => {
+    const stored = await withCurrentJob(id, attempt, ["parse"], async (tx, job) => {
       await storeParseResult(tx, job.bookId, result);
       await succeedJob(tx, job, now());
     });
@@ -121,7 +132,7 @@ export function jobRoutes({ db, storage, workerToken, jobLeaseMs, now = () => ne
   app.openapi(renderProgressRoute, async (c) => {
     const { id } = c.req.valid("param");
     const { attempt, ...body } = c.req.valid("json");
-    const stored = await withCurrentJob(id, attempt, "render_chapter", (tx, job) => storeRenderReport(tx, job, body));
+    const stored = await withCurrentJob(id, attempt, RENDER_JOB_TYPES, (tx, job) => storeRenderReport(tx, job, body));
     if (stored) return c.body(null, 204);
     await discardDeletedJobSegments(db, storage, id, attempt, body.segments.map((s) => s.key));
     return c.json(jobNotRunning, 409);
@@ -130,7 +141,7 @@ export function jobRoutes({ db, storage, workerToken, jobLeaseMs, now = () => ne
   app.openapi(renderResultRoute, async (c) => {
     const { id } = c.req.valid("param");
     const { attempt, ...body } = c.req.valid("json");
-    const stored = await withCurrentJob(id, attempt, "render_chapter", async (tx, job) => {
+    const stored = await withCurrentJob(id, attempt, RENDER_JOB_TYPES, async (tx, job) => {
       await storeRenderReport(tx, job, body);
       await finishRender(tx, job, now());
     });
