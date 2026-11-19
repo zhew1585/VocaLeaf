@@ -44,16 +44,19 @@ const pride: BookDetail = {
   durationMs: 1_200_000,
 };
 
+const gatsby: BookDetail = { ...pride, id: "b2", title: "The Great Gatsby", author: null, listening: null };
+
 function serve() {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
       if (url === "/api/me") return Response.json({ id: "u1", email: "allen@vocaleaf.app", playGuideSeen: true });
       if (url === "/api/books") {
-        const { chapters: _c, durationMs: _d, ...shelfBook } = pride;
-        return Response.json([shelfBook satisfies Book]);
+        const shelf = [pride, gatsby].map(({ chapters: _c, durationMs: _d, ...shelfBook }) => shelfBook satisfies Book);
+        return Response.json(shelf);
       }
       if (url === "/api/books/b1") return Response.json(pride);
+      if (url === "/api/books/b2") return Response.json(gatsby);
       if (url.endsWith("/listening")) return new Response(null, { status: 204 });
       if (url.endsWith("/timeline")) {
         const chapters = [
@@ -93,28 +96,38 @@ describe("playing from the Shelf", () => {
     await vi.waitFor(() => expect(hlsInstances).toHaveLength(1));
     audioWithGenerated(1_200);
     await vi.waitFor(() => expect(media.play).toHaveBeenCalledTimes(1));
-
-    // Playing: the card, the cover in the grid and the sidebar all offer to pause.
     expect(within(await card()).getByRole("button", { name: "暂停 Pride and Prejudice" })).toBeTruthy();
-    expect(within(grid()).getByRole("button", { name: "暂停 Pride and Prejudice" })).toBeTruthy();
 
-    // Paused from the sidebar: the Shelf follows.
+    // Paused from the sidebar: the card follows.
     const now = await screen.findByRole("region", { name: "当前收听" });
     fireEvent.click(within(now).getByRole("button", { name: "暂停" }));
     expect(media.pause).toHaveBeenCalledTimes(1);
     expect(within(await card()).getByRole("button", { name: "继续收听 Pride and Prejudice" })).toBeTruthy();
-    expect(within(grid()).getByRole("button", { name: "播放 Pride and Prejudice" })).toBeTruthy();
 
-    // Played on from the grid's cover, where it was, without leaving the Shelf.
-    fireEvent.click(within(grid()).getByRole("button", { name: "播放 Pride and Prejudice" }));
+    // Played on from the card, then paused from it: the sidebar follows.
+    fireEvent.click(within(await card()).getByRole("button", { name: "继续收听 Pride and Prejudice" }));
     await vi.waitFor(() => expect(media.play).toHaveBeenCalledTimes(2));
     expect(within(now).getByText("正在播放")).toBeTruthy();
-    expect(window.location.pathname).toBe("/");
-
-    // Paused from the card.
     fireEvent.click(within(await card()).getByRole("button", { name: "暂停 Pride and Prejudice" }));
-    expect(media.pause).toHaveBeenCalledTimes(2);
     expect(within(now).getByText("已暂停")).toBeTruthy();
+    await act(async () => {});
+  });
+
+  it("plays another Book from 播放 on its cover, staying on the Shelf", async () => {
+    serve();
+    render(<App />);
+    await card();
+
+    fireEvent.click(within(grid()).getByRole("button", { name: "播放 The Great Gatsby" }));
+    await vi.waitFor(() => expect(hlsInstances).toHaveLength(1));
+    const { seeks } = audioWithGenerated(1_200);
+    await vi.waitFor(() => expect(media.play).toHaveBeenCalledTimes(1));
+
+    // Never listened to: from the start, which a fresh audio element already is.
+    expect(seeks.every((t) => t === 0)).toBe(true);
+    expect(within(grid()).getByRole("button", { name: "暂停 The Great Gatsby" })).toBeTruthy();
+    expect(within(await card()).getByRole("button", { name: "继续收听 Pride and Prejudice" })).toBeTruthy();
+    expect(window.location.pathname).toBe("/");
     await act(async () => {});
   });
 });

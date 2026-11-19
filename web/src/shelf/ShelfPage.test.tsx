@@ -158,7 +158,7 @@ describe("the Shelf (F3)", () => {
     expect(card.querySelector("img")!.getAttribute("src")).toBe("/api/books/p/cover");
   });
 
-  it("lists every Book in Shelf order, the one in 【继续收听】 too, with its progress or processing state (AC-SHELF-01, AC-SHELF-02)", async () => {
+  it("lists the other Books in Shelf order with their progress or processing state (AC-SHELF-01, AC-SHELF-02)", async () => {
     serve([shelf]);
     render(<ShelfPage />);
 
@@ -166,7 +166,6 @@ describe("the Shelf (F3)", () => {
     const tiles = within(grid).getAllByRole("link");
     // Text of each tile: a default cover's title, 生成中's n/N on the cover, then title and state.
     expect(tiles.map((t) => t.textContent)).toEqual([
-      "Pride and Prejudice34%",
       "The Great GatsbyThe Great Gatsby62%",
       "AliceAlice未开始",
       "A Room of One's Own3 / 6A Room of One's Own生成中",
@@ -174,7 +173,7 @@ describe("the Shelf (F3)", () => {
       "atomic-habits解析失败文件无法读取",
     ]);
     // Without a cover image, the cover carries the title.
-    expect(tiles[2]!.querySelector(".book-cover-title")!.textContent).toBe("Alice");
+    expect(tiles[1]!.querySelector(".book-cover-title")!.textContent).toBe("Alice");
   });
 
   it("opens a playable Book in the 专注页 to play on, and any other in its detail (AC-SHELF-03, AC-SHELF-04)", async () => {
@@ -222,8 +221,8 @@ describe("the Shelf (F3)", () => {
     const grid = await screen.findByRole("list", { name: "书架上的书" });
 
     const play = within(grid).getAllByRole("button", { name: /^播放 / }).map((b) => b.getAttribute("aria-label"));
-    expect(play).toEqual(["播放 Pride and Prejudice", "播放 The Great Gatsby", "播放 Alice", "播放 A Room of One's Own"]);
-    expect(within(grid).getAllByRole("button", { name: / 详情$/ })).toHaveLength(6);
+    expect(play).toEqual(["播放 The Great Gatsby", "播放 Alice", "播放 A Room of One's Own"]);
+    expect(within(grid).getAllByRole("button", { name: / 详情$/ })).toHaveLength(5);
   });
 
   it("has no 【继续收听】 before anything was listened to", async () => {

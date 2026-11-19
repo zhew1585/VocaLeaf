@@ -302,6 +302,21 @@
     transform 0.15s ease;
 }
 
+/* 【继续收听】's 88 px cover: a compact 详情, well clear of the cover's sides. */
+.continue-cover .cover-action {
+  height: 26px;
+  min-width: 0;
+  gap: 4px;
+  padding: 0 10px;
+  border-radius: 13px;
+  font-size: 12px;
+}
+
+.continue-cover .cover-action svg {
+  width: 12px;
+  height: 12px;
+}
+
 /* On the grid's smaller share of the row, two slightly smaller buttons. */
 .cover-actions.is-stacked .cover-action {
   height: 30px;
