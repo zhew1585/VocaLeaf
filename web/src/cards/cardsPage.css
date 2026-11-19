@@ -179,6 +179,11 @@
   color: var(--amber);
 }
 
+/* The page's scrollbar runs down the detail's right edge, so it sits on the detail's surface, not a strip of paper. */
+html:has(.cards-page.has-detail)::-webkit-scrollbar-track {
+  background: var(--surface);
+}
+
 /* The detail: full height beside the list, its actions at the bottom. */
 .card-panel {
   position: sticky;

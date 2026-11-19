@@ -83,6 +83,11 @@
   box-shadow: 0 12px 32px rgb(38 62 45 / 0.12);
 }
 
+/* The scrollbar stops short of the rounded corners. */
+.card-popover::-webkit-scrollbar-track {
+  margin-block: 16px;
+}
+
 .card-popover-header {
   display: flex;
   align-items: center;

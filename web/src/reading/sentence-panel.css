@@ -150,10 +150,12 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* A streamed answer that starts to scroll does not reflow; the gutter is part of the 28 px right margin. */
+  scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
   gap: 20px;
-  padding: 16px 28px 112px;
+  padding: 16px calc(28px - var(--scrollbar-size)) 112px 28px;
   -webkit-mask-image: linear-gradient(to bottom, transparent, #000 24px);
   mask-image: linear-gradient(to bottom, transparent, #000 24px);
 }

@@ -93,10 +93,12 @@
 .directory-list {
   flex: 1;
   min-height: 0;
-  margin: 0;
-  padding: 0;
+  /* The scrollbar rides the directory's right edge, in its padding, 6 px clear of the current Chapter's highlight. */
+  margin: 0 -12px 0 0;
+  padding: 0 calc(14px - var(--scrollbar-size)) 0 0;
   list-style: none;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .directory-item {
@@ -300,6 +302,8 @@
   overflow-y: auto;
   /* The reading view keeps its own anchor when Chapters render above the view. */
   overflow-anchor: none;
+  /* A matching empty gutter on the left keeps the column centred under the floating player. */
+  scrollbar-gutter: stable both-edges;
 }
 
 .reading-content {
