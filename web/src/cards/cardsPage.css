@@ -301,62 +301,46 @@
 .card-panel-back {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 18px;
 }
 
-.card-panel-target {
+/* The back as cards.css draws it, at the design's sizes, each part under its label. */
+.card-panel .card-target-text {
   margin: 0;
-  font-family: var(--font-read);
-  font-size: 28px;
   font-weight: 500;
-  color: var(--ink);
 }
 
-.card-panel-phonetic {
-  margin: 0;
-  font-size: 14px;
-  color: var(--ink-3);
+.card-panel .card-back {
+  gap: 18px;
 }
 
-.card-panel-meaning {
-  margin: 0 0 12px;
+.card-panel .card-meaning {
+  margin-top: -12px;
   font-size: 20px;
-  font-weight: 500;
-  color: var(--leaf);
 }
 
-.card-panel-section {
-  margin-top: 6px;
+.card-back-part {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.card-panel-section h3 {
+.card-back-part h3 {
   margin: 0;
   font-size: 12px;
   font-weight: 500;
   color: var(--ink-3);
 }
 
-.card-panel-usage,
-.card-panel-notes {
-  margin: 0;
+.card-panel .card-usage,
+.card-panel .card-notes {
   font-size: 15px;
-  line-height: 1.6;
   color: var(--ink);
 }
 
-.card-panel-notes {
-  padding-left: 18px;
-}
-
-.card-panel-example {
-  margin: 0;
-  font-family: var(--font-read);
+.card-panel .card-example {
   font-size: 17px;
   font-style: italic;
-  line-height: 1.5;
   color: var(--ink);
 }
 

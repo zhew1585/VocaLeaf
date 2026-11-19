@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { deleteBook, removeFromShelf, type BookSource } from "../api";
+import { ConfirmDialog } from "../ConfirmDialog";
 import { TrashIcon } from "../icons";
 import { navigate } from "../router";
 
@@ -44,59 +45,15 @@ export function DeleteBookButton({ bookId, source = "upload" }: { bookId: string
 /** The confirmation: 取消 (also Escape or a click outside) keeps the Book, 删除 or 移出 goes ahead. */
 function ConfirmDelete({ bookId, source, onCancel }: { bookId: string; source: BookSource; onCancel(): void }) {
   const removal = REMOVAL[source];
-  const [deleting, setDeleting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const cancelButton = useRef<HTMLButtonElement>(null);
-
-  // The safe choice has the focus, so Enter right after the click does not delete.
-  useEffect(() => cancelButton.current?.focus(), []);
-
-  async function onConfirm() {
-    setDeleting(true);
-    setError(null);
-    try {
-      await removal.run(bookId);
-      navigate("/");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "删除失败，请稍后再试");
-      setDeleting(false);
-    }
-  }
-
-  const cancel = () => {
-    if (!deleting) onCancel();
-  };
-
   return (
-    <div className="confirm-backdrop" onClick={(e) => e.target === e.currentTarget && cancel()}>
-      <div
-        className="confirm-dialog"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="delete-book-title"
-        aria-describedby="delete-book-text"
-        onKeyDown={(e) => e.key === "Escape" && cancel()}
-      >
-        <h2 id="delete-book-title" className="confirm-title">
-          {removal.title}
-        </h2>
-        <p id="delete-book-text" className="confirm-text">
-          {removal.text}
-        </p>
-        {error && (
-          <p className="form-error" role="alert">
-            {error}
-          </p>
-        )}
-        <div className="confirm-actions">
-          <button ref={cancelButton} type="button" className="secondary-button" disabled={deleting} onClick={cancel}>
-            取消
-          </button>
-          <button type="button" className="confirm-button" disabled={deleting} onClick={onConfirm}>
-            {removal.confirm}
-          </button>
-        </div>
-      </div>
-    </div>
+    <ConfirmDialog
+      title={removal.title}
+      text={removal.text}
+      confirmLabel={removal.confirm}
+      run={() => removal.run(bookId)}
+      failure="删除失败，请稍后再试"
+      onCancel={onCancel}
+      onDone={() => navigate("/")}
+    />
   );
 }

@@ -4,7 +4,7 @@ import { SearchIcon } from "../icons";
 import { useListening } from "../player/session";
 import { CardDetailPanel } from "./CardDetailPanel";
 import { cardSources, matchesSearch, sourceKey, sourceLabel, type CardSource } from "./cardList";
-import { BACK_MISSING, cardMeaning, dueShort } from "./cards";
+import { BACK_MISSING, cardMeaning, dueShort, isDueToday } from "./cards";
 import "./cardsPage.css";
 
 const EMPTY = "还没有卡片。在句子精读里选中单词，点【制作卡片】";
@@ -72,15 +72,7 @@ export function CardsPage() {
   return (
     <div className={selected ? "cards-page has-detail" : "cards-page"}>
       <section className="cards-main">
-        <header className="cards-header">
-          <h1 className="cards-title">
-            卡片<span className="cards-count">{items.length}</span>
-          </h1>
-          <label className="cards-search">
-            <SearchIcon />
-            <input type="search" aria-label="搜索卡片" placeholder="搜索" value={query} onChange={(e) => setQuery(e.target.value)} />
-          </label>
-        </header>
+        <CardsHeader count={items.length} query={query} onQuery={setQuery} />
         {items.length === 0 ? (
           <p className="cards-empty">{EMPTY}</p>
         ) : (
@@ -111,6 +103,21 @@ export function CardsPage() {
   );
 }
 
+/** 卡片 with how many Cards there are, and the search box (AC-CLIST-01). */
+function CardsHeader({ count, query, onQuery }: { count: number; query: string; onQuery(query: string): void }) {
+  return (
+    <header className="cards-header">
+      <h1 className="cards-title">
+        卡片<span className="cards-count">{count}</span>
+      </h1>
+      <label className="cards-search">
+        <SearchIcon />
+        <input type="search" aria-label="搜索卡片" placeholder="搜索" value={query} onChange={(e) => onQuery(e.target.value)} />
+      </label>
+    </header>
+  );
+}
+
 interface FilterProps {
   sources: CardSource[];
   /** The source filtered by, or null for 全部. */
@@ -136,7 +143,6 @@ function SourceFilter({ sources, value, onChange }: FilterProps) {
 
 /** One row: Target, meaning, source and next Review (F14). */
 function CardItem({ card, selected, onSelect }: { card: CardListItem; selected: boolean; onSelect(): void }) {
-  const due = dueShort(card.due);
   return (
     <li>
       <button type="button" className="card-item" aria-pressed={selected} onClick={onSelect}>
@@ -150,7 +156,7 @@ function CardItem({ card, selected, onSelect }: { card: CardListItem; selected: 
             <span className="card-item-source">{sourceLabel(card)}</span>
           </span>
         </span>
-        <span className={due === "今天" ? "card-item-due is-today" : "card-item-due"}>{due}</span>
+        <span className={isDueToday(card.due) ? "card-item-due is-today" : "card-item-due"}>{dueShort(card.due)}</span>
       </button>
     </li>
   );

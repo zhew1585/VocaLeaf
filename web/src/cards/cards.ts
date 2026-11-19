@@ -49,15 +49,24 @@ function daysUntil(due: string, now: Date): number {
   return Math.round((day(new Date(due)) - day(now)) / DAY_MS);
 }
 
-/** When a Card is next reviewed, short (the list): 今天, 明天, N 天后. */
+/** Whether the Card is due today or earlier (its next Review shows in amber). */
+export function isDueToday(due: string, now = new Date()): boolean {
+  return daysUntil(due, now) <= 0;
+}
+
+/** Days counted as a month in due labels. */
+const MONTH_DAYS = 30;
+
+/** When a Card is next reviewed, short (the lists): 今天, 明天, N 天后, N 个月后 from 30 days on (design 07). */
 export function dueShort(due: string, now = new Date()): string {
   const days = daysUntil(due, now);
   if (days <= 0) return "今天";
   if (days === 1) return "明天";
-  return `${days} 天后`;
+  if (days < MONTH_DAYS) return `${days} 天后`;
+  return `${Math.floor(days / MONTH_DAYS)} 个月后`;
 }
 
-/** When a Card is next reviewed (a Card's detail): 今天复习, 明天复习, N 天后复习. */
+/** When a Card is next reviewed (a Card's detail): 今天复习, 明天复习, N 天后复习, N 个月后复习. */
 export function dueLabel(due: string, now = new Date()): string {
   return `${dueShort(due, now)}复习`;
 }
