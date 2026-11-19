@@ -219,6 +219,11 @@ export function reportRenderResult(app: TestApp, job: Pick<ClaimedJob, "id" | "a
   return postJson(app, `/api/internal/jobs/${job.id}/render-result`, { ...report, attempt: job.attempt });
 }
 
+/** The bytes of a fake segment holding one Sentence's audio; by default text naming the Sentence. */
+export type SegmentBytes = (sentence: { id: string; index: number }, durationMs: number) => Uint8Array;
+
+const textSegment: SegmentBytes = (s) => new TextEncoder().encode(`audio of ${s.id}`);
+
 /**
  * Plays the worker's part for one claimed render job: writes one segment per Sentence into storage
  * (each Sentence lasts `sentenceMs`) and returns the matching report.
@@ -227,12 +232,13 @@ export async function renderAll(
   storage: ObjectStorage,
   job: ClaimedRenderJob,
   sentenceMs = 4000,
+  segmentBytes: SegmentBytes = textSegment,
 ): Promise<Report> {
   const segments = [];
   const sentences = [];
   for (const [i, s] of job.sentences.entries()) {
     const key = `${job.audioPrefix}seg-${String(i).padStart(5, "0")}.ts`;
-    await storage.putObject(key, new TextEncoder().encode(`audio of ${s.id}`), "video/mp2t");
+    await storage.putObject(key, segmentBytes({ id: s.id, index: i }, sentenceMs), "video/mp2t");
     segments.push({ index: i, key, durationMs: sentenceMs });
     sentences.push({
       id: s.id,
@@ -246,19 +252,20 @@ export async function renderAll(
 
 /**
  * Uploads `name`.epub and plays the worker until every Book's audio is generated: parses it into `chapters` and renders
- * every narrated Chapter with renderAll (each Sentence 4 s). Returns the generated Book.
+ * every narrated Chapter with renderAll (each Sentence 4 s, segments made by `segmentBytes`). Returns the generated Book.
  */
 export async function generatedBook(
   t: { app: TestApp; storage: ObjectStorage },
   name: string,
   chapters: Omit<ParseResult, "attempt">["chapters"],
+  segmentBytes?: SegmentBytes,
 ): Promise<BookDetail> {
   const { id } = await uploadBook(t.app, `${name}.epub`);
   for (let job = await claimJob(t.app); job; job = await claimJob(t.app)) {
     const res =
       job.type === "parse"
         ? await reportParse(t.app, job, { parserVersion: "test-1", title: name, author: "An Author", chapters })
-        : await reportRenderResult(t.app, job, await renderAll(t.storage, job));
+        : await reportRenderResult(t.app, job, await renderAll(t.storage, job, 4000, segmentBytes));
     if (res.status !== 204) throw new Error(`report failed: ${res.status} ${await res.text()}`);
   }
   return bookDetail(t.app, id);

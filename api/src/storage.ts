@@ -111,6 +111,11 @@ export function audioPrefix(bookId: string, chapterId: string, jobId: string, at
   return `${bookPrefix(bookId)}audio/${chapterId}/${jobId}-${attempt}/`;
 }
 
+/** Where a Card keeps its copy of its Sentence's audio (ADTS AAC); outside the Book's prefix, so it outlives the Book. */
+export function cardAudioKey(cardId: string): string {
+  return `cards/${cardId}.aac`;
+}
+
 /**
  * Creates the bucket when it does not exist yet, so a fresh `docker compose up` needs no setup step.
  * In production the bucket already exists, so only HeadBucket runs.

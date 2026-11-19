@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./contract": "./src/contract.ts"
+    "./contract": "./src/contract.ts",
+    "./card-target": "./src/cards/target.ts"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",

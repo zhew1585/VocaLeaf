@@ -8,6 +8,7 @@ import { audioRoutes } from "./books/audio-routes.js";
 import { deleteBookRoutes } from "./books/delete.js";
 import { libraryRoutes } from "./books/library-routes.js";
 import { bookRoutes } from "./books/routes.js";
+import { cardRoutes } from "./cards/routes.js";
 import { bookTimelineRoutes } from "./books/timeline-routes.js";
 import { shelfRoutes } from "./books/shelf-routes.js";
 import { skipRoutes } from "./books/skip.js";
@@ -30,7 +31,7 @@ export interface AppDeps {
   secureCookie: boolean;
   /** How long a claimed job stays with its worker before another worker may claim it. */
   jobLeaseMs: number;
-  /** Writes Explanations and answers follow-up questions (ai/provider.ts). */
+  /** Writes Explanations, answers follow-up questions and writes Card backs (ai/provider.ts). */
   ai: AiProvider;
   /** Current time; injectable so tests can expire leases and login codes without waiting. */
   now?: () => Date;
@@ -57,6 +58,7 @@ export function createApp(deps: AppDeps) {
   app.route("/", audioRoutes(deps));
   app.route("/", markRoutes(deps));
   app.route("/", explanationRoutes(deps));
+  app.route("/", cardRoutes(deps));
   app.route("/", jobRoutes(deps));
   app.doc31("/openapi.json", { openapi: "3.1.0", info: { title: "VocaLeaf API", version: "0.1.0" } });
   app.onError((err, c) => {

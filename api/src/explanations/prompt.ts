@@ -30,11 +30,11 @@ const EXPLAIN = `请解析目标句，按下面的小节输出。每节以二级
 ## 背景
 文化或文学背景，仅在理解本句确有必要时出现。`;
 
-const TAGS = ["book", "title", "author", "before", "paragraph", "after", "target_sentence", "explanation"];
+const TAGS = ["book", "title", "author", "before", "paragraph", "after", "target_sentence", "target", "explanation"];
 const TAG_PATTERN = new RegExp(`</?\\s*(?:${TAGS.join("|")})\\b[^>]*>`, "gi");
 
 /** Removes anything in Book text (or an earlier answer) that would open or close one of the prompt's tags. */
-function data(text: string): string {
+export function data(text: string): string {
   return text.replace(TAG_PATTERN, "");
 }
 

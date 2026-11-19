@@ -6,9 +6,21 @@ export const FAKE_FAILURE_MARKER = "#fail";
 /** Characters per streamed chunk. */
 const CHUNK_CHARS = 6;
 
-/** The fake's whole answer: an Explanation in the fixed sections, or an answer quoting the question. */
+/** A Card back (cards/back.ts) for the Target, as the JSON the real model is asked for. */
+function fakeCardBack(hint: Extract<AiRequest["hint"], { kind: "card" }>): string {
+  const back =
+    hint.targetKind === "word"
+      ? { meaning: `（示例释义）${hint.target}`, phonetic: "/ˈsæmpəl/", partOfSpeech: "v.", collocations: [`${hint.target} sth：示例搭配`] }
+      : hint.targetKind === "phrase"
+        ? { meaning: `（示例释义）${hint.target}`, usage: "开发环境的示例用法说明，未调用大模型。", example: `An example with ${hint.target}.` }
+        : { translation: `（示例意译）${hint.sentence}`, grammar: ["开发环境的示例语法要点，未调用大模型。"] };
+  return JSON.stringify(back);
+}
+
+/** The fake's whole answer: an Explanation in the fixed sections, an answer quoting the question, or a Card back. */
 export function fakeAnswer({ hint }: AiRequest): string {
   if (hint.kind === "ask") return `（示例回答）关于「${hint.question}」：这是开发环境的示例回答，未调用大模型。`;
+  if (hint.kind === "card") return fakeCardBack(hint);
   return [
     "## 句意",
     `（示例解析）${hint.sentence}`,
