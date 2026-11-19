@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BookDetail, ChapterSummary } from "../api";
+import { cardAudioUrl, type BookDetail, type Card, type ChapterSummary, type MadeCard } from "../api";
+import { CardPopover, type CardAudio } from "../cards/CardPopover";
+import { useBookCards } from "../cards/useBookCards";
 import { isPlayableChapter, waitMessage } from "../chapters";
+import { announceCardMade } from "../marks/marks";
 import { useMarkPress } from "../marks/useMarkPress";
 import { useBookMarks, type MarksInBook } from "../marks/useMarks";
 import type { StartRequest } from "../player/playback";
@@ -123,6 +126,12 @@ function wideWindow(): boolean {
 /** The Sentence selected for 句子精读 (PRD 4.4.5 当前选中) and its Chapter. */
 type Selected = ReadingSentence & { chapterId: string };
 
+/** The 卡片浮窗 (F16): the Cards it shows and the Sentence they are of (where 【精读原句】 goes). */
+interface Popover {
+  cards: Card[];
+  sentence: Selected;
+}
+
 /** The 叶片 toggle of 句子精读 (AC-PANEL-13): marks the selected Sentence or takes its Mark back. */
 function useMarkToggle(sentence: Selected | null, marks: MarksInBook): MarkToggle | null {
   if (!sentence) return null;
@@ -151,7 +160,9 @@ function nextToGenerate(book: BookDetail): Pick<ChapterSummary, "waitSeconds"> {
  * start; one not generated yet says how long that takes and starts by itself once it is (PRD 4.3.4,
  * AC-BOOK-03). Playback that catches up with the generated audio waits the same way and goes on by itself.
  * Clicking a Sentence selects it and opens 句子精读 on it (AC-READ-15); clicking blank text or Esc deselects.
- * Cards (#15) will open their floating card instead for Sentences that have one.
+ * Clicking a Sentence with Cards selects it and shows the 卡片浮窗 instead (PRD 4.4.5 点击规则 2, F16): in the right
+ * area in place of 句子精读, which comes back as it was once the popover closes (AC-POP-04). A Card made in 句子精读
+ * opens the popover as its preview (F12).
  */
 export function ListenPage({ id }: { id: string }) {
   const listening = useListening();
@@ -163,6 +174,8 @@ export function ListenPage({ id }: { id: string }) {
   const [directoryOpen, setDirectoryOpen] = useState(wideWindow);
   const [panelOpen, setPanelOpen] = useState(false);
   const [selected, setSelected] = useState<Selected | null>(null);
+  const [popover, setPopover] = useState<Popover | null>(null);
+  const cards = useBookCards(id);
   const reading = useRef<ReadingViewHandle>(null);
   const playable = book?.playable ?? false;
   const guide = useFirstPlayGuide(playable);
@@ -178,15 +191,44 @@ export function ListenPage({ id }: { id: string }) {
   });
   const mark = useMarkToggle(selected, marks);
   const { stopAudition } = listening;
-  // Selecting another Sentence, deselecting or closing the panel stops a 试听 (PRD 4.4.1 试听 #5).
-  const select = (sentence: ReadingSentence, chapterId: string) => {
+  // Selecting another Sentence, deselecting or closing the panel or the popover stops a 试听 (PRD 4.4.1 试听 #5).
+  const select = (sentence: ReadingSentence, chapterId: string, hit: Card[]) => {
     if (selected?.id !== sentence.id) stopAudition();
-    setSelected({ ...sentence, chapterId });
+    const chosen = { ...sentence, chapterId };
+    setSelected(chosen);
+    if (hit.length > 0) return setPopover({ cards: hit, sentence: chosen });
+    setPopover(null);
     setPanelOpen(true);
   };
   const deselect = () => {
     stopAudition();
     setSelected(null);
+    setPopover(null);
+  };
+  const closePopover = useCallback(() => {
+    stopAudition();
+    setPopover(null);
+  }, [stopAudition]);
+  /** 【精读原句】 (AC-POP-03): 句子精读 on the Cards' Sentence, scrolled into view; nothing is asked of the AI. */
+  const studySentence = (sentence: Selected) => {
+    closePopover();
+    setSelected(sentence);
+    setPanelOpen(true);
+    reading.current?.showSentence(sentence.chapterId, sentence.id);
+  };
+  const onCardMade = ({ card, created }: MadeCard) => {
+    cards.put(card);
+    // A new Card processed the Sentence's pending Mark (PRD 4.5.2 规则 7): its amber underline and leaf go.
+    if (created && card.sentenceId) announceCardMade(card.sentenceId);
+    if (selected) setPopover({ cards: [card], sentence: selected });
+  };
+  const onCardChanged = (card: Card) => {
+    cards.put(card);
+    setPopover((p) => p && { ...p, cards: p.cards.map((c) => (c.id === card.id ? card : c)) });
+  };
+  const cardAudio: CardAudio = {
+    state: listening.audition,
+    play: (card) => listening.startAudition({ id: card.id, src: cardAudioUrl(card.id) }),
   };
   useShortcuts(
     here && !guide.showing
@@ -195,7 +237,8 @@ export function ListenPage({ id }: { id: string }) {
           replay: listening.replay,
           next: listening.next,
           mark: markPress.press,
-          escape: deselect,
+          // Esc closes the top layer only: the popover, else the selection (PRD 4.4.1 桌面快捷键).
+          escape: () => (popover ? closePopover() : deselect()),
         }
       : null,
   );
@@ -258,14 +301,15 @@ export function ListenPage({ id }: { id: string }) {
   const playingId = positionMs === null ? null : playingChapterId(book.chapters, positionMs);
   const totalSeconds = book.durationMs === null ? null : book.durationMs / 1000;
   const notice = targetPending ? waitMessage(target) : waitingForAudio ? waitMessage(nextToGenerate(book)) : null;
-  const width = columnWidth({ directory: directoryOpen, sentencePanel: panelOpen });
+  // The popover takes the right area like 句子精读, never over the text (AC-POP-08).
+  const width = columnWidth({ directory: directoryOpen, sentencePanel: panelOpen || popover !== null });
 
   const playFrom =
     here && playable ? (sentence: ReadingSentence) => sentence.startMs !== null && listening.playFrom(sentence.startMs / 1000) : null;
   const audition: AuditionControl | null =
     here && selected && selected.startMs !== null && selected.endMs !== null
       ? {
-          state: listening.audition?.sentenceId !== selected.id ? "idle" : listening.audition.loading ? "loading" : "playing",
+          state: listening.audition?.id !== selected.id ? "idle" : listening.audition.loading ? "loading" : "playing",
           play: () => listening.startAudition({ id: selected.id, startMs: selected.startMs!, endMs: selected.endMs! }),
         }
       : null;
@@ -325,24 +369,41 @@ export function ListenPage({ id }: { id: string }) {
           onToggleDirectory={toggleDirectory}
           dock={dock}
           markedIds={marks.pending}
+          cardsBySentence={cards.bySentence}
           selected={selected}
           onSelect={select}
           onDeselect={deselect}
           onPlayFrom={playFrom}
         />
-        {!panelOpen && <SentencePanelToggle onOpen={() => setPanelOpen(true)} />}
+        {!panelOpen && !popover && <SentencePanelToggle onOpen={() => setPanelOpen(true)} />}
       </main>
-      {panelOpen && (
-        <SentencePanel
-          sentence={selected}
-          onClose={() => {
-            stopAudition();
-            setPanelOpen(false);
-          }}
-          onLocate={() => selected && reading.current?.showSentence(selected.chapterId, selected.id)}
-          audition={audition}
-          mark={mark}
-        />
+      {popover ? (
+        <div className="card-popover-area">
+          <CardPopover
+            key={popover.cards.map((c) => c.id).join()}
+            cards={popover.cards}
+            onClose={closePopover}
+            onStudySentence={() => studySentence(popover.sentence)}
+            onCardChanged={onCardChanged}
+            audio={cardAudio}
+          />
+        </div>
+      ) : (
+        panelOpen && (
+          <SentencePanel
+            sentence={selected}
+            onClose={() => {
+              stopAudition();
+              setPanelOpen(false);
+            }}
+            onLocate={() => selected && reading.current?.showSentence(selected.chapterId, selected.id)}
+            audition={audition}
+            mark={mark}
+            cards={selected ? cards.of(selected.id) : []}
+            onOpenCards={(hit) => selected && setPopover({ cards: hit, sentence: selected })}
+            onCardMade={onCardMade}
+          />
+        )
       )}
     </div>
   );

@@ -391,6 +391,12 @@
   background-position: 0 100%;
 }
 
+/* The Sentence's fill and frame reach 2 px below the text; the Target's line follows to cover the dashes there. */
+.sentence.is-playing .card-target,
+.sentence.is-selected .card-target {
+  padding: 2px 0;
+}
+
 /* Background colors only below, so a selected Sentence keeps its Mark underline. */
 /* The Sentence 句子精读 is about (PRD 4.4.5 当前选中): a thin green frame on a light ground. */
 .sentence.is-selected {
@@ -485,6 +491,14 @@
   cursor: pointer;
 }
 
+/* The 卡片浮窗 (F16) in the right area, in place of 句子精读: 400 wide with 20 px either side and 24 px on top. */
+.card-popover-area {
+  width: 440px;
+  flex-shrink: 0;
+  padding: 24px 20px;
+  overflow: hidden;
+}
+
 /* 句子精读 (collapsed by default, AC-READ-14) */
 .panel-toggle {
   position: absolute;
@@ -493,56 +507,11 @@
   right: 24px;
 }
 
-.sentence-panel {
-  width: 440px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  border-left: 1px solid var(--line);
-  background: var(--surface);
-}
-
-.sentence-panel-header {
-  height: 92px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 20px 0 24px;
-}
-
-.sentence-panel-header h2 {
-  margin: 0;
-  font-family: var(--font-title);
-  font-size: 18px;
-}
-
-.sentence-panel-empty {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 24px;
-  color: var(--ink-3);
-  font-size: 13px;
-  text-align: center;
-}
-
-.sentence-panel-empty p {
-  margin: 0;
-}
-
-.sentence-panel-empty .sentence-panel-empty-title {
-  margin-top: 6px;
-  color: var(--ink-2);
-  font-size: 15px;
-}
-
 /* Narrow windows: the side panels lie over the reading area. */
 @media (max-width: 900px) {
   .directory,
-  .sentence-panel {
+  .focus .sentence-panel,
+  .focus .card-popover-area {
     position: absolute;
     z-index: 4;
     top: 0;
@@ -554,9 +523,15 @@
     left: 0;
   }
 
-  .sentence-panel {
+  .focus .sentence-panel,
+  .focus .card-popover-area {
     right: 0;
     width: min(440px, 100%);
+  }
+
+  .focus .card-popover-area {
+    background: transparent;
+    box-shadow: none;
   }
 
   .reading-content {

@@ -6,7 +6,9 @@ import type {
   BookDetail,
   BookMarks,
   BookTimeline,
+  Card,
   CodeSent,
+  CreateCard,
   ExplainEvent,
   ExplainRequest,
   Explanation,
@@ -26,6 +28,8 @@ export type {
   BookSource,
   BookStatus,
   BookTimeline,
+  Card,
+  CardBack,
   ChapterSummary,
   ChatMessage,
   Difficulty,
@@ -37,6 +41,7 @@ export type {
   Listening,
   MarkResult,
   Sentence,
+  TargetKind,
   UploadPolicy,
   User,
   Voice,
@@ -315,4 +320,35 @@ export async function streamExplanation(
     buffered = lines.pop()!;
     for (const line of lines) if (line.trim()) onEvent(JSON.parse(line) as ExplainEvent);
   }
+}
+
+/** The user's Cards of a Book's Sentences, in reading order (the green underlines, PRD 4.4.5). */
+export function getBookCards(bookId: string): Promise<Card[]> {
+  return request<Card[]>(`/books/${bookId}/cards`);
+}
+
+/**
+ * Makes a Card of a selection of a Sentence (PRD 4.5.2), or finds the Sentence's Card of the same Target. Rejects
+ * with status 409 and the prompt as message when the user has a Card of the same Target in another Sentence; send
+ * `allowDuplicate` to make it anyway.
+ */
+export async function createCard(body: CreateCard): Promise<MadeCard> {
+  const res = await send("/cards", postJson(body));
+  return { card: (await res.json()) as Card, created: res.status === 201 };
+}
+
+/** What 【制作卡片】 got: a new Card, or the Sentence's Card of the same Target (`created` false). */
+export interface MadeCard {
+  card: Card;
+  created: boolean;
+}
+
+/** Generates a Card's back again (【释义生成失败，点击重试】); rejects when it fails again. */
+export function regenerateCardBack(cardId: string): Promise<Card> {
+  return request<Card>(`/cards/${cardId}/back`, { method: "POST" });
+}
+
+/** Where a Card's own copy of its Sentence's audio is (【卡片原声】). */
+export function cardAudioUrl(cardId: string): string {
+  return `/api/cards/${cardId}/audio`;
 }

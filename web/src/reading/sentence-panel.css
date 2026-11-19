@@ -2,6 +2,49 @@
 .sentence-panel {
   position: relative;
   min-height: 0;
+  width: 440px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.sentence-panel-header {
+  height: 92px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px 0 24px;
+}
+
+.sentence-panel-header h2 {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: 18px;
+}
+
+.sentence-panel-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px;
+  color: var(--ink-3);
+  font-size: 13px;
+  text-align: center;
+}
+
+.sentence-panel-empty p {
+  margin: 0;
+}
+
+.sentence-panel-empty .sentence-panel-empty-title {
+  margin-top: 6px;
+  color: var(--ink-2);
+  font-size: 15px;
 }
 
 .panel-fixed {
