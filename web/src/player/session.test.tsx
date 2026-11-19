@@ -79,7 +79,7 @@ describe("the listening session", () => {
     act(() => s().toggle());
 
     expect(listeningCalls(fetchMock).map(([url, init]) => [url, init.method, JSON.parse(init.body as string)])).toEqual([
-      ["/api/books/b1/listening", "PUT", { positionMs: 12345 }],
+      ["/api/books/b1/listening", "PUT", { positionMs: 12346 }],
       ["/api/books/b1/listening", "PUT", { positionMs: 20000 }],
     ]);
   });
@@ -98,7 +98,11 @@ describe("the listening session", () => {
     act(() => {
       audio().dispatchEvent(new Event("pause"));
     });
-    expect(listeningCalls(fetchMock)).toEqual([]);
+    // Only the save of the old Book as the switch began (AC-PLAY-16).
+    expect(listeningCalls(fetchMock).map(([url, init]) => [url, JSON.parse(init.body as string)])).toEqual([
+      ["/api/books/b1/listening", { positionMs: 300000 }],
+    ]);
+    fetchMock.mockClear();
 
     // Once the new Book's playlist is loaded, its own positions are reported.
     timeUpdate(0);
@@ -272,5 +276,242 @@ describe("the listening session", () => {
 
     act(() => el.dispatchEvent(new Event("playing")));
     expect(s().waitingForAudio).toBe(false);
+  });
+});
+
+describe("syncing listening progress (PRD 4.4.1 进度同步, #10)", () => {
+  /** Answers progress reports with 204 and anything else with `other`. */
+  function serve(other: (url: string) => Response = () => Response.json({ sentenceStartsMs: [], chapters: [], complete: true })) {
+    const fetchMock = vi.fn(async (url: string, _init?: RequestInit) =>
+      url.endsWith("/listening") ? new Response(null, { status: 204 }) : other(url),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+  const reported = (fetchMock: ReturnType<typeof serve>) =>
+    listeningCalls(fetchMock as never).map(([url, init]) => [url, JSON.parse(init.body as string).positionMs]);
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("syncs every 15 seconds while playing, and not while paused", () => {
+    vi.useFakeTimers();
+    const fetchMock = serve();
+    const s = session();
+    act(() => s().open("b1"));
+    act(() => s().toggle());
+    fetchMock.mockClear();
+
+    timeUpdate(14);
+    act(() => vi.advanceTimersByTime(14_999));
+    expect(reported(fetchMock)).toEqual([]);
+    timeUpdate(15);
+    act(() => vi.advanceTimersByTime(1));
+    timeUpdate(30);
+    act(() => vi.advanceTimersByTime(15_000));
+    expect(reported(fetchMock)).toEqual([
+      ["/api/books/b1/listening", 15000],
+      ["/api/books/b1/listening", 30000],
+    ]);
+
+    act(() => s().toggle());
+    fetchMock.mockClear();
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(reported(fetchMock)).toEqual([]);
+  });
+
+  it("syncs when the page is hidden or left, with a request that outlives the page, once per position", () => {
+    const fetchMock = serve();
+    const s = session();
+    act(() => s().open("b1"));
+    act(() => s().toggle());
+    timeUpdate(42);
+    fetchMock.mockClear();
+
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    act(() => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+
+    const calls = listeningCalls(fetchMock as never);
+    expect(calls.map(([, init]) => init.keepalive)).toEqual([true]);
+    expect(reported(fetchMock)).toEqual([["/api/books/b1/listening", 42000]]);
+    Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+  });
+
+  it("does not sync a paused session that did not move, so it never overwrites another device's progress", () => {
+    const fetchMock = serve();
+    const s = session();
+    act(() => s().open("b1"));
+    act(() => s().requestStart({ id: "resume", seconds: 300, autoplay: false }));
+    audioWithGenerated(900);
+    fetchMock.mockClear();
+
+    act(() => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+    expect(reported(fetchMock)).toEqual([]);
+
+    // A drag while paused is progress of this device's own: it is synced at once, and only once.
+    act(() => s().seek(400));
+    act(() => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+    expect(reported(fetchMock)).toEqual([["/api/books/b1/listening", 400000]]);
+  });
+
+  it("saves the previous Book's progress when switching to another one (AC-PLAY-16)", () => {
+    const fetchMock = serve();
+    const s = session();
+    act(() => s().open("b1"));
+    act(() => s().toggle());
+    timeUpdate(300);
+    fetchMock.mockClear();
+
+    act(() => s().open("b2"));
+
+    expect(reported(fetchMock)).toEqual([["/api/books/b1/listening", 300000]]);
+    expect(s()).toMatchObject({ bookId: "b2", playing: false });
+  });
+
+  it("sends a paused position again at the next chance when its sync failed", async () => {
+    let down = true;
+    const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
+      if (url.endsWith("/listening") && down) throw new TypeError("offline");
+      return url.endsWith("/listening") ? new Response(null, { status: 204 }) : Response.json({ sentenceStartsMs: [], chapters: [], complete: true });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const s = session();
+    act(() => s().open("b1"));
+    audioWithGenerated(900);
+    act(() => s().seek(400));
+    await act(async () => {});
+    down = false;
+
+    act(() => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+
+    expect(reported(fetchMock as never)).toEqual([
+      ["/api/books/b1/listening", 400000],
+      ["/api/books/b1/listening", 400000],
+    ]);
+  });
+
+  describe("back on the page, paused", () => {
+    const starts = [0, 300_000, 612_500, 900_000];
+    const withListening = (startMs: number) => ({
+      id: "b1",
+      listening: { sentenceId: "s", chapterTitle: "Chapter 1", share: 0.5, startMs, listenedAt: "2026-11-18T00:00:00.000Z" },
+    });
+    const show = async () => {
+      Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+    };
+
+    /** A session paused at 5:00 as resumed from the API, with the other device now at `otherMs`. */
+    async function pausedAt300(otherMs: number) {
+      const fetchMock = serve((url) =>
+        url === "/api/books/b1" ? Response.json(withListening(otherMs)) : Response.json({ sentenceStartsMs: starts, chapters: [], complete: true }),
+      );
+      const s = session();
+      act(() => s().open("b1"));
+      act(() => s().requestStart({ id: "resume", seconds: 300, autoplay: false }));
+      const media = audioWithGenerated(1_200);
+      await act(async () => {}); // the timeline loads
+      return { s, fetchMock, ...media };
+    }
+
+    it("moves to the Sentence another device synced meanwhile, staying paused", async () => {
+      const { seeks } = await pausedAt300(900_000);
+
+      await show();
+
+      expect(seeks).toEqual([300, 900]);
+      expect(media.play).not.toHaveBeenCalled();
+    });
+
+    it("stays where it is when the API holds the same Sentence", async () => {
+      const { seeks } = await pausedAt300(300_000);
+      await show();
+      expect(seeks).toEqual([300]);
+    });
+
+    it("keeps a position this device moved and has not synced yet", async () => {
+      const { s, seeks, fetchMock } = await pausedAt300(900_000);
+      // The drag's sync is still on its way.
+      fetchMock.mockImplementation(async (url: string) =>
+        url.endsWith("/listening") ? new Promise<Response>(() => {}) : Response.json(withListening(900_000)),
+      );
+      act(() => s().seek(400));
+
+      await show();
+
+      expect(seeks.at(-1)).toBe(400);
+    });
+  });
+
+  describe("after a reload", () => {
+    const book = (rest: object = {}) => ({
+      id: "b1",
+      title: "Pride and Prejudice",
+      playable: true,
+      listening: { sentenceId: "s9", chapterTitle: "Chapter 2", share: 0.4, startMs: 612_500, listenedAt: "2026-11-18T00:00:00.000Z" },
+      chapters: [],
+      ...rest,
+    });
+
+    it("restores this device's session, paused at the last synced Sentence", async () => {
+      localStorage.setItem("vocaleaf:listening-book", "b1");
+      const fetchMock = serve((url) => (url === "/api/books/b1" ? Response.json(book()) : Response.json({ sentenceStartsMs: [], chapters: [], complete: true })));
+      const s = session();
+      await vi.waitFor(() => expect(s().bookId).toBe("b1"));
+
+      const { seeks } = audioWithGenerated(900);
+
+      expect(seeks).toEqual([612.5]);
+      expect(media.play).not.toHaveBeenCalled();
+      expect(s().playing).toBe(false);
+      expect(fetchMock).toHaveBeenCalledWith("/api/books/b1", undefined);
+    });
+
+    it("remembers the Book opened last, and forgets it once that Book is deleted", () => {
+      serve();
+      const s = session();
+      act(() => s().open("b1"));
+      act(() => s().open("b2"));
+      expect(localStorage.getItem("vocaleaf:listening-book")).toBe("b2");
+
+      act(() => {
+        window.dispatchEvent(new CustomEvent(BOOK_DELETED_EVENT, { detail: "b2" }));
+      });
+      expect(localStorage.getItem("vocaleaf:listening-book")).toBeNull();
+    });
+
+    it("forgets a Book that is gone, and leaves a Book opened meanwhile alone", async () => {
+      localStorage.setItem("vocaleaf:listening-book", "b1");
+      serve((url) =>
+        url === "/api/books/b1" ? Response.json({ error: { code: "not_found", message: "没有这本书" } }, { status: 404 }) : Response.json({ sentenceStartsMs: [], chapters: [], complete: true }),
+      );
+      const s = session();
+      await vi.waitFor(() => expect(localStorage.getItem("vocaleaf:listening-book")).toBeNull());
+      expect(s().bookId).toBeNull();
+
+      localStorage.setItem("vocaleaf:listening-book", "b1");
+      let answer: (r: Response) => void = () => {};
+      vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => (answer = resolve))));
+      cleanup();
+      const t = session();
+      act(() => t().open("b2"));
+      await act(async () => answer(Response.json(book())));
+      expect(t().bookId).toBe("b2");
+    });
   });
 });

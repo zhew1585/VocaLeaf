@@ -80,6 +80,7 @@ describe("App", () => {
         if (url === "/api/me") return Response.json({ id: "u1", email: "allen@vocaleaf.app" });
         if (url === "/api/books/b1") return Response.json(book);
         if (url === "/api/auth/logout") return new Response(null, { status: 204 });
+        if (url.endsWith("/timeline")) return Response.json({ sentenceStartsMs: [], chapters: [], complete: true });
         return Response.json([]);
       }),
     );

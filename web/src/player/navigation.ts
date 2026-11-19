@@ -52,3 +52,8 @@ export function chapterEndAt(chapters: BookTimeline["chapters"], positionMs: num
   const chapter = chapters.findLast((c) => c.startMs <= positionMs);
   return chapter?.endMs ?? null;
 }
+
+/** Start of the Sentence holding the position, or null before the first one. */
+export function sentenceStartMs(starts: readonly number[], positionMs: number): number | null {
+  return starts[currentIndex(starts, positionMs)] ?? null;
+}

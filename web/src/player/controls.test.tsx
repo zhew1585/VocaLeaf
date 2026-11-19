@@ -82,8 +82,10 @@ describe("重听 (PRD 4.4.3)", () => {
     await press(() => s().replay());
 
     expect(seeks.at(-1)).toBe(8);
-    // Neither a Mark nor any other write: the timeline was already loaded, so no request at all.
-    expect(fetch).not.toHaveBeenCalled();
+    // No Mark: the only request syncs the paused player's new place (PRD 4.4.1 进度同步); the timeline was loaded.
+    expect(vi.mocked(fetch).mock.calls.map(([url, init]) => [url, init?.body])).toEqual([
+      ["/api/books/b1/listening", JSON.stringify({ positionMs: 8000 })],
+    ]);
   });
 
   it("keeps a paused player paused", async () => {

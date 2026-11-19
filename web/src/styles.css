@@ -92,6 +92,140 @@ button {
   font-weight: 500;
 }
 
+/* 当前收听 (design 05-1 「侧栏 · 当前收听」): 14 px above the account while there is a listening session. */
+.now-listening {
+  height: 80px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.now-listening:hover,
+.now-listening:focus-within {
+  border-color: var(--leaf);
+}
+
+.now-listening + .account {
+  margin-top: -18px;
+}
+
+/* The cover's play control: a 44 x 48 hit area of its own, apart from the link to the 专注页. */
+.now-cover {
+  width: 44px;
+  height: 48px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.now-cover-art {
+  position: relative;
+  width: 32px;
+  height: 46px;
+  overflow: hidden;
+  border-radius: 3px;
+}
+
+.now-cover-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.now-cover-control {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(23 38 30 / 80%);
+  color: var(--surface);
+  opacity: 0;
+}
+
+.now-listening:hover .now-cover-control,
+.now-listening:focus-within .now-cover-control {
+  opacity: 1;
+}
+
+.now-cover:focus-visible {
+  outline: 2px solid var(--leaf);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.now-info {
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+/* The link's focus ring goes round the whole entry. */
+.now-info:focus-visible {
+  outline: none;
+}
+
+.now-listening:has(.now-info:focus-visible) {
+  outline: 2px solid var(--leaf);
+  outline-offset: 2px;
+}
+
+.now-title {
+  font-family: var(--font-read);
+  font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.now-state {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.is-playing .now-state {
+  color: var(--leaf);
+}
+
+.now-dot {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ink-3);
+}
+
+.is-playing .now-dot {
+  background: var(--leaf);
+}
+
+.now-chapter {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-read);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
 .avatar {
   width: 32px;
   height: 32px;
@@ -807,10 +941,15 @@ button.chapter-title:hover {
     height: 30px;
   }
 
-  /* One section so far; the phone's tab bar comes with the other sections. */
+  /* One section so far; the phone's tab bar comes with the other sections, its mini player with the phone work. */
   .sidebar-nav,
+  .now-listening,
   .account .avatar {
     display: none;
+  }
+
+  .now-listening + .account {
+    margin-top: 0;
   }
 
   .shell-main {
