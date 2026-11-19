@@ -10,11 +10,14 @@ export function defaultCoverColor(id: string): string {
   return DEFAULT_COVER_COLORS[hash % DEFAULT_COVER_COLORS.length]!;
 }
 
+/** What a cover needs: a Book on the Shelf, or a Library Book (always generated, so without status). */
+type CoverBook = Pick<Book, "id" | "title" | "coverUrl"> & Partial<Pick<Book, "status" | "progress">>;
+
 /**
- * A Book's cover on the Shelf (design 03-2): its EPUB's cover image, or a cloth-coloured cover with its title. A
+ * A Book's cover on the Shelf and in the 书库 (design 03-2): its EPUB's cover image, or a cloth-coloured cover with its title. A
  * Book being parsed shows a spinner, one that failed a file icon, and one generating its audio carries 生成中 n/N.
  */
-export function BookCover({ book, className = "" }: { book: Book; className?: string }) {
+export function BookCover({ book, className = "" }: { book: CoverBook; className?: string }) {
   if (book.status === "parsing") {
     return (
       <div className={`book-cover is-parsing ${className}`} aria-hidden="true">
@@ -29,7 +32,6 @@ export function BookCover({ book, className = "" }: { book: Book; className?: st
       </div>
     );
   }
-  const { generated, narrated } = book.progress;
   return (
     <div className={`book-cover ${className}`} style={book.coverUrl ? undefined : { background: defaultCoverColor(book.id) }}>
       {book.coverUrl ? (
@@ -39,10 +41,10 @@ export function BookCover({ book, className = "" }: { book: Book; className?: st
           {book.title}
         </span>
       )}
-      {book.status === "generating" && (
+      {book.status === "generating" && book.progress && (
         <span className="book-cover-strip" aria-label="生成进度">
           <LoaderIcon size={12} />
-          {generated} / {narrated}
+          {book.progress.generated} / {book.progress.narrated}
         </span>
       )}
     </div>

@@ -26,6 +26,7 @@ const book: BookDetail = {
   id: "b1",
   title: "Pride and Prejudice",
   author: "Jane Austen",
+  source: "upload",
   status: "generating",
   playable: false,
   failureReason: null,

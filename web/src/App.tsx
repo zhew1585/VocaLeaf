@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { getMe, logOut, UNAUTHORIZED_EVENT, type User } from "./api";
 import logoUrl from "./assets/logo.webp";
+import { PlayGuideProvider } from "./guide/PlayGuide";
 import { LibraryIcon } from "./icons";
 import { BookPage } from "./pages/BookPage";
 import { ListenPage } from "./pages/ListenPage";
@@ -71,16 +72,18 @@ export function App() {
   const { bookId, listen, library } = route(path);
   // The listening session outlives the pages (【返回书架】 keeps playing) and ends with logging out.
   return (
-    <ListeningProvider>
-      {bookId && listen ? (
-        // The 专注页 takes the whole window, without the app's header.
-        <ListenPage id={bookId} />
-      ) : (
-        <Shell email={session.user.email} loggingOut={loggingOut} onLogOut={onLogOut}>
-          {bookId ? <BookPage id={bookId} /> : library ? <LibraryPage /> : <ShelfPage />}
-        </Shell>
-      )}
-    </ListeningProvider>
+    <PlayGuideProvider key={session.user.id} seen={session.user.playGuideSeen}>
+      <ListeningProvider>
+        {bookId && listen ? (
+          // The 专注页 takes the whole window, without the app's header.
+          <ListenPage id={bookId} />
+        ) : (
+          <Shell email={session.user.email} loggingOut={loggingOut} onLogOut={onLogOut}>
+            {bookId ? <BookPage id={bookId} /> : library ? <LibraryPage /> : <ShelfPage />}
+          </Shell>
+        )}
+      </ListeningProvider>
+    </PlayGuideProvider>
   );
 }
 

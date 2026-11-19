@@ -8,7 +8,7 @@ import type { Db } from "../db/client.js";
 import { auditLog, books, jobs, users } from "../db/schema.js";
 import { bookPrefix, type ObjectStorage } from "../storage.js";
 import { validationHook } from "../validation.js";
-import { notFound } from "./own-book.js";
+import { notFound } from "./readable-book.js";
 
 const deleteRoute = createRoute({
   method: "delete",

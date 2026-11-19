@@ -16,8 +16,8 @@ import { useSentenceJumps } from "./useSentenceJumps";
  * player, the reading view and the sidebar's 当前收听 entry read and steer it. Where playback is goes to the API
  * (useProgressSync), so the Shelf orders Books by it and any device resumes there. The device remembers the
  * session's Book, so after a reload the session comes back paused at the last synced Sentence. It ends when its
- * Book is deleted (#8) or the user logs out. The speed and the sleep timer belong to the session, not the Book,
- * so they hold across Books (PRD 4.4.1, G9).
+ * Book is deleted (#8) or taken off the Shelf (a Library Book), or the user logs out. The speed and the sleep timer
+ * belong to the session, not the Book, so they hold across Books (PRD 4.4.1, G9).
  */
 export interface Listening {
   /** The Book whose audio is loaded, or null before any 专注页 opened one. */

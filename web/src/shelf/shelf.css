@@ -360,6 +360,148 @@
   color: var(--ink-2);
 }
 
+/* 03-3 书库: groups of Books by difficulty */
+.library-group {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.library-group-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.library-group-header h2 {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.library-group-header::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.library-row {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 28px 36px;
+}
+
+.library-book {
+  display: flex;
+  gap: 18px;
+}
+
+.book-cover.library-cover {
+  flex: none;
+  width: 96px;
+  border-radius: 3px;
+  box-shadow: 0 4.4px 12.3px rgb(28 33 29 / 0.17);
+}
+
+.library-info {
+  flex: 1;
+  min-width: 0;
+  min-height: 144px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.library-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.library-title {
+  margin: 0;
+  font-family: var(--font-read);
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--ink);
+}
+
+.library-author {
+  margin: 0;
+  font-family: var(--font-read);
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.library-blurb {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.library-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.library-button {
+  height: 32px;
+  padding: 0 14px 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--leaf);
+  color: var(--surface);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.library-button.is-continue {
+  background: var(--leaf-soft);
+  color: var(--leaf);
+}
+
+.library-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.library-on-shelf {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+@media (max-width: 1180px) {
+  .library-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .library-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* 04-1 upload dialog */
 .dialog-scrim {
   position: fixed;

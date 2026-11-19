@@ -7,7 +7,7 @@ import type { Db } from "../db/client.js";
 import type { Tx } from "../jobs/lifecycle.js";
 import { allowlist, loginCodes, users } from "../db/schema.js";
 import type { Mailer } from "./mailer.js";
-import { createSession, sha256 } from "./session.js";
+import { createSession, sha256, userFields } from "./session.js";
 
 /** How long a code can be used. Stated in the email (auth/mailer.ts). */
 export const LOGIN_CODE_TTL_MS = 10 * 60 * 1000;
@@ -68,7 +68,7 @@ export async function logIn(db: Db, email: string, code: string, now: Date) {
     await tx.delete(loginCodes).where(eq(loginCodes.email, email));
     if (!(await isInvited(tx, email))) return undefined;
     await tx.insert(users).values({ email }).onConflictDoNothing();
-    const [row] = await tx.select({ id: users.id, email: users.email }).from(users).where(eq(users.email, email));
+    const [row] = await tx.select(userFields).from(users).where(eq(users.email, email));
     return row!;
   });
   if (!user) return undefined;
