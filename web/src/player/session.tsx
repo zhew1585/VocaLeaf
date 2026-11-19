@@ -1,20 +1,23 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { BOOK_DELETED_EVENT, saveListening } from "../api";
+import { ApiRequestError, BOOK_DELETED_EVENT, getBook } from "../api";
 import { useHls } from "./hls";
 import { playableLength, useStartRequest, useWaitingForAudio, type StartRequest } from "./playback";
 import { useSleepTimer, type SleepChoice, type SleepTimer } from "./sleep";
 import { useSpeed, type Speed } from "./speed";
 import { useBookTimeline } from "./useBookTimeline";
+import { useProgressSync } from "./progressSync";
+import { rememberBook, rememberedBook } from "./rememberedBook";
 import { useOfflinePause } from "./useOfflinePause";
 import { useSentenceJumps } from "./useSentenceJumps";
 
 /**
  * The one listening session (PRD 4.4.1): one Book's continuous audio, played by one audio element that lives
  * above the pages, so leaving the 专注页 (【返回书架】) does not stop it. The 专注页 opens its Book here; the
- * player and the reading view read and steer it. Where playback is goes to the API when it starts and pauses, so
- * the Shelf can order Books and resume them (#7); the other sync moments and the sidebar entry come with #10.
- * It ends when its Book is deleted (#8). The speed and the sleep timer belong to the session, not the Book, so
- * they hold across Books (PRD 4.4.1, G9).
+ * player, the reading view and the sidebar's 当前收听 entry read and steer it. Where playback is goes to the API
+ * (useProgressSync), so the Shelf orders Books by it and any device resumes there. The device remembers the
+ * session's Book, so after a reload the session comes back paused at the last synced Sentence. It ends when its
+ * Book is deleted (#8) or the user logs out. The speed and the sleep timer belong to the session, not the Book,
+ * so they hold across Books (PRD 4.4.1, G9).
  */
 export interface Listening {
   /** The Book whose audio is loaded, or null before any 专注页 opened one. */
@@ -37,7 +40,10 @@ export interface Listening {
   sleep: SleepTimer | null;
   /** Listening time left on the sleep timer, in milliseconds; null with none or while unknown. */
   sleepRemaining(): number | null;
-  /** Loads the Book's audio, paused at its start; does nothing when it is already the session's Book. */
+  /**
+   * Loads the Book's audio, paused at its start; does nothing when it is already the session's Book. Switching
+   * Books saves where the previous one was first (PRD 4.4.1 收听会话 #2).
+   */
   open(bookId: string): void;
   /** Loads the playlist again on a fresh audio element (a retried Chapter came in before its end). */
   reload(): void;
@@ -116,6 +122,7 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     jumping: (ms) => {
       starter.drop();
       sleep.jumped(ms);
+      progress.moved();
     },
   });
   /** The session moved playback to `seconds` (a drag, a picked Chapter, a resume). */
@@ -125,6 +132,11 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
   };
   const starter = useStartRequest(audio, start.request, start.onSettled, (el) => play(el, true), landed);
   const waiting = useWaitingForAudio(audio, setWaitingForAudio);
+  const openBookId = useRef<string | null>(null);
+  // From switching Books until the new playlist's metadata loads, the element still holds the old Book's audio
+  // (its stream going away may fire a pause there); positions are not reported meanwhile.
+  const switching = useRef(false);
+  const progress = useProgressSync(audio, () => (switching.current ? null : openBookId.current), playing);
 
   const sync = () => {
     const el = audio.current!;
@@ -142,20 +154,19 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     waiting.onPause();
     jumps.forget();
     offline.forget();
+    progress.forget();
     // A fresh element starts at 0; 【本章结束】 follows to its first Chapter.
     sleep.jumped(0);
   };
 
   // open and reload stay the same functions (the 专注页 calls them from effects); `fresh` only sets state and
-  // resets refs, so the first render's copy will do.
-  const openBookId = useRef<string | null>(null);
-  // From switching Books until the new playlist's metadata loads, the element still holds the old Book's audio
-  // (its stream going away may fire a pause there); positions are not reported meanwhile.
-  const switching = useRef(false);
+  // resets refs, and `progress.report` is stable, so the first render's copies will do.
   const open = useCallback((id: string) => {
     if (openBookId.current === id) return;
+    progress.report();
     switching.current = openBookId.current !== null;
     openBookId.current = id;
+    rememberBook(id);
     setBookId(id);
     setStart({ request: null });
     setPosition(0);
@@ -168,6 +179,7 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     const onDeleted = (e: Event) => {
       if ((e as CustomEvent<string>).detail !== openBookId.current) return;
       openBookId.current = null;
+      rememberBook(null);
       setBookId(null);
       setStart({ request: null });
       setPosition(0);
@@ -178,6 +190,29 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(BOOK_DELETED_EVENT, onDeleted);
   }, []);
 
+  // After a reload: the Book this device listened to last comes back, paused at the last synced Sentence (from
+  // any device). A Book a page opened meanwhile wins; one that is gone is forgotten.
+  useEffect(() => {
+    const id = rememberedBook();
+    if (id === null) return;
+    let active = true;
+    getBook(id).then(
+      (book) => {
+        if (!active || openBookId.current !== null || !book.playable) return;
+        open(id);
+        const startMs = book.listening?.startMs;
+        if (startMs != null) setStart({ request: { id: "restore", seconds: startMs / 1000, autoplay: false } });
+      },
+      (err: unknown) => {
+        if (err instanceof ApiRequestError && err.status === 404) rememberBook(null);
+        else console.warn("restoring the listening session failed", err);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [open]);
+
   const reload = useCallback(() => {
     setReloads((n) => n + 1);
     fresh();
@@ -186,16 +221,6 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
   const requestStart = useCallback((request: StartRequest | null, onSettled?: () => void) => {
     setStart({ request, onSettled });
   }, []);
-
-  /** Reports where playback is; the API keeps the Sentence there as the place to resume (PRD 4.4.1). */
-  const reportPosition = () => {
-    const id = openBookId.current;
-    if (id === null || switching.current) return;
-    saveListening(id, audio.current!.currentTime * 1000).catch((err: unknown) => {
-      // Losing one report only loses a little progress; the next play or pause reports again.
-      console.warn("saving listening progress failed", err);
-    });
-  };
 
   const toggle = () => {
     const el = audio.current!;
@@ -210,6 +235,7 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     const el = audio.current;
     if (!el || openBookId.current === null) return;
     starter.drop();
+    progress.moved();
     if (seconds < playableLength(el) - GENERATED_EDGE_SECONDS) {
       el.currentTime = seconds;
       landed(seconds);
@@ -260,12 +286,12 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
         onPlay={() => {
           setPlaying(true);
           setNeedsTap(false);
-          reportPosition();
+          progress.report({ always: true });
         }}
         onPause={() => {
           setPlaying(false);
           waiting.onPause();
-          reportPosition();
+          progress.report({ always: true });
         }}
         onPlaying={waiting.onPlaying}
         onWaiting={waiting.onWaiting}

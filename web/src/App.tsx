@@ -5,6 +5,8 @@ import { LibraryIcon } from "./icons";
 import { BookPage } from "./pages/BookPage";
 import { ListenPage } from "./pages/ListenPage";
 import { LoginPage } from "./pages/LoginPage";
+import { NowListening } from "./player/NowListening";
+import { rememberBook } from "./player/rememberedBook";
 import { ListeningProvider } from "./player/session";
 import { followLink, navigate, usePathname } from "./router";
 import { LibraryPage } from "./shelf/LibraryPage";
@@ -58,6 +60,8 @@ export function App() {
     setLoggingOut(true);
     try {
       await logOut();
+      // Logging out ends the listening session (PRD 4.4.1); a reload must not bring it back.
+      rememberBook(null);
       navigate("/");
       setUser(null);
     } catch {
@@ -84,8 +88,8 @@ export function App() {
 }
 
 /**
- * The app around a page (design 03-2): the sidebar with the brand, the navigation and the account; on a phone it
- * becomes a bar above the page. 书架 is the only section so far; 拾起, 复习 and 卡片 join it with their tickets.
+ * The app around a page (design 03-2): the sidebar with the brand, the navigation, the 当前收听 entry while there is
+ * a listening session, and the account; on a phone it becomes a bar above the page. 书架 is the only section so far; 拾起, 复习 and 卡片 join it with their tickets.
  */
 function Shell({
   email,
@@ -111,6 +115,7 @@ function Shell({
             书架
           </a>
         </nav>
+        <NowListening />
         <div className="account">
           <span className="avatar" aria-hidden="true">
             {email.slice(0, 1).toUpperCase()}

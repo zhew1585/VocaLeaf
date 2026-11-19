@@ -1,4 +1,4 @@
-import { expect } from "vitest";
+import { afterEach, expect } from "vitest";
 
 // Minimal matchers used by the tests, avoiding a jest-dom dependency.
 expect.extend({
@@ -12,3 +12,6 @@ declare module "vitest" {
     toBeEnabled(): void;
   }
 }
+
+// The listening session remembers its Book in localStorage; no test leaves it to the next.
+afterEach(() => localStorage.clear());

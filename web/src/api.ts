@@ -130,12 +130,16 @@ export function uploadBook(file: File, { declarationVersion, onProgress, signal 
   });
 }
 
-/** Tells the API where playback is in the Book's audio; it keeps the Sentence there as the place to resume. */
-export async function saveListening(bookId: string, positionMs: number): Promise<void> {
+/**
+ * Tells the API where playback is in the Book's audio; it keeps the Sentence there as the place to resume.
+ * `keepalive` lets the request finish after the page is gone (sent while the page is hidden or left).
+ */
+export async function saveListening(bookId: string, positionMs: number, { keepalive = false } = {}): Promise<void> {
   await send(`/books/${bookId}/listening`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ positionMs: Math.max(0, Math.floor(positionMs)) }),
+    ...(keepalive ? { keepalive } : {}),
   });
 }
 

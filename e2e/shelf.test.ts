@@ -6,11 +6,13 @@ import type { Book, BookDetail, Sentence, UploadPolicy } from "../api/src/contra
 import {
   endOpenJobs,
   fetchBytes,
+  logIn,
   newUser,
   PRIDE_AND_PREJUDICE,
   SHORT_WALK,
   sql,
   upload,
+  userApi,
   waitWhileParsing,
 } from "./support.js";
 
@@ -131,4 +133,27 @@ describe("listening orders the Shelf and is where a Book resumes (AC-SHELF-01, A
     expect(resumed!.share).toBeGreaterThan(0);
     expect(resumed!.share).toBeLessThan(1);
   }, 360_000);
+});
+
+describe("listening across devices (AC-PLAY-05, #10)", () => {
+  it("resumes on one device at the Sentence the other device synced last, the latest sync winning", async () => {
+    const deviceA = await newUser("devices");
+    // The same user logged in a second time: another device with its own session.
+    const cookieB = await logIn(deviceA.email);
+    const deviceB = { ...userApi(async () => cookieB), cookie: cookieB, email: deviceA.email };
+    const created = (await deviceA.upload("short-walk.epub", SHORT_WALK)).body;
+    const book = await waitFor(deviceA, created.id, (x) => x.status === "ready", 150_000);
+    const sentences = (await deviceA.api<Sentence[]>(`/chapters/${book.chapters[0]!.id}/sentences`)).body;
+    const [, second, third] = sentences;
+
+    // Device A pauses inside the second Sentence (the web app sends this on pause, page hide, and every 15 s).
+    expect((await listen(deviceA, book.id, second!.startMs! + 300)).status).toBe(204);
+    const onB = (await deviceB.api<BookDetail>(`/books/${book.id}`)).body.listening;
+    expect(onB).toMatchObject({ sentenceId: second!.id, startMs: second!.startMs });
+
+    // Device B listens on to the third; device A, opening the Book again, starts there.
+    expect((await listen(deviceB, book.id, third!.startMs! + 100)).status).toBe(204);
+    const onA = (await deviceA.api<BookDetail>(`/books/${book.id}`)).body.listening;
+    expect(onA).toMatchObject({ sentenceId: third!.id, startMs: third!.startMs });
+  }, 240_000);
 });

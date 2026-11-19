@@ -4,7 +4,7 @@ import { FileXIcon, LoaderIcon } from "../icons";
 /** Muted cloth colours for a Book without a cover image, picked by its ID so a Book keeps its colour. */
 const DEFAULT_COVER_COLORS = ["#7B4A38", "#2E5B45", "#5B4E6B", "#6B5B3E", "#3F5560"];
 
-function defaultCoverColor(id: string): string {
+export function defaultCoverColor(id: string): string {
   let hash = 0;
   for (const ch of id) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
   return DEFAULT_COVER_COLORS[hash % DEFAULT_COVER_COLORS.length]!;

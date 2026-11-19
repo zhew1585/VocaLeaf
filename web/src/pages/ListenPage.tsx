@@ -20,12 +20,14 @@ function dropEntryParams() {
 
 /**
  * Where the 专注页 starts a Book the session does not hold yet: at the start of the Sentence the user last listened
- * to (AC-SHELF-04, the Book's beginning if none), playing when opened from the Shelf (`?autoplay`, shelfListenPath), paused
- * otherwise (a reload). Only once; a Book the session already holds plays on where it is.
+ * to on any device (AC-SHELF-04, AC-PLAY-05, the Book's beginning if none), playing when opened from the Shelf
+ * (`?autoplay`, shelfListenPath), paused otherwise (a reload). Only once. A Book the session already holds plays on
+ * where it is, unless it is paused and opened from the Shelf: it then resumes like a Book not held, since another
+ * device may have listened on since.
  */
-function useResume(here: boolean) {
+function useResume(here: boolean, playing: boolean) {
   const [autoplay] = useState(() => new URLSearchParams(window.location.search).has("autoplay"));
-  const [done, setDone] = useState(here);
+  const [done, setDone] = useState(here && (playing || !autoplay));
   // Paused at the beginning is where a fresh player is anyway.
   const request = (book: BookDetail | null): StartRequest | null =>
     done || !book || (!autoplay && !book.listening)
@@ -93,7 +95,7 @@ export function ListenPage({ id }: { id: string }) {
   const listening = useListening();
   const here = listening.bookId === id;
   const chapterPick = usePickedChapter();
-  const resume = useResume(here);
+  const resume = useResume(here, listening.playing);
   // Playback waits for audio still to generate: it caught up with it, or the bar was dragged past it.
   const waitingForAudio = here && (listening.waitingForAudio || listening.seekPending);
   const { book, error } = useBook(id, { eager: chapterPick.picked !== null || waitingForAudio });
