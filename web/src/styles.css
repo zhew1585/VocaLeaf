@@ -53,24 +53,25 @@ button {
 :root {
   /* The room the custom scrollbar takes, for areas that make up for it; 0 where the browser draws its own. */
   --scrollbar-size: 0px;
-  /* ink-3, faint at rest-visible, a little firmer under the pointer and while dragged. */
-  --scrollbar-thumb-shown: rgb(154 158 147 / 0.4);
-  --scrollbar-thumb-hover: rgb(154 158 147 / 0.58);
-  --scrollbar-thumb-active: rgb(154 158 147 / 0.74);
+  /* ink-3, faint when shown, a little firmer under the pointer and while dragged. */
+  --scrollbar-thumb-shown: color-mix(in srgb, var(--ink-3) 40%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--ink-3) 58%, transparent);
+  --scrollbar-thumb-active: color-mix(in srgb, var(--ink-3) 74%, transparent);
 }
 
 /*
  * A scrollbar takes its colour from its scroll area; every element sets its own, so a shown bar does not show the
- * bars inside its area. Shown, it fades in quickly; idle, it fades out slowly.
+ * bars inside its area. Shown, it fades in quickly; idle, it fades out over 0.4 s. A scroll area that declares its
+ * own transition must list --scrollbar-thumb in it to keep the fade.
  */
 * {
   --scrollbar-thumb: transparent;
-  transition: --scrollbar-thumb 0.5s ease-out;
+  transition: --scrollbar-thumb 0.4s ease-out;
 }
 
 [data-scrollbar] {
   --scrollbar-thumb: var(--scrollbar-thumb-shown);
-  transition-duration: 0.12s;
+  transition: --scrollbar-thumb 0.12s ease-out;
 }
 
 /* Shell pages that scroll and those that do not keep the same width; the 专注页 never scrolls the page itself. */
@@ -126,6 +127,11 @@ html:has(.shell) {
   * {
     scrollbar-width: thin;
     scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  /* Firefox styles the page's scrollbar from the root, not the body that scrollbars.ts marks. */
+  html:has(> body[data-scrollbar]) {
+    --scrollbar-thumb: var(--scrollbar-thumb-shown);
   }
 }
 

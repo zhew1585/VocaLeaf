@@ -93,7 +93,7 @@
 .directory-list {
   flex: 1;
   min-height: 0;
-  /* The scrollbar rides the directory's right edge, in its padding, 6 px clear of the current Chapter's highlight. */
+  /* The scrollbar rides the directory's right edge, in its padding, 7 px clear of the current Chapter's highlight. */
   margin: 0 -12px 0 0;
   padding: 0 calc(14px - var(--scrollbar-size)) 0 0;
   list-style: none;

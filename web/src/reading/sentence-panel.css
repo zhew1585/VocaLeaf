@@ -150,7 +150,8 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  /* A streamed answer that starts to scroll does not reflow; the gutter is part of the 28 px right margin. */
+  /* A streamed answer that starts to scroll does not reflow; in Chrome and Safari the gutter is part of the 28 px
+     right margin. */
   scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
@@ -160,9 +161,12 @@
   mask-image: linear-gradient(to bottom, transparent, #000 24px);
 }
 
-/* The bar starts below the top fade and ends above the floating 追问 bar and its chips (.chat-dock, up to 130 px). */
+/*
+ * The bar starts below the top fade and ends above the floating .chat-dock at its tallest (新回复, the quick row and
+ * the 追问 bar: 24 + 64 + 30 + 30 + 2 x 12 = 172 px).
+ */
 .chat-scroll::-webkit-scrollbar-track:vertical {
-  margin-block: 16px 140px;
+  margin-block: 24px 180px;
 }
 
 .chat-scroll > .sentence-panel-empty {

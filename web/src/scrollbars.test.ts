@@ -45,8 +45,9 @@ describe("autoHideScrollbars", () => {
     scroll(el);
     expect(shown(el)).toBe(true);
 
-    // Each scroll keeps it up for another idle period.
+    // Each scroll of the user's keeps it up for another idle period.
     vi.advanceTimersByTime(SCROLLBAR_IDLE_MS - 100);
+    wheel(el);
     scroll(el);
     vi.advanceTimersByTime(SCROLLBAR_IDLE_MS - 100);
     expect(shown(el)).toBe(true);
@@ -73,9 +74,28 @@ describe("autoHideScrollbars", () => {
     scroll(el);
     expect(shown(el)).toBe(false);
 
+    // Typing is not a scroll either, though sending a question scrolls the chat.
+    const input = document.createElement("input");
+    el.append(input);
+    input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+    scroll(el);
+    expect(shown(el)).toBe(false);
+
     wheel(el);
     vi.advanceTimersByTime(INPUT_WINDOW_MS + 1);
     scroll(el);
+    expect(shown(el)).toBe(false);
+  });
+
+  it("lets the bar fade even while the app keeps scrolling after the user", () => {
+    const el = scroller();
+    wheel(el);
+    scroll(el);
+    // A streamed reply following the bottom, every 300 ms.
+    for (let t = 0; t < SCROLLBAR_IDLE_MS * 3; t += 300) {
+      vi.advanceTimersByTime(300);
+      scroll(el);
+    }
     expect(shown(el)).toBe(false);
   });
 
@@ -116,13 +136,15 @@ describe("autoHideScrollbars", () => {
     expect(shown(el)).toBe(false);
   });
 
-  it("stops listening once removed", () => {
+  it("stops listening once removed, and hides what it showed", () => {
     const el = scroller();
+    move(el, 195);
     uninstall();
+    expect(shown(el)).toBe(false);
     wheel(el);
     scroll(el);
+    move(el, 100);
     move(el, 195);
     expect(shown(el)).toBe(false);
-    uninstall = () => {};
   });
 });
