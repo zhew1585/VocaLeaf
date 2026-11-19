@@ -16,6 +16,7 @@ const gleaning = (sentenceId: string, text: string, book: [string, string], star
   chapterId: `${book[0]}-c1`,
   chapterTitle: "Chapter 1",
   startMs,
+  endMs: startMs === null ? null : startMs + 3_000,
   markedAt: "2026-11-18T00:00:00.000Z",
 });
 

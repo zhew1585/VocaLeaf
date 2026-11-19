@@ -13,6 +13,8 @@
   --amber: #c17a22;
   --amber-soft: #f7e6c4;
   --amber-ink: #8a5514;
+  /* A Card's Target underline (design: leaf at half strength), opaque so it hides a Mark's dashes under it. */
+  --card-line: #92a697;
   --font-ui: "Noto Sans SC", system-ui, sans-serif;
   --font-title: "Noto Serif SC", serif;
   --font-read: "Newsreader", Georgia, serif;

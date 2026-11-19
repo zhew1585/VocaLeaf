@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { BOOK_DELETED_EVENT, type BookDetail, type BookTimeline, type Voice } from "../api";
-import { useAudition, type AuditionSentence, type AuditionState } from "./audition";
+import { useAudition, type AuditionSource, type AuditionState } from "./audition";
 import { useHls } from "./hls";
 import { layoutOf, mapPosition, onlyAppends, sentenceIndexAt, type Layout } from "./layout";
 import { playableLength, useStartRequest, useWaitingForAudio, type StartRequest } from "./playback";
@@ -77,8 +77,11 @@ export interface Listening {
   playFrom(seconds: number): void;
   /** The 试听 playing or loading, or null. */
   audition: AuditionState | null;
-  /** 【试听本句】: plays only this Sentence (again from its start when it is already playing). */
-  startAudition(sentence: AuditionSentence): void;
+  /**
+   * 【试听本句】: plays only this Sentence (again from its start when it is already playing); or 【卡片原声】, a Card's
+   * own audio.
+   */
+  startAudition(source: AuditionSource): void;
   /** Stops a 试听 without letting an interrupted main playback go on (another Sentence selected, panel closed). */
   stopAudition(): void;
   setSpeed(speed: Speed): void;
@@ -103,7 +106,8 @@ const PLAYBACK_FAILED = "播放失败，请刷新页面重试";
 /** A drag lands this close to the end of the generated audio or beyond: it waits for more to be generated. */
 const GENERATED_EDGE_SECONDS = 0.5;
 
-function playlistUrl(bookId: string): string {
+/** Where a Book's audio is, as one HLS playlist. */
+export function playlistUrl(bookId: string): string {
   return `/api/books/${bookId}/audio.m3u8`;
 }
 

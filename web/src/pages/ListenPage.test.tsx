@@ -119,6 +119,7 @@ function serve(books: BookDetail[], sentences: Record<string, Sentence[]> = {}) 
     if (chapterId) return Response.json(sentences[chapterId] ?? []);
     if (url.endsWith("/timeline")) return Response.json(timelineOf(sentences, last));
     if (url.endsWith("/marks")) return Response.json({ pending: [] });
+    if (url.endsWith("/cards")) return Response.json([]);
     if (url.endsWith("/explanation")) return Response.json({ content: null, messages: [], aiRemaining: 100 });
     last = (queue.length > 1 ? queue.shift() : queue[0])!;
     return Response.json(last);
@@ -447,6 +448,7 @@ describe("ListenPage (专注页)", () => {
           }
           if (url.includes("/chapters/")) return Response.json([]);
           if (url.endsWith("/marks")) return Response.json({ pending: [] });
+          if (url.endsWith("/cards")) return Response.json([]);
           served = queue.length > 1 ? queue.shift()! : queue[0]!;
           return Response.json(served);
         }),

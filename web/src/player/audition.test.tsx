@@ -81,10 +81,10 @@ describe("试听本句", () => {
     expect(hls.source).toBe("/api/books/b1/audio.m3u8");
     expect(hls.config).toMatchObject({ startPosition: 12 });
     expect(playedOn(auditionAudio())).toBe(1);
-    expect(s().audition).toEqual({ sentenceId: "s4", loading: true });
+    expect(s().audition).toEqual({ id: "s4", loading: true, failed: false });
 
     act(() => auditionAudio().dispatchEvent(new Event("playing")));
-    expect(s().audition).toEqual({ sentenceId: "s4", loading: false });
+    expect(s().audition).toEqual({ id: "s4", loading: false, failed: false });
   });
 
   it("interrupts the main playback, then goes on from the start of the interrupted Sentence (AC-PLAY-12)", async () => {

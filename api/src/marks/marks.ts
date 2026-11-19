@@ -3,6 +3,7 @@
 import { and, count, desc, eq } from "drizzle-orm";
 import type { Gleaning, MarkResult } from "../contract.js";
 import type { Db } from "../db/client.js";
+import type { Tx } from "../jobs/lifecycle.js";
 import { books, chapters, marks, sentences, shelfEntries } from "../db/schema.js";
 import { chapterStartMs, loadTimelines } from "../books/timeline.js";
 
@@ -73,7 +74,7 @@ export async function dismissMark(db: Db, userId: string, sentenceId: string, no
  * The seam for making Cards (#15, PRD 4.5.2 #7): a Card made from the Sentence processes its pending Mark, which
  * leaves Gleanings. Does nothing without a pending Mark.
  */
-export async function markProcessed(db: Db, userId: string, sentenceId: string, now: Date): Promise<void> {
+export async function markProcessed(db: Db | Tx, userId: string, sentenceId: string, now: Date): Promise<void> {
   await db
     .update(marks)
     .set({ status: "processed", updatedAt: now })
@@ -105,6 +106,7 @@ export async function loadGleanings(db: Db, userId: string): Promise<Gleaning[]>
       sentenceId: marks.sentenceId,
       text: sentences.text,
       startMs: sentences.startMs,
+      endMs: sentences.endMs,
       bookId: marks.bookId,
       bookTitle: books.title,
       chapterId: chapters.id,
@@ -119,12 +121,13 @@ export async function loadGleanings(db: Db, userId: string): Promise<Gleaning[]>
     .orderBy(desc(marks.updatedAt), desc(marks.createdAt));
   // Stored times count from the Chapter's start; the Book's audio places the Chapter after the ones before it.
   const timelines = await loadTimelines(db, [...new Set(rows.map((r) => r.bookId))]);
-  return rows.map(({ startMs, markedAt, ...r }) => {
+  return rows.map(({ startMs, endMs, markedAt, ...r }) => {
     const timeline = timelines.get(r.bookId);
     const chapterStart = timeline ? chapterStartMs(timeline, r.chapterId) : null;
     return {
       ...r,
       startMs: chapterStart !== null && startMs !== null ? chapterStart + startMs : null,
+      endMs: chapterStart !== null && endMs !== null ? chapterStart + endMs : null,
       markedAt: markedAt.toISOString(),
     };
   });
