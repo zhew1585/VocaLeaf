@@ -17,6 +17,9 @@ import type {
   GleaningCount,
   LibraryBook,
   MarkResult,
+  Rating,
+  ReviewCount,
+  ReviewQueue,
   Sentence,
   UploadPolicy,
   Usage,
@@ -43,6 +46,9 @@ export type {
   LibraryBook,
   Listening,
   MarkResult,
+  Rating,
+  ReviewItem,
+  ReviewQueue,
   Sentence,
   TargetKind,
   UploadPolicy,
@@ -60,6 +66,13 @@ export const UNAUTHORIZED_EVENT = "vocaleaf:unauthorized";
  * detail, so whatever holds it lets go.
  */
 export const BOOK_DELETED_EVENT = "vocaleaf:book-deleted";
+
+/** Fired on window once the user's Cards changed (one made, rated in Review or deleted), so the 复习 badge counts again. */
+export const CARDS_CHANGED_EVENT = "vocaleaf:cards-changed";
+
+function cardsChanged(): void {
+  window.dispatchEvent(new Event(CARDS_CHANGED_EVENT));
+}
 
 export class ApiRequestError extends Error {
   constructor(
@@ -343,7 +356,9 @@ export function getBookCards(bookId: string): Promise<Card[]> {
  */
 export async function createCard(body: CreateCard): Promise<MadeCard> {
   const res = await send("/cards", postJson(body));
-  return { card: (await res.json()) as Card, created: res.status === 201 };
+  const created = res.status === 201;
+  if (created) cardsChanged();
+  return { card: (await res.json()) as Card, created };
 }
 
 /** What 【制作卡片】 got: a new Card, or the Sentence's Card of the same Target (`created` false). */
@@ -369,9 +384,27 @@ export async function deleteCard(cardId: string): Promise<void> {
   } catch (err) {
     if (!(err instanceof ApiRequestError && err.status === 404)) throw err;
   }
+  cardsChanged();
 }
 
 /** Where a Card's own copy of its Sentence's audio is (【卡片原声】). */
 export function cardAudioUrl(cardId: string): string {
   return `/api/cards/${cardId}/audio`;
+}
+
+/** Today's Review queue (PRD 4.5.3): due Cards plus the day's new Cards, by due date, with each rating's interval. */
+export function getReviewQueue(): Promise<ReviewQueue> {
+  return request<ReviewQueue>("/review");
+}
+
+/** How many Cards today's Review queue holds (the navigation's 复习 badge). */
+export function getReviewCount(): Promise<ReviewCount> {
+  return request<ReviewCount>("/review/count");
+}
+
+/** Rates a Card in Review (1 忘了 to 4 简单); resolves to today's queue after it. */
+export async function rateCard(cardId: string, rating: Rating): Promise<ReviewQueue> {
+  const queue = await request<ReviewQueue>(`/cards/${cardId}/review`, postJson({ rating }));
+  cardsChanged();
+  return queue;
 }

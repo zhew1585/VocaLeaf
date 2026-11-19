@@ -1,6 +1,6 @@
 // The Card list (#17, F14, design 07) through the app: the 卡片 entry, search, Book filter, a Card's detail with
 // 卡片原声, 【重新生成】 and 删除, and Cards whose Book is gone.
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Card, CardListItem } from "../api";
 import { App } from "../App";
@@ -95,6 +95,8 @@ beforeEach(() => {
       requests.push(`${method} ${url}`);
       if (url === "/api/me") return Response.json({ id: "u1", email: "allen@vocaleaf.app", playGuideSeen: true });
       if (url === "/api/gleanings/count") return Response.json({ count: 0 });
+      // Every Card is due today, so 复习's badge counts them all.
+      if (url === "/api/review/count") return Response.json({ count: cards.length });
       if (url === "/api/cards" && method === "GET") return Response.json(cards);
       const back = /^\/api\/cards\/([^/]+)\/back$/.exec(url);
       if (back && method === "POST") {
@@ -328,6 +330,18 @@ describe("deleting a Card (PRD 4.5.2 删除, AC-CLIST-02)", () => {
     expect(detail()).toBeNull();
     expect(rows()).toEqual(["in want of", "deliberately", "five hundred a year"]);
     expect(screen.getByRole("heading", { name: /卡片/ }).textContent).toContain("3");
+  });
+
+  it("counts 复习's badge again once a Card is deleted", async () => {
+    await openPage();
+    const review = screen.getByRole("link", { name: /复习/ });
+    await waitFor(() => expect(review.textContent).toContain("4"));
+    const panel = await openCard("granted");
+
+    await click(within(panel).getByRole("button", { name: "删除" }));
+    await click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "删除" }));
+
+    await waitFor(() => expect(review.textContent).toContain("3"));
   });
 
   it("drops the chip of a Book whose last Card was deleted", async () => {

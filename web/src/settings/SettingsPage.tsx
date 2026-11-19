@@ -3,15 +3,11 @@ import { getUsage, type Usage } from "../api";
 import { usePlayGuide } from "../guide/PlayGuide";
 import { ChevronRightIcon, InfoIcon, KeyboardIcon, LogOutIcon } from "../icons";
 import { useListening } from "../player/session";
-import { PLAYER_SHORTCUTS } from "../player/shortcuts";
+import { PLAYER_SHORTCUTS, REVIEW_SHORTCUTS } from "../player/shortcuts";
 import "./settings.css";
 
 /** Desktop shortcuts as the page lists them (design 08-1): the 专注页's, then the 复习页's (PRD F13, #16). */
-const SHORTCUTS: readonly { name: string; keys: readonly string[] }[] = [
-  ...PLAYER_SHORTCUTS,
-  { name: "显示答案", keys: ["空格"] },
-  { name: "评分", keys: ["1", "2", "3", "4"] },
-];
+const SHORTCUTS: readonly { name: string; keys: readonly string[] }[] = [...PLAYER_SHORTCUTS, ...REVIEW_SHORTCUTS];
 
 /** The user's quotas from the API, loaded once per visit. */
 function useUsage() {

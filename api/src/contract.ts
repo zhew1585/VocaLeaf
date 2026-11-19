@@ -470,6 +470,44 @@ export const CreateCardSchema = z
   })
   .openapi("CreateCard");
 
+// ---- Review: FSRS spaced repetition of Cards (PRD 4.5.3, F13) ----
+
+/** New Cards (never reviewed) a user's Review takes in per day, counted by 00:00 Asia/Shanghai days (PRD 4.7.2). */
+export const DAILY_NEW_CARDS = 20;
+/** The FSRS target retention Cards are scheduled for (PRD 4.7.2). */
+export const TARGET_RETENTION = 0.9;
+
+/** Where a Card is in FSRS: never reviewed, learning, in review, relearning after a lapse. Also the database enum. */
+export const CARD_STATES = ["new", "learning", "review", "relearning"] as const;
+
+/** The four self-ratings, in order: 忘了, 困难, 记得, 简单 (FSRS Again, Hard, Good, Easy), keys 1 to 4. */
+export const RATINGS = [1, 2, 3, 4] as const;
+export const RatingSchema = z.union(RATINGS.map((r) => z.literal(r)) as [z.ZodLiteral<1>, z.ZodLiteral<2>, z.ZodLiteral<3>, z.ZodLiteral<4>]).openapi("Rating");
+
+/** Rates a Card in Review. */
+export const RateCardSchema = z.object({ rating: RatingSchema }).openapi("RateCard");
+
+/** A Card in today's Review queue, with what each rating would schedule it for (the buttons' 下次间隔). */
+export const ReviewItemSchema = z
+  .object({
+    card: CardSchema,
+    /** Milliseconds from now to the Card's next due date for ratings 1 to 4. */
+    intervalsMs: z.tuple([z.number().min(0), z.number().min(0), z.number().min(0), z.number().min(0)]),
+  })
+  .openapi("ReviewItem");
+
+/**
+ * Today's Review queue (PRD 4.5.3 今日队列): Cards already learned that are due by the end of the day, plus new Cards
+ * by creation up to the day's new-Card limit, all by due date. A rated Card due again today is in it again.
+ * `reviewedToday` counts the Cards rated today, for 【今日复习完成】 (also after leaving mid-way and coming back).
+ */
+export const ReviewQueueSchema = z
+  .object({ cards: z.array(ReviewItemSchema), reviewedToday: z.int().min(0) })
+  .openapi("ReviewQueue");
+
+/** How many Cards today's Review queue holds (the navigation's 复习 badge). */
+export const ReviewCountSchema = z.object({ count: z.int().min(0) }).openapi("ReviewCount");
+
 /** Asks for the Book's audio in another Voice (PRD 4.2.4). */
 export const ChangeVoiceSchema = z.object({ voice: VoiceSchema }).openapi("ChangeVoice");
 
@@ -634,3 +672,8 @@ export type Card = z.infer<typeof CardSchema>;
 export type CardListItem = z.infer<typeof CardListItemSchema>;
 export type CreateCard = z.input<typeof CreateCardSchema>;
 export type { TargetKind } from "./cards/target.js";
+export type CardState = (typeof CARD_STATES)[number];
+export type Rating = z.infer<typeof RatingSchema>;
+export type ReviewItem = z.infer<typeof ReviewItemSchema>;
+export type ReviewQueue = z.infer<typeof ReviewQueueSchema>;
+export type ReviewCount = z.infer<typeof ReviewCountSchema>;

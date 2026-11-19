@@ -12,6 +12,14 @@ export function beijingDay(now: Date): string {
   return BEIJING_DAY.format(now);
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Start and end of the Asia/Shanghai day `now` falls on (China has no daylight saving: always UTC+8). */
+export function beijingDayBounds(now: Date): { start: Date; end: Date } {
+  const start = new Date(`${beijingDay(now)}T00:00:00+08:00`);
+  return { start, end: new Date(start.getTime() + DAY_MS) };
+}
+
 /** AI calls the user has left on `day`. */
 export async function aiCallsLeft(db: Db, userId: string, day: string): Promise<number> {
   const [row] = await db
