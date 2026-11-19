@@ -3,9 +3,10 @@ import type { Book, Listening } from "../api";
 import alice from "../assets/empty-alice.webp";
 import gatsby from "../assets/empty-gatsby.webp";
 import pride from "../assets/empty-pride.webp";
-import { AudioLinesIcon, CircleAlertIcon, HeadphonesIcon, LoaderIcon, PlaySolidIcon, PlusIcon, UploadIcon } from "../icons";
+import { HeadphonesIcon, PlaySolidIcon, PlusIcon, UploadIcon } from "../icons";
 import { shelfListenPath } from "../chapters";
 import { followLink, navigate } from "../router";
+import { StatusBadge } from "../StatusBadge";
 import { BookCover } from "./BookCover";
 import "./shelf.css";
 import { UploadDialog } from "./UploadDialog";
@@ -81,32 +82,20 @@ function ContinueCard({ book, listening }: { book: Book; listening: Listening })
   );
 }
 
-/** Under a cover: how much was listened to, or where the Book is in processing (F3, PRD 4.3.3). */
+/**
+ * Under a cover: where the Book is in processing (F3, PRD 4.3.3), with why parsing failed (4.3.5), or how much of
+ * it was listened to.
+ */
 function BookState({ book }: { book: Book }) {
   if (book.status === "parse_failed") {
     return (
-      <span className="status status-parse_failed">
-        <CircleAlertIcon />
-        解析失败
-      </span>
+      <>
+        <StatusBadge status={book.status} />
+        {book.failureReason && <span className="shelf-book-reason">{book.failureReason}</span>}
+      </>
     );
   }
-  if (book.status === "parsing") {
-    return (
-      <span className="status status-parsing">
-        <LoaderIcon />
-        解析中
-      </span>
-    );
-  }
-  if (book.status === "generating") {
-    return (
-      <span className="status status-generating">
-        <AudioLinesIcon size={12} />
-        生成中
-      </span>
-    );
-  }
+  if (book.status !== "ready") return <StatusBadge status={book.status} />;
   if (!book.listening) return <span className="shelf-book-unstarted">未开始</span>;
   const pct = percent(book.listening);
   return (

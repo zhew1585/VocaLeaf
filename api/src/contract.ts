@@ -76,7 +76,10 @@ export const UploadPolicySchema = z
 
 // ---- Books and the Shelf ----
 
-/** Cover image types the worker keeps (anything else gets the app's default cover). */
+/**
+ * Cover image types the worker keeps (anything else gets the app's default cover). Keep in sync with
+ * COVER_MEDIA_TYPES in worker/src/vocaleaf_worker/epub_parser.py.
+ */
 export const COVER_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
 
 /** Where the user is in a Book they listened to (PRD 4.2.3, 4.4.1 进度同步). */

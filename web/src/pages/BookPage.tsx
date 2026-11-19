@@ -1,26 +1,9 @@
-import type { Book, BookStatus } from "../api";
-import { AudioLinesIcon, ChevronLeftIcon, CircleAlertIcon, LoaderIcon, PlaySolidIcon } from "../icons";
+import type { Book } from "../api";
+import { AudioLinesIcon, ChevronLeftIcon, PlaySolidIcon } from "../icons";
 import { followLink, navigate } from "../router";
+import { StatusBadge } from "../StatusBadge";
 import { useBook } from "../useBook";
 import { ChapterList } from "./ChapterList";
-
-const STATUS_LABEL: Record<BookStatus, string> = {
-  parsing: "解析中",
-  generating: "生成中",
-  ready: "已就绪",
-  parse_failed: "解析失败",
-};
-
-function StatusBadge({ status }: { status: BookStatus }) {
-  const icon =
-    status === "parse_failed" ? <CircleAlertIcon /> : status === "parsing" ? <LoaderIcon /> : <AudioLinesIcon size={12} />;
-  return (
-    <span className={`status status-${status}`}>
-      {icon}
-      {STATUS_LABEL[status]}
-    </span>
-  );
-}
 
 /** 生成中 with generated / narrated Chapters and a bar (design 04-2, PRD 4.3.3 进度展示). */
 function GenerationProgress({ progress }: { progress: Book["progress"] }) {

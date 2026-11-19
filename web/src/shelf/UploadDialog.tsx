@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { getUploadPolicy, uploadBook, type Book, type UploadPolicy } from "../api";
 import { UploadIcon, XIcon } from "../icons";
-import { uploadRefusal } from "./uploadCheck";
+import { maxFileMb, uploadRefusal } from "./uploadCheck";
 
 interface Props {
   onClose(): void;
@@ -88,7 +88,6 @@ export function UploadDialog({ onClose, onUploaded }: Props) {
   }
 
   const message = refusal ?? failure;
-  const maxMb = policy ? Math.round(policy.maxFileBytes / 1024 / 1024) : 50;
   const pct = Math.round((progress ?? 0) * 100);
 
   return (
@@ -123,7 +122,7 @@ export function UploadDialog({ onClose, onUploaded }: Props) {
             <UploadIcon />
           </span>
           <span className="dropzone-label">{file ? file.name : "拖入 EPUB，或点击选择"}</span>
-          <span className="dropzone-hint">{file ? "点击可重新选择" : `最大 ${maxMb}MB`}</span>
+          <span className="dropzone-hint">{file ? "点击可重新选择" : policy ? `最大 ${maxFileMb(policy)}MB` : "支持无 DRM 的 EPUB"}</span>
         </button>
         <input
           ref={input}

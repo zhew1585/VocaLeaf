@@ -24,11 +24,17 @@ import { validationHook } from "../validation.js";
 import { addToShelf } from "./shelf.js";
 import { NO_PROGRESS, toBook } from "./view.js";
 
+// The PRD's messages (4.3.5 #1 to #3); web/src/shelf/uploadCheck.ts shows the same ones before sending a file.
 const error = (code: string, message: string) => ({ error: { code, message } });
 const unsupportedFormat = error("unsupported_format", "目前只支持 EPUB 格式");
-const fileTooLarge = error("file_too_large", "文件不能超过 50MB");
-const uploadLimitReached = error("upload_limit_reached", "内测期最多上传 20 本书，可删除不再听的书后再上传");
+const fileTooLarge = error("file_too_large", `文件不能超过 ${MAX_UPLOAD_BYTES / 1024 / 1024}MB`);
+const uploadLimitReached = error(
+  "upload_limit_reached",
+  `内测期最多上传 ${MAX_UPLOADED_BOOKS} 本书，可删除不再听的书后再上传`,
+);
 const declarationRequired = error("declaration_required", "请先确认上传权利声明");
+
+type Refusal = { refused: typeof uploadLimitReached; status: 409 } | { refused: typeof declarationRequired; status: 400 };
 
 /** Room for the multipart framing around the file, so a file of exactly the limit still gets through. */
 const MULTIPART_OVERHEAD_BYTES = 1024 * 1024;
@@ -85,21 +91,38 @@ export function uploadRoutes({ db, storage, now = () => new Date() }: AppDeps) {
     }),
   );
 
+  /**
+   * Refuses the upload when the user holds the most uploaded Books allowed, or has not confirmed the current
+   * declaration and does not confirm it now. Null when it may go ahead.
+   */
+  async function refusal(tx: Db | Tx, user: typeof users.$inferSelect, declarationVersion: string | undefined) {
+    if ((await uploadedBooks(tx, user.id)) >= MAX_UPLOADED_BOOKS) return { refused: uploadLimitReached, status: 409 } as const;
+    if (user.uploadDeclarationVersion !== UPLOAD_DECLARATION.version && declarationVersion !== UPLOAD_DECLARATION.version) {
+      return { refused: declarationRequired, status: 400 } as const;
+    }
+    return null;
+  }
+
   app.openapi(uploadRoute, async (c) => {
     const { file, declarationVersion } = c.req.valid("form");
     const userId = c.get("userId");
     if (!/\.epub$/i.test(file.name)) return c.json(unsupportedFormat, 400);
     if (file.size > MAX_UPLOAD_BYTES) return c.json(fileTooLarge, 413);
+    const [current] = await db.select().from(users).where(eq(users.id, userId));
+    const early: Refusal | null = await refusal(db, current!, declarationVersion);
+    if (early) return c.json(early.refused, early.status);
+
+    const id = crypto.randomUUID();
+    // Stored before the parse job is queued, so the job never points at a missing object; and outside the
+    // transaction, so writing up to 50MB holds no lock. An upload refused below (a race) leaves its object behind.
+    await storage.putObject(sourceKey(id), new Uint8Array(await file.arrayBuffer()), "application/epub+zip");
 
     const outcome = await db.transaction(async (tx) => {
       // Holding the user's row makes two uploads at once count one after the other, so neither passes the quota.
       const [user] = await tx.select().from(users).where(eq(users.id, userId)).for("update");
-      if ((await uploadedBooks(tx, userId)) >= MAX_UPLOADED_BOOKS) return { refused: uploadLimitReached, status: 409 } as const;
-      const confirming = user!.uploadDeclarationVersion !== UPLOAD_DECLARATION.version;
-      if (confirming && declarationVersion !== UPLOAD_DECLARATION.version) {
-        return { refused: declarationRequired, status: 400 } as const;
-      }
-      if (confirming) {
+      const refused: Refusal | null = await refusal(tx, user!, declarationVersion);
+      if (refused) return refused;
+      if (user!.uploadDeclarationVersion !== UPLOAD_DECLARATION.version) {
         await tx.update(users).set({ uploadDeclarationVersion: UPLOAD_DECLARATION.version }).where(eq(users.id, userId));
         await tx.insert(auditLog).values({
           actor: user!.email,
@@ -108,10 +131,6 @@ export function uploadRoutes({ db, storage, now = () => new Date() }: AppDeps) {
           result: "ok",
         });
       }
-
-      const id = crypto.randomUUID();
-      // Stored before the parse job is queued, so the job never points at a missing object.
-      await storage.putObject(sourceKey(id), new Uint8Array(await file.arrayBuffer()), "application/epub+zip");
       const [book] = await tx
         .insert(books)
         .values({ id, ownerId: userId, title: titleFromFileName(file.name), fileSize: file.size })

@@ -128,8 +128,12 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
   // open and reload stay the same functions (the 专注页 calls them from effects); `fresh` only sets state
   // and resets the waiting flag through refs, so the first render's copy will do.
   const openBookId = useRef<string | null>(null);
+  // From switching Books until the new playlist's metadata loads, the element still holds the old Book's audio
+  // (its stream going away may fire a pause there); positions are not reported meanwhile.
+  const switching = useRef(false);
   const open = useCallback((id: string) => {
     if (openBookId.current === id) return;
+    switching.current = openBookId.current !== null;
     openBookId.current = id;
     setBookId(id);
     setStart({ request: null });
@@ -150,7 +154,7 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
   /** Reports where playback is; the API keeps the Sentence there as the place to resume (PRD 4.4.1). */
   const reportPosition = () => {
     const id = openBookId.current;
-    if (id === null) return;
+    if (id === null || switching.current) return;
     saveListening(id, audio.current!.currentTime * 1000).catch((err: unknown) => {
       // Losing one report only loses a little progress; the next play or pause reports again.
       console.warn("saving listening progress failed", err);
@@ -198,7 +202,10 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
         onWaiting={waiting.onWaiting}
         onTimeUpdate={sync}
         onDurationChange={sync}
-        onLoadedMetadata={sync}
+        onLoadedMetadata={() => {
+          switching.current = false;
+          sync();
+        }}
         onProgress={sync}
       />
       {children}

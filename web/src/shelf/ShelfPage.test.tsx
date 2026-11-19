@@ -157,7 +157,7 @@ describe("the Shelf (F3)", () => {
       "AliceAlice未开始",
       "A Room of One's Own3 / 6A Room of One's Own生成中",
       "Meditations解析中",
-      "atomic-habits解析失败",
+      "atomic-habits解析失败文件无法读取",
     ]);
     // Without a cover image, the cover carries the title.
     expect(tiles[1]!.querySelector(".book-cover-title")!.textContent).toBe("Alice");

@@ -75,6 +75,7 @@ MIN_BODY_CHARS = 200
 _COMPLETE_SENTENCE = re.compile(r"\S+(?:\s+\S+){2,}[.!?…][”’\"')\]]*$")
 
 # Cover images browsers show; anything else (an SVG cover, say) is left out and the app draws a default cover.
+# Keep in sync with COVER_TYPES in api/src/contract.ts, which the API checks the reported type against.
 COVER_MEDIA_TYPES = frozenset({"image/jpeg", "image/png", "image/webp", "image/gif"})
 # A larger cover is not worth sending to every Shelf; the app draws a default instead.
 MAX_COVER_BYTES = 5 * 1024 * 1024
