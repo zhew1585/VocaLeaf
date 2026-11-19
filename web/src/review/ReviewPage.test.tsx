@@ -68,6 +68,7 @@ let queue: ReviewItem[];
 let afterRating: (cardId: string) => Response;
 let ratings: { cardId: string; rating: number }[];
 let media: ReturnType<typeof stubMediaPlayback>;
+const reviewedToday = () => new Set(ratings.map((r) => r.cardId)).size;
 
 beforeEach(() => {
   hlsInstances.length = 0;
@@ -77,7 +78,7 @@ beforeEach(() => {
   ratings = [];
   afterRating = (cardId) => {
     queue = queue.filter((i) => i.card.id !== cardId);
-    return Response.json({ cards: queue });
+    return Response.json({ cards: queue, reviewedToday: reviewedToday() });
   };
   window.history.pushState(null, "", "/review");
   vi.stubGlobal(
@@ -85,7 +86,7 @@ beforeEach(() => {
     vi.fn(async (url: string, init?: RequestInit) => {
       const method = init?.method ?? "GET";
       if (url === "/api/me") return Response.json({ id: "u1", email: "allen@vocaleaf.app", playGuideSeen: true });
-      if (url === "/api/review") return Response.json({ cards: queue });
+      if (url === "/api/review") return Response.json({ cards: queue, reviewedToday: reviewedToday() });
       if (url === "/api/review/count") return Response.json({ count: queue.length });
       const rated = /^\/api\/cards\/([^/]+)\/review$/.exec(url);
       if (rated && method === "POST") {
@@ -188,7 +189,7 @@ describe("复习页 (F13)", () => {
       // 忘了 keeps the first Card due today, after the other one.
       const [first, ...rest] = queue;
       queue = ratings.length === 1 ? [...rest, first!] : queue.filter((i) => i.card.id !== cardId);
-      return Response.json({ cards: queue });
+      return Response.json({ cards: queue, reviewedToday: reviewedToday() });
     };
     await click(await enter());
     await click(screen.getByRole("button", { name: /忘了/ }));
@@ -210,6 +211,15 @@ describe("复习页 (F13)", () => {
     render(<App />);
 
     expect(await screen.findByRole("heading", { name: "今天没有要复习的卡片" })).toBeTruthy();
+  });
+
+  it("shows 今日复习完成 with today's count when coming back after finishing", async () => {
+    queue = [];
+    ratings = [{ cardId: "k1", rating: 3 }, { cardId: "k2", rating: 4 }, { cardId: "k1", rating: 3 }];
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "今日复习完成" })).toBeTruthy();
+    expect(screen.getByText("2").closest("p")!.textContent).toBe("2 张");
   });
 
   it("shows 音频加载失败 when the audio fails, and still reveals and rates", async () => {
@@ -291,6 +301,29 @@ describe("the main playback in 复习 (AC-REV-07)", () => {
     await act(async () => void cardAudio().dispatchEvent(new Event("ended")));
 
     expect(await screen.findByRole("heading", { name: "今日复习完成" })).toBeTruthy();
+    expect(playedOn(mainAudio())).toBe(mainPlays);
+    expect(within(now).getByText("已暂停")).toBeTruthy();
+  });
+
+  it("is no 插播: a Card's audio pauses the main playback the user played on, and does not play it on after (PRD 4.4.1 规则 7)", async () => {
+    window.history.pushState(null, "", "/books/b1/listen");
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "播放" }));
+    timeUpdate(12);
+    fireEvent.click(screen.getByRole("link", { name: "返回书架" }));
+    const now = await screen.findByRole("region", { name: "当前收听" });
+    await click(navEntry());
+    await screen.findByRole("button", { name: "显示答案" });
+
+    // The Card's audio read, the user plays the main playback on from the sidebar, then replays the Card.
+    await act(async () => void cardAudio().dispatchEvent(new Event("ended")));
+    await click(within(now).getByRole("button", { name: "继续播放" }));
+    expect(within(now).getByText("正在播放")).toBeTruthy();
+    const mainPlays = playedOn(mainAudio());
+    await click(screen.getByRole("button", { name: "播放原声" }));
+    expect(within(now).getByText("已暂停")).toBeTruthy();
+    await act(async () => void cardAudio().dispatchEvent(new Event("ended")));
+
     expect(playedOn(mainAudio())).toBe(mainPlays);
     expect(within(now).getByText("已暂停")).toBeTruthy();
   });

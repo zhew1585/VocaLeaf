@@ -100,6 +100,15 @@ describe("复习 shortcuts (PRD F13)", () => {
     expect(rate.mock.calls).toEqual([[1], [2], [3], [4]]);
   });
 
+  it("lets a focused button take Space where Space does nothing (the back)", () => {
+    const view = setUpReview({ rate: vi.fn() });
+    const button = document.createElement("button");
+    view.container.appendChild(button);
+    button.focus();
+    expect(fireEvent.keyDown(button, { key: " " })).toBe(true);
+    expect(fireEvent.keyUp(button, { key: " " })).toBe(true);
+  });
+
   it("leaves keys alone without their handler, while typing, and with a modifier", () => {
     const rate = vi.fn();
     const view = setUpReview({ rate });

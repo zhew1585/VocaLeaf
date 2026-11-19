@@ -107,24 +107,31 @@ export function ReviewBack({ item, audio, rating, onRate, onCardChanged }: BackP
         <hr className="review-divider" />
         {card.back ? <BackContent card={card} /> : <RetryBack card={card} onCardChanged={onCardChanged} />}
       </div>
-      <div className="review-ratings" role="group" aria-label="评分">
-        {RATINGS.map(({ rating: r, label, tone }) => (
-          <button
-            key={r}
-            type="button"
-            className={`review-rate is-${tone}${r === 3 ? " is-primary" : ""}`}
-            disabled={rating}
-            onClick={() => onRate(r)}
-          >
-            <span className="review-rate-label">
-              <span className="review-rate-name">{label}</span>
-              <span className="review-rate-interval">{intervalLabel(intervalsMs[r - 1] ?? 0)}</span>
-            </span>
-            <KeyHint>{String(r)}</KeyHint>
-          </button>
-        ))}
-      </div>
+      <Ratings intervalsMs={intervalsMs} disabled={rating} onRate={onRate} />
     </>
+  );
+}
+
+/** 忘了, 困难, 记得 (filled, the usual answer) and 简单, each with its next interval and key. */
+function Ratings({ intervalsMs, disabled, onRate }: { intervalsMs: ReviewItem["intervalsMs"]; disabled: boolean; onRate(r: Rating): void }) {
+  return (
+    <div className="review-ratings" role="group" aria-label="评分">
+      {RATINGS.map(({ rating: r, label, tone }) => (
+        <button
+          key={r}
+          type="button"
+          className={`review-rate is-${tone}${r === 3 ? " is-primary" : ""}`}
+          disabled={disabled}
+          onClick={() => onRate(r)}
+        >
+          <span className="review-rate-label">
+            <span className="review-rate-name">{label}</span>
+            <span className="review-rate-interval">{intervalLabel(intervalsMs[r - 1] ?? 0)}</span>
+          </span>
+          <KeyHint>{String(r)}</KeyHint>
+        </button>
+      ))}
+    </div>
   );
 }
 

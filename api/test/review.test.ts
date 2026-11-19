@@ -120,6 +120,8 @@ describe("GET /api/review (今日队列, PRD 4.5.3)", () => {
     // 简单 schedules them days away; the day's limit has 15 new Cards left, the next ones by creation.
     expect(items.map((i) => i.card.id)).toEqual(made.slice(5, DAILY_NEW_CARDS).map((c) => c.id));
     expect(await count(t.app)).toBe(DAILY_NEW_CARDS - 5);
+    // 【今日复习完成】 counts what was rated before leaving too.
+    expect(((await (await t.app.request("/api/review")).json()) as ReviewQueue).reviewedToday).toBe(5);
   });
 
   it("starts a new day at 00:00 Asia/Shanghai: a fresh new-Card limit, and Cards due by the day's end", async () => {
@@ -133,8 +135,9 @@ describe("GET /api/review (今日队列, PRD 4.5.3)", () => {
     // 2026-11-18T15:59Z is 23:59 in Shanghai: still the same day.
     t.clock.advance(Date.parse("2026-11-18T15:59:00Z") - t.clock.now().getTime());
     expect(await count(t.app)).toBe(0);
-    // 16:00Z is 00:00 the next day there: the 5 new Cards left come in.
+    // 16:00Z is 00:00 the next day there: the 5 new Cards left come in, and nothing is rated yet that day.
     t.clock.advance(MINUTE);
+    expect(((await (await t.app.request("/api/review")).json()) as ReviewQueue).reviewedToday).toBe(0);
     expect((await queue(t.app)).map((i) => i.card.id)).toEqual(made.slice(DAILY_NEW_CARDS).map((c) => c.id));
     for (const card of made.slice(DAILY_NEW_CARDS)) await rated(t.app, card.id, 4);
 

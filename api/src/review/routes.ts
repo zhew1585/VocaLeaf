@@ -37,7 +37,7 @@ const rateRoute = createRoute({
 export function reviewRoutes({ db, now = () => new Date() }: AppDeps) {
   const app = new OpenAPIHono<UserEnv>({ defaultHook: validationHook });
 
-  app.openapi(queueRoute, async (c) => c.json({ cards: await reviewQueue(db, c.get("userId"), now()) }, 200));
+  app.openapi(queueRoute, async (c) => c.json(await reviewQueue(db, c.get("userId"), now()), 200));
 
   app.openapi(countRoute, async (c) => c.json({ count: await reviewCount(db, c.get("userId"), now()) }, 200));
 
@@ -45,7 +45,7 @@ export function reviewRoutes({ db, now = () => new Date() }: AppDeps) {
     const userId = c.get("userId");
     const at = now();
     if (!(await rateCard(db, userId, c.req.valid("param").id, c.req.valid("json").rating, at))) return c.json(cardNotFound, 404);
-    return c.json({ cards: await reviewQueue(db, userId, at) }, 200);
+    return c.json(await reviewQueue(db, userId, at), 200);
   });
 
   return app;

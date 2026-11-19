@@ -12,7 +12,7 @@ import { cutClip, type ClipSegment } from "./audio-clip.js";
 import { generateBack, type BackContext } from "./back.js";
 import { resolveTarget, type Target } from "./target.js";
 
-type CardRow = typeof cards.$inferSelect;
+export type CardRow = typeof cards.$inferSelect;
 
 /** A Card as the API returns it. */
 export function toCard(row: CardRow): Card {

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import type { Rating } from "../api";
 
 /** What the 专注页's keys do (PRD 4.4.1 桌面快捷键). */
 export interface ShortcutHandlers {
@@ -50,11 +51,11 @@ export interface ReviewShortcutHandlers {
   /** Space: 【显示答案】. */
   reveal?(): void;
   /** 1 to 4: 忘了, 困难, 记得, 简单. */
-  rate?(rating: 1 | 2 | 3 | 4): void;
+  rate?(rating: Rating): void;
 }
 
-const rateKey = (rating: 1 | 2 | 3 | 4): Binding<ReviewShortcutHandlers> => ({
-  run: (h) => h.rate && (() => h.rate!(rating)),
+const rateKey = (rating: Rating): Binding<ReviewShortcutHandlers> => ({
+  run: ({ rate }) => rate && (() => rate(rating)),
   repeats: false,
 });
 
@@ -94,18 +95,24 @@ function useKeys<H>(keys: Record<string, Binding<H>>, handlers: H | null) {
   useEffect(() => {
     const skip = (e: KeyboardEvent) =>
       latest.current === null || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target);
+    /** What the key does now, if anything. */
+    const handlerOf = (e: KeyboardEvent) => {
+      const key = keys[e.key];
+      return key && latest.current !== null ? key.run(latest.current) : undefined;
+    };
     const onKeyDown = (e: KeyboardEvent) => {
       const key = keys[e.key];
-      const handler = key && latest.current !== null ? key.run(latest.current) : undefined;
+      const handler = handlerOf(e);
       if (skip(e) || !key || !handler) return;
       e.preventDefault();
       // Holding Space or M down must not toggle or mark again and again.
       if (e.repeat && !key.repeats) return;
       handler();
     };
-    // A focused button presses itself on Space's keyup; the keydown already did what Space does.
+    // A focused button presses itself on Space's keyup; the keydown already did what Space does. Where Space does
+    // nothing (复习's back), the button presses as usual.
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === " " && !skip(e)) e.preventDefault();
+      if (e.key === " " && !skip(e) && handlerOf(e)) e.preventDefault();
     };
     window.addEventListener("keydown", onKeyDown, { capture: true });
     window.addEventListener("keyup", onKeyUp, { capture: true });
