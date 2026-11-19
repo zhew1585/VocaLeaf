@@ -18,6 +18,8 @@ class ParseJob:
     # How long the claim holds the job without a heartbeat.
     lease_ms: int
     source_key: str
+    # Where the Book's cover image goes, when the EPUB has one.
+    cover_key: str
     type: Literal["parse"] = "parse"
 
 
@@ -118,7 +120,7 @@ def job_from_claim(data: dict) -> Job:
     """ClaimedJob as defined in api/src/contract.ts."""
     common = {"id": data["id"], "book_id": data["bookId"], "attempt": data["attempt"], "lease_ms": data["leaseMs"]}
     if data["type"] == "parse":
-        return ParseJob(**common, source_key=data["sourceKey"])
+        return ParseJob(**common, source_key=data["sourceKey"], cover_key=data["coverKey"])
     if data["type"] == "render_chapter":
         return RenderJob(
             **common,
@@ -136,6 +138,8 @@ def parse_result_payload(book: ParsedBook, parser_version: str) -> dict:
         "parserVersion": parser_version,
         "title": book.title,
         "author": book.author,
+        # The image itself is already in storage under the claim's coverKey.
+        "cover": {"contentType": book.cover.media_type} if book.cover else None,
         "chapters": [
             {
                 "title": c.title,

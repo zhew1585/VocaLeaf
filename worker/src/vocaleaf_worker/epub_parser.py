@@ -74,6 +74,12 @@ MIN_BODY_CHARS = 200
 # A complete Sentence: at least this many words and closed by sentence-ending punctuation.
 _COMPLETE_SENTENCE = re.compile(r"\S+(?:\s+\S+){2,}[.!?…][”’\"')\]]*$")
 
+# Cover images browsers show; anything else (an SVG cover, say) is left out and the app draws a default cover.
+# Keep in sync with COVER_TYPES in api/src/contract.ts, which the API checks the reported type against.
+COVER_MEDIA_TYPES = frozenset({"image/jpeg", "image/png", "image/webp", "image/gif"})
+# A larger cover is not worth sending to every Shelf; the app draws a default instead.
+MAX_COVER_BYTES = 5 * 1024 * 1024
+
 # Encryption that only obfuscates embedded fonts (IDPF, Adobe); anything else in encryption.xml is DRM.
 FONT_OBFUSCATION = frozenset({"http://www.idpf.org/2008/embedding", "http://ns.adobe.com/pdf/enc#RC"})
 
@@ -116,10 +122,20 @@ class ParsedChapter:
 
 
 @dataclass(frozen=True)
+class Cover:
+    """The cover image the package declares, as stored in the EPUB."""
+
+    media_type: str
+    data: bytes
+
+
+@dataclass(frozen=True)
 class ParsedBook:
     title: str | None
     author: str | None
     chapters: tuple[ParsedChapter, ...]
+    # Shown on the Shelf (PRD 4.2.1 cover_url); None when the EPUB has no usable one, and the app draws a default.
+    cover: Cover | None = None
 
 
 @dataclass(frozen=True)
@@ -182,7 +198,28 @@ def _read_book(z: zipfile.ZipFile) -> ParsedBook:
         title=_text(opf.find("opf:metadata/dc:title", NS)),
         author=_text(opf.find("opf:metadata/dc:creator", NS)),
         chapters=tuple(chapters),
+        cover=_cover(z, opf, opf_dir, manifest),
     )
+
+
+def _cover(z: zipfile.ZipFile, opf: etree._Element, opf_dir: str, manifest: dict[str, etree._Element]) -> Cover | None:
+    """The cover image: the manifest item with properties="cover-image" (EPUB 3), else the one <meta name="cover">
+    names (EPUB 2). A missing, oversized or non-image cover is left out rather than failing the parse."""
+    item = next((i for i in manifest.values() if "cover-image" in _attr(i, "properties").split()), None)
+    if item is None:
+        meta = next((m for m in opf.iterfind("opf:metadata/opf:meta", NS) if _attr(m, "name") == "cover"), None)
+        item = manifest.get(_attr(meta, "content"))
+    media_type = _attr(item, "media-type")
+    if item is None or media_type not in COVER_MEDIA_TYPES:
+        return None
+    path = _resolve(opf_dir, _attr(item, "href"))
+    try:
+        info = z.getinfo(path)
+    except KeyError:
+        return None
+    if info.file_size > MAX_COVER_BYTES:
+        return None
+    return Cover(media_type, z.read(info))
 
 
 def _is_skipped(title: str | None, marked: bool, sentences: tuple[ParsedSentence, ...]) -> bool:

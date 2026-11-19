@@ -1,6 +1,6 @@
 // Database schema. The API is the only component that reads or writes it (ADR 0002).
 // Field names follow PRD 4.2 and 4.3.1. Fields that only later tickets read or write
-// (cover, Skipped reason) are added by those tickets.
+// (Skipped reason) are added by those tickets.
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -9,6 +9,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -33,6 +34,8 @@ export const allowlist = pgTable("allowlist", {
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
+  // The UPLOAD_DECLARATION version (contract.ts) the user last confirmed; null before their first upload.
+  uploadDeclarationVersion: text("upload_declaration_version"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -84,6 +87,8 @@ export const books = pgTable("books", {
   parserVersion: text("parser_version"),
   // User-facing reason shown with parse_failed (PRD 4.3.5 #4 to #6, #10).
   failureReason: text("failure_reason"),
+  // Content type of the cover image at coverKey(id) (storage.ts); null when the EPUB has none.
+  coverType: text("cover_type"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -170,4 +175,26 @@ export const audioSegments = pgTable(
     durationMs: integer("duration_ms").notNull(),
   },
   (t) => [unique().on(t.chapterId, t.index)],
+);
+
+/**
+ * A user's Shelf (PRD 4.2.3): the Books they uploaded (and, with #12, added from the Library), with where they
+ * are in each. Listening progress is per user even for a shared Book, so it lives here, not on the Book.
+ */
+export const shelfEntries = pgTable(
+  "shelf_entries",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    bookId: uuid("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
+    // When the user last played the Book; the Shelf lists recently listened Books first.
+    lastListenedAt: timestamp("last_listened_at", { withTimezone: true }),
+    // The Sentence playback resumes at (PRD 4.4.1 进度同步).
+    sentenceId: uuid("sentence_id").references(() => sentences.id, { onDelete: "set null" }),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.bookId] })],
 );

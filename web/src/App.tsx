@@ -1,16 +1,19 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { getMe, logOut, UNAUTHORIZED_EVENT, type User } from "./api";
+import logoUrl from "./assets/logo.webp";
+import { LibraryIcon } from "./icons";
 import { BookPage } from "./pages/BookPage";
 import { ListenPage } from "./pages/ListenPage";
 import { LoginPage } from "./pages/LoginPage";
-import { UploadPage } from "./pages/UploadPage";
 import { ListeningProvider } from "./player/session";
-import { navigate, usePathname } from "./router";
+import { followLink, navigate, usePathname } from "./router";
+import { LibraryPage } from "./shelf/LibraryPage";
+import { ShelfPage } from "./shelf/ShelfPage";
 
-/** /books/:id is the Book's detail, /books/:id/listen its 专注页, anything else the upload screen. */
-function route(path: string): { bookId?: string; listen: boolean } {
+/** /books/:id is the Book's detail, /books/:id/listen its 专注页, /library the 书库, anything else the 书架. */
+function route(path: string): { bookId?: string; listen: boolean; library: boolean } {
   const [, bookId, listen] = /^\/books\/([^/]+)(\/listen)?$/.exec(path) ?? [];
-  return { bookId, listen: listen !== undefined };
+  return { bookId, listen: listen !== undefined, library: path === "/library" };
 }
 
 type Session = { state: "loading" } | { state: "failed" } | { state: "ready"; user: User | null };
@@ -64,7 +67,7 @@ export function App() {
     }
   }
 
-  const { bookId, listen } = route(path);
+  const { bookId, listen, library } = route(path);
   // The listening session outlives the pages (【返回书架】 keeps playing) and ends with logging out.
   return (
     <ListeningProvider>
@@ -73,14 +76,17 @@ export function App() {
         <ListenPage id={bookId} />
       ) : (
         <Shell email={session.user.email} loggingOut={loggingOut} onLogOut={onLogOut}>
-          {bookId ? <BookPage id={bookId} /> : <UploadPage />}
+          {bookId ? <BookPage id={bookId} /> : library ? <LibraryPage /> : <ShelfPage />}
         </Shell>
       )}
     </ListeningProvider>
   );
 }
 
-/** The app's header (brand, account) above a page. */
+/**
+ * The app around a page (design 03-2): the sidebar with the brand, the navigation and the account; on a phone it
+ * becomes a bar above the page. 书架 is the only section so far; 拾起, 复习 and 卡片 join it with their tickets.
+ */
 function Shell({
   email,
   loggingOut,
@@ -94,16 +100,28 @@ function Shell({
 }) {
   return (
     <div className="shell">
-      <header className="brand">
-        <a href="/" className="brand-name">拾页</a>
+      <aside className="sidebar">
+        <a href="/" className="sidebar-brand" onClick={followLink}>
+          <img src={logoUrl} alt="" width={36} height={36} />
+          拾页
+        </a>
+        <nav className="sidebar-nav" aria-label="主导航">
+          <a href="/" className="side-item is-active" onClick={followLink}>
+            <LibraryIcon />
+            书架
+          </a>
+        </nav>
         <div className="account">
+          <span className="avatar" aria-hidden="true">
+            {email.slice(0, 1).toUpperCase()}
+          </span>
           <span className="account-email">{email}</span>
           <button type="button" className="text-button" disabled={loggingOut} onClick={onLogOut}>
             退出登录
           </button>
         </div>
-      </header>
-      <main>{children}</main>
+      </aside>
+      <main className="shell-main">{children}</main>
     </div>
   );
 }

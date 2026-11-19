@@ -24,10 +24,12 @@ docker compose exec api node dist/scripts/allowlist.js add you@example.com --by 
 
 Open http://localhost:8080, enter that email and click 发送验证码 (send code).
 The six-digit code arrives in Mailpit at http://localhost:8025, and the API log prints it too (`docker compose logs api`).
-After logging in, upload an EPUB without DRM, for example [Pride and Prejudice from Standard Ebooks](https://standardebooks.org/ebooks/jane-austen/pride-and-prejudice).
-The page then opens the book detail view.
-The book shows 解析中 (parsing) first, then 生成中 (generating) once parsing finishes, with every chapter and its sentence count.
-A few seconds later the first narrated chapter has its first audio segment and 开始收听 (start listening) becomes clickable; it opens the 专注页 (focus page) with the player.
+After logging in you land on the 书架 (Shelf).
+Click 上传 (upload) and upload an EPUB without DRM, for example [Pride and Prejudice from Standard Ebooks](https://standardebooks.org/ebooks/jane-austen/pride-and-prejudice); the first upload asks you to tick the upload rights declaration.
+The dialog refuses files that are not EPUB, over 50MB, or beyond the 20 uploaded books a user may hold.
+The book appears on the Shelf with 解析中 (parsing) first, then 生成中 (generating) with its progress once parsing finishes; clicking it while it cannot play opens the book detail view with every chapter and its sentence count.
+A few seconds later the first narrated chapter has its first audio segment; clicking the book on the Shelf (or 开始收听 in its detail) opens the 专注页 (focus page) and plays.
+The Shelf lists the books you listened to most recently first, and 继续收听 (continue listening) resumes the last one at the start of the sentence you were on.
 Once every narrated chapter is generated, the book moves to 已就绪 (ready).
 
 To stop the stack, run `docker compose down`.

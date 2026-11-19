@@ -49,16 +49,24 @@ def make_epub(
     epub2: bool = False,
     landmarks: list[tuple[str, str]] | None = None,
     guide: list[tuple[str, str]] | None = None,
-    extra_files: dict[str, str] | None = None,
+    extra_files: dict[str, str | bytes] | None = None,
+    cover: tuple[str, str, bytes] | None = None,
 ) -> bytes:
     """An EPUB 3 with a nav document, or with epub2=True an EPUB 2 whose TOC is only an NCX.
     `landmarks` are (epub:type, href) entries of the EPUB 3 landmarks nav, `guide` (type, href) references of
-    the EPUB 2 OPF guide; `extra_files` are added as is, e.g. META-INF/encryption.xml."""
+    the EPUB 2 OPF guide; `extra_files` are added as is, e.g. META-INF/encryption.xml. `cover` is (href, media type,
+    bytes) of a cover image, declared the EPUB 3 way (properties="cover-image") or with epub2=True the EPUB 2 way
+    (<meta name="cover">)."""
     manifest = "".join(
         f'<item id="d{i}" href="{d.name}" media-type="application/xhtml+xml"/>' for i, d in enumerate(docs)
     )
     spine = "".join(f'<itemref idref="d{i}"/>' for i in range(len(docs)))
     meta = (f"<dc:title>{title}</dc:title>" if title else "") + (f"<dc:creator>{author}</dc:creator>" if author else "")
+    if cover:
+        href, media_type, _ = cover
+        properties = "" if epub2 else ' properties="cover-image"'
+        manifest += f'<item id="cover-img" href="{href}" media-type="{media_type}"{properties}/>'
+        meta += '<meta name="cover" content="cover-img"/>' if epub2 else ""
     toc_item = (
         '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>'
         if epub2
@@ -79,7 +87,7 @@ def make_epub(
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
   <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
 </container>"""
-    files = {"META-INF/container.xml": container, "OEBPS/content.opf": opf}
+    files: dict[str, str | bytes] = {"META-INF/container.xml": container, "OEBPS/content.opf": opf}
     files |= {"OEBPS/toc.ncx": _ncx(toc)} if epub2 else {"OEBPS/nav.xhtml": nav}
     for d in docs:
         body_type = f' epub:type="{d.body_type}"' if d.body_type else ""
@@ -87,6 +95,7 @@ def make_epub(
             '<?xml version="1.0" encoding="utf-8"?><html xmlns="http://www.w3.org/1999/xhtml"'
             f' xmlns:epub="http://www.idpf.org/2007/ops"><head><title>x</title></head><body{body_type}>{d.body}</body></html>'
         )
+    files |= {f"OEBPS/{cover[0]}": cover[2]} if cover else {}
     files |= extra_files or {}
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:

@@ -131,3 +131,47 @@ export const TextCursorInputIcon = ({ size = 22 }) => (
     <path d="M9 7v10" />
   </Icon>
 );
+
+export const PlusIcon = ({ size = 18 }) => (
+  <Icon size={size}>
+    <path d="M5 12h14" />
+    <path d="M12 5v14" />
+  </Icon>
+);
+
+export const XIcon = ({ size = 22 }) => (
+  <Icon size={size}>
+    <path d="M18 6 6 18" />
+    <path d="m6 6 12 12" />
+  </Icon>
+);
+
+export const CheckIcon = ({ size = 14 }) => (
+  <Icon size={size}>
+    <path d="M20 6 9 17l-5-5" />
+  </Icon>
+);
+
+export const HeadphonesIcon = ({ size = 18 }) => (
+  <Icon size={size}>
+    <path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />
+  </Icon>
+);
+
+export const FileXIcon = ({ size = 30 }) => (
+  <Icon size={size}>
+    <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+    <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+    <path d="m14.5 12.5-5 5" />
+    <path d="m9.5 12.5 5 5" />
+  </Icon>
+);
+
+export const LibraryIcon = ({ size = 20 }) => (
+  <Icon size={size}>
+    <path d="m16 6 4 14" />
+    <path d="M12 6v14" />
+    <path d="M8 8v12" />
+    <path d="M4 4v16" />
+  </Icon>
+);

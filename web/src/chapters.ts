@@ -22,3 +22,8 @@ export function isPlayableChapter(chapter: ChapterSummary): boolean {
 export function chapterListenPath(bookId: string, chapterId: string): string {
   return `/books/${bookId}/listen?chapter=${chapterId}`;
 }
+
+/** The 专注页 opened from the Shelf: it resumes at the last Sentence listened to and plays at once (PRD 4.4.1 #3). */
+export function shelfListenPath(bookId: string): string {
+  return `/books/${bookId}/listen?autoplay`;
+}

@@ -5,6 +5,8 @@ import { authRoutes } from "./auth/routes.js";
 import { requireSession } from "./auth/session.js";
 import { audioRoutes } from "./books/audio-routes.js";
 import { bookRoutes } from "./books/routes.js";
+import { shelfRoutes } from "./books/shelf-routes.js";
+import { uploadRoutes } from "./books/upload-routes.js";
 import type { Db } from "./db/client.js";
 import { jobRoutes } from "./jobs/routes.js";
 import type { ObjectStorage } from "./storage.js";
@@ -34,6 +36,8 @@ export function createApp(deps: AppDeps) {
   app.use("*", requireSession(deps.db));
   app.get("/health", (c) => c.json({ ok: true }));
   app.route("/", authRoutes(deps));
+  app.route("/", uploadRoutes(deps));
+  app.route("/", shelfRoutes(deps));
   app.route("/", bookRoutes(deps));
   app.route("/", audioRoutes(deps));
   app.route("/", jobRoutes(deps));

@@ -4,7 +4,9 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import { createApp } from "../src/app.js";
 import type { Mailer } from "../src/auth/mailer.js";
 import { SESSION_COOKIE } from "../src/auth/session.js";
+import { UPLOAD_DECLARATION } from "../src/contract.js";
 import type {
+  Book,
   BookDetail,
   ClaimedJob,
   ClaimedRenderJob,
@@ -129,16 +131,25 @@ export async function testApp({ leaseMs = TEST_LEASE_MS, secureCookie = false } 
   return { app, anon, db, storage, clock, mailer };
 }
 
-export function epubForm(name = "Pride and Prejudice.epub", bytes = new Uint8Array([80, 75, 3, 4])) {
+/**
+ * An upload form. By default it confirms the current upload declaration (PRD 4.1.2) as the dialog does on a first
+ * upload; pass `declaration: null` to leave it out.
+ */
+export function epubForm(
+  name = "Pride and Prejudice.epub",
+  bytes: Uint8Array<ArrayBuffer> = new Uint8Array([80, 75, 3, 4]),
+  { declaration = UPLOAD_DECLARATION.version as string | null } = {},
+) {
   const form = new FormData();
   form.append("file", new File([bytes], name, { type: "application/epub+zip" }));
+  if (declaration !== null) form.append("declarationVersion", declaration);
   return form;
 }
 
 export async function uploadBook(app: TestApp, name?: string) {
   const res = await app.request("/api/books", { method: "POST", body: epubForm(name) });
   if (res.status !== 201) throw new Error(`upload failed: ${res.status} ${await res.text()}`);
-  return (await res.json()) as { id: string; title: string; status: string };
+  return (await res.json()) as Book;
 }
 
 export async function claim(app: TestApp) {
@@ -217,4 +228,24 @@ export async function renderAll(
     });
   }
   return { segments, sentences };
+}
+
+/**
+ * Uploads `name`.epub and plays the worker until every Book's audio is generated: parses it into `chapters` and renders
+ * every narrated Chapter with renderAll (each Sentence 4 s). Returns the generated Book.
+ */
+export async function generatedBook(
+  t: { app: TestApp; storage: ObjectStorage },
+  name: string,
+  chapters: Omit<ParseResult, "attempt">["chapters"],
+): Promise<BookDetail> {
+  const { id } = await uploadBook(t.app, `${name}.epub`);
+  for (let job = await claimJob(t.app); job; job = await claimJob(t.app)) {
+    const res =
+      job.type === "parse"
+        ? await reportParse(t.app, job, { parserVersion: "test-1", title: name, author: "An Author", chapters })
+        : await reportRenderResult(t.app, job, await renderAll(t.storage, job));
+    if (res.status !== 204) throw new Error(`report failed: ${res.status} ${await res.text()}`);
+  }
+  return bookDetail(t.app, id);
 }

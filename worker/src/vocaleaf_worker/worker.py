@@ -41,6 +41,8 @@ def _run(api: ApiClient, storage: ObjectStorage, tts: Tts, pauses: Pauses, job: 
             case ParseJob():
                 book = parse_epub(storage.get_object(job.source_key))
                 heartbeat.check()
+                if book.cover:
+                    storage.put_object(job.cover_key, book.cover.data, book.cover.media_type)
                 api.report_parse_result(job, book, PARSER_VERSION)
                 log.info("job %s: %d chapters", job.id, len(book.chapters))
             case RenderJob():

@@ -33,6 +33,8 @@ const book: BookDetail = {
   status: "generating",
   playable: true,
   failureReason: null,
+  coverUrl: null,
+  listening: null,
   progress: { generated: 0, narrated: 0 },
   createdAt: "2026-11-18T00:00:00.000Z",
   chapters: [],
@@ -135,6 +137,67 @@ describe("ListenPage (专注页)", () => {
     serve([{ ...book, status: "ready", playable: false, durationMs: null }]);
     renderPage();
     expect(await screen.findByText("这本书没有可播放的音频")).toBeTruthy();
+  });
+
+  describe("resuming where the user left off (AC-SHELF-04)", () => {
+    const listened: BookDetail = {
+      ...secondPlayable,
+      listening: {
+        sentenceId: "s2",
+        chapterTitle: "Chapter 1",
+        share: 0.5,
+        startMs: 612_500,
+        listenedAt: "2026-11-18T00:00:00.000Z",
+      },
+    };
+
+    it("opened from the Shelf, plays from the start of the last Sentence listened to", async () => {
+      window.history.pushState(null, "", "/books/b1/listen?autoplay");
+      serve([listened]);
+      renderPage();
+      await screen.findByRole("button", { name: "播放" });
+
+      const { seeks } = audioWithGenerated(900);
+
+      expect(seeks).toEqual([612.5]);
+      expect(media.play).toHaveBeenCalledTimes(1);
+      // Done: a reload does not start playing by itself.
+      expect(window.location.search).toBe("");
+    });
+
+    it("opened from the Shelf, plays a Book never listened to from its beginning", async () => {
+      window.history.pushState(null, "", "/books/b1/listen?autoplay");
+      serve([secondPlayable]);
+      renderPage();
+      await screen.findByRole("button", { name: "播放" });
+
+      const { seeks } = audioWithGenerated(900);
+
+      expect(seeks).toEqual([0]);
+      expect(media.play).toHaveBeenCalledTimes(1);
+    });
+
+    it("opened otherwise (a reload), waits paused at the last Sentence listened to", async () => {
+      serve([listened]);
+      renderPage();
+      await screen.findByRole("button", { name: "播放" });
+
+      const { seeks } = audioWithGenerated(900);
+
+      expect(seeks).toEqual([612.5]);
+      expect(media.play).not.toHaveBeenCalled();
+    });
+
+    it("gives way to a Chapter picked to listen to", async () => {
+      window.history.pushState(null, "", "/books/b1/listen?chapter=c2&autoplay");
+      serve([listened]);
+      renderPage();
+      await screen.findByRole("button", { name: "播放" });
+
+      const { seeks } = audioWithGenerated(900);
+
+      expect(seeks).toEqual([600]);
+    });
   });
 
   describe("opened at a Chapter (from the Chapter list)", () => {

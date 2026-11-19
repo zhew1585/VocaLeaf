@@ -29,6 +29,8 @@ const book: BookDetail = {
   status: "generating",
   playable: false,
   failureReason: null,
+  coverUrl: null,
+  listening: null,
   progress: { generated: 0, narrated: 2 },
   createdAt: "2026-11-18T00:00:00.000Z",
   chapters: [chapter("c0", 0, "Titlepage", { sentenceCount: 3 }), chapter("c1", 1, "I", { sentenceCount: 42 })],

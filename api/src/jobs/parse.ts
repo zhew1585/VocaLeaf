@@ -44,6 +44,7 @@ export async function storeParseResult(tx: Tx, bookId: string, result: ParseOutp
       parserVersion: result.parserVersion,
       ...(result.title?.trim() ? { title: result.title.trim() } : {}),
       author: result.author?.trim() || null,
+      coverType: result.cover?.contentType ?? null,
     })
     .where(eq(books.id, bookId));
 

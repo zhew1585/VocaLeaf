@@ -508,3 +508,61 @@ def test_an_epub_with_no_narrated_text_fails_as_no_text(docs):
         parse_epub(epub)
 
     assert failed.value.reason == "no_text"
+
+
+# ---- Cover (PRD 4.2.1 cover_url, shown on the Shelf) ----
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"\0" * 32
+CHAPTER = [Doc("c1.xhtml", BODY)], [TocEntry("One", "c1.xhtml")]
+
+
+@pytest.mark.parametrize("epub2", [False, True])
+def test_reads_the_cover_image_declared_in_the_package(epub2):
+    epub = make_epub(*CHAPTER, epub2=epub2, cover=("images/cover.png", "image/png", PNG))
+
+    cover = parse_epub(epub).cover
+
+    assert cover is not None
+    assert (cover.media_type, cover.data) == ("image/png", PNG)
+
+
+def test_a_book_without_a_declared_cover_has_none():
+    assert parse_epub(make_epub(*CHAPTER)).cover is None
+
+
+@pytest.mark.parametrize(
+    ("cover", "extra"),
+    [
+        # Declared but missing from the zip: the Book still parses.
+        (("images/cover.png", "image/png", PNG), {"drop": "OEBPS/images/cover.png"}),
+        # Not an image a browser shows as a cover.
+        (("images/cover.svg", "image/svg+xml", b"<svg/>"), {}),
+    ],
+)
+def test_an_unusable_cover_is_left_out_without_failing_the_parse(cover, extra):
+    epub = make_epub(*CHAPTER, cover=cover)
+    if "drop" in extra:
+        epub = _without(epub, extra["drop"])
+
+    book = parse_epub(epub)
+
+    assert book.cover is None
+    assert book.chapters
+
+
+def test_the_standard_ebooks_sample_has_its_jpeg_cover():
+    cover = parse_epub(PRIDE_AND_PREJUDICE.read_bytes()).cover
+
+    assert cover is not None
+    assert cover.media_type == "image/jpeg"
+    assert cover.data[:3] == b"\xff\xd8\xff"
+
+
+def _without(epub: bytes, name: str) -> bytes:
+    """The EPUB with one file removed from its zip."""
+    out = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(epub)) as src, zipfile.ZipFile(out, "w") as dst:
+        for info in src.infolist():
+            if info.filename != name:
+                dst.writestr(info, src.read(info))
+    return out.getvalue()

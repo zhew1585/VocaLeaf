@@ -1,8 +1,17 @@
 // Typed calls to the VocaLeaf API. Types come straight from the API's zod contract (ADR 0002).
 // The session is an HttpOnly cookie the browser sends by itself (same origin), so no call handles a token.
-import type { ApiError, Book, BookDetail, CodeSent, Sentence, User } from "@vocaleaf/api/contract";
+import type { ApiError, Book, BookDetail, CodeSent, Sentence, UploadPolicy, User } from "@vocaleaf/api/contract";
 
-export type { Book, BookDetail, BookStatus, ChapterSummary, Sentence, User } from "@vocaleaf/api/contract";
+export type {
+  Book,
+  BookDetail,
+  BookStatus,
+  ChapterSummary,
+  Listening,
+  Sentence,
+  UploadPolicy,
+  User,
+} from "@vocaleaf/api/contract";
 
 /** Fired on window whenever the API answers 401: the session ended, so the app shows the login page. */
 export const UNAUTHORIZED_EVENT = "vocaleaf:unauthorized";
@@ -18,6 +27,12 @@ export class ApiRequestError extends Error {
   }
 }
 
+/** The error a failed API response carries: its message, or a generic one. Also reports 401 (UNAUTHORIZED_EVENT). */
+function errorOf(status: number, body: ApiError | null, retryAfterSeconds: number | null = null): ApiRequestError {
+  if (status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  return new ApiRequestError(body?.error.message ?? "请求失败，请稍后再试", status, retryAfterSeconds);
+}
+
 async function send(path: string, init?: RequestInit): Promise<Response> {
   let res: Response;
   try {
@@ -26,14 +41,9 @@ async function send(path: string, init?: RequestInit): Promise<Response> {
     throw new ApiRequestError("网络连接失败，请稍后再试");
   }
   if (res.ok) return res;
-  if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
   const body = (await res.json().catch(() => null)) as ApiError | null;
   const retryAfter = Number(res.headers.get("Retry-After"));
-  throw new ApiRequestError(
-    body?.error.message ?? "请求失败，请稍后再试",
-    res.status,
-    Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null,
-  );
+  throw errorOf(res.status, body, Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null);
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -68,10 +78,61 @@ export async function logOut(): Promise<void> {
   await send("/auth/logout", { method: "POST" });
 }
 
-export function uploadBook(file: File): Promise<Book> {
+/** The user's Shelf, in display order (last listened first, then the others newest first). */
+export function getShelf(): Promise<Book[]> {
+  return request<Book[]>("/books");
+}
+
+/** Limits the upload dialog checks a file against, and whether the declaration still needs confirming. */
+export function getUploadPolicy(): Promise<UploadPolicy> {
+  return request<UploadPolicy>("/upload-policy");
+}
+
+export interface UploadOptions {
+  /** The declaration version the user just confirmed, when they had to. */
+  declarationVersion?: string;
+  /** Share of the file sent so far, 0 to 1. */
+  onProgress?(sent: number): void;
+  /** Aborting cancels the upload; the promise then rejects with an AbortError. */
+  signal?: AbortSignal;
+}
+
+/**
+ * Uploads an EPUB. Uses XMLHttpRequest rather than fetch because only it reports upload progress (the dialog's
+ * progress bar); rejects with the API's message when the upload is refused.
+ */
+export function uploadBook(file: File, { declarationVersion, onProgress, signal }: UploadOptions = {}): Promise<Book> {
   const form = new FormData();
   form.append("file", file);
-  return request<Book>("/books", { method: "POST", body: form });
+  if (declarationVersion) form.append("declarationVersion", declarationVersion);
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const abort = () => xhr.abort();
+    xhr.open("POST", "/api/books");
+    xhr.responseType = "json";
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress?.(e.loaded / e.total);
+    };
+    xhr.onload = () => {
+      signal?.removeEventListener("abort", abort);
+      if (xhr.status === 201) resolve(xhr.response as Book);
+      else reject(errorOf(xhr.status, xhr.response as ApiError | null));
+    };
+    xhr.onerror = () => reject(new ApiRequestError("网络连接失败，请稍后再试"));
+    xhr.onabort = () => reject(new DOMException("上传已取消", "AbortError"));
+    if (signal?.aborted) return reject(new DOMException("上传已取消", "AbortError"));
+    signal?.addEventListener("abort", abort, { once: true });
+    xhr.send(form);
+  });
+}
+
+/** Tells the API where playback is in the Book's audio; it keeps the Sentence there as the place to resume. */
+export async function saveListening(bookId: string, positionMs: number): Promise<void> {
+  await send(`/books/${bookId}/listening`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ positionMs: Math.max(0, Math.floor(positionMs)) }),
+  });
 }
 
 export function getBook(id: string): Promise<BookDetail> {

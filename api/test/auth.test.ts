@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { addToAllowlist, parseEmails, removeFromAllowlist } from "../src/allowlist.js";
 import type { User } from "../src/contract.js";
 import { allowlist, auditLog, loginCodes, users } from "../src/db/schema.js";
-import { logIn, postAuth, READER_EMAIL, sessionCookie, testApp, withCookie, WORKER_TOKEN } from "./helpers.js";
+import { epubForm, logIn, postAuth, READER_EMAIL, sessionCookie, testApp, withCookie, WORKER_TOKEN } from "./helpers.js";
 
 const GUEST = "guest@example.com";
 
@@ -253,7 +253,5 @@ describe("allowlist script", () => {
 });
 
 function epub() {
-  const form = new FormData();
-  form.append("file", new File([new Uint8Array([80, 75, 3, 4])], "x.epub"));
-  return form;
+  return epubForm("x.epub");
 }

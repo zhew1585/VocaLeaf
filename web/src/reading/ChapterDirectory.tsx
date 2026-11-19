@@ -102,7 +102,7 @@ export function ChapterDirectory({ book, playingChapterId, playing, listened, on
       </ol>
       <div className="directory-book">
         <div className="directory-cover" aria-hidden="true">
-          {book.title.slice(0, 1)}
+          {book.coverUrl ? <img src={book.coverUrl} alt="" /> : book.title.slice(0, 1)}
         </div>
         <div className="directory-book-text">
           <ScrollingTitle title={book.title} />
