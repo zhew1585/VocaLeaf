@@ -4,6 +4,7 @@ import { followLink, navigate } from "../router";
 import { StatusBadge } from "../StatusBadge";
 import { useBook } from "../useBook";
 import { ChapterList } from "./ChapterList";
+import { DeleteBookButton } from "./DeleteBook";
 
 /** 生成中 with generated / narrated Chapters and a bar (design 04-2, PRD 4.3.3 进度展示). */
 function GenerationProgress({ progress }: { progress: Book["progress"] }) {
@@ -29,6 +30,7 @@ function GenerationProgress({ progress }: { progress: Book["progress"] }) {
 /**
  * Book detail, design 04-2: the Book's status or generation progress, 开始收听 once it is playable, and its
  * Chapters with their state; a 生成失败 one can be retried. Kept current while the worker parses and generates.
+ * 删除这本书 is there in every state, 解析中 and 生成中 included (PRD 4.3.6).
  */
 export function BookPage({ id }: { id: string }) {
   const { book, error, reload } = useBook(id);
@@ -76,6 +78,7 @@ export function BookPage({ id }: { id: string }) {
                 开始收听
               </button>
             )}
+            <DeleteBookButton bookId={id} />
           </>
         )}
       </aside>

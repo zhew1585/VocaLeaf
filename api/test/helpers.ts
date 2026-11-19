@@ -32,6 +32,12 @@ export function memoryStorage(): ObjectStorage & { objects: Map<string, Uint8Arr
     async getObject(key) {
       return objects.get(key);
     },
+    async deleteObjects(keys) {
+      for (const key of keys) objects.delete(key);
+    },
+    async deletePrefix(prefix) {
+      for (const key of [...objects.keys()]) if (key.startsWith(prefix)) objects.delete(key);
+    },
   };
 }
 

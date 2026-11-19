@@ -1,5 +1,6 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BOOK_DELETED_EVENT } from "../api";
 import { audio, audioWithGenerated, grow, hlsInstances, stubMediaPlayback, timeUpdate } from "../test-media";
 import { ListeningProvider, useListening, type Listening } from "./session";
 
@@ -151,6 +152,27 @@ describe("the listening session", () => {
       ["/api/books/b1/audio.m3u8", false],
     ]);
     expect(hlsInstances[1]!.media).toBe(audio());
+  });
+
+  it("ends when its Book is deleted, and only then (#8)", () => {
+    const s = session();
+    act(() => s().open("b1"));
+    act(() => s().toggle());
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(BOOK_DELETED_EVENT, { detail: "b2" }));
+    });
+    expect(s()).toMatchObject({ bookId: "b1", playing: true });
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(BOOK_DELETED_EVENT, { detail: "b1" }));
+    });
+    expect(s()).toMatchObject({ bookId: null, playing: false, position: 0 });
+    expect(hlsInstances.map((h) => h.destroyed)).toEqual([true]);
+
+    // The session forgot the Book: opening the same id again loads it anew instead of being ignored.
+    act(() => s().open("b1"));
+    expect(hlsInstances).toHaveLength(2);
   });
 
   it("stops loading when it goes away (logging out)", () => {

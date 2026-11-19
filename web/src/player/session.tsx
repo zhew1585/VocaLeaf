@@ -1,6 +1,6 @@
 import Hls from "hls.js";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
-import { saveListening } from "../api";
+import { BOOK_DELETED_EVENT, saveListening } from "../api";
 import { playableLength, useStartRequest, useWaitingForAudio, type StartRequest } from "./playback";
 
 /**
@@ -8,6 +8,7 @@ import { playableLength, useStartRequest, useWaitingForAudio, type StartRequest 
  * above the pages, so leaving the 专注页 (【返回书架】) does not stop it. The 专注页 opens its Book here; the
  * player and the reading view read and steer it. Where playback is goes to the API when it starts and pauses, so
  * the Shelf can order Books and resume them (#7); the other sync moments and the sidebar entry come with #10.
+ * It ends when its Book is deleted (#8).
  */
 export interface Listening {
   /** The Book whose audio is loaded, or null before any 专注页 opened one. */
@@ -140,6 +141,21 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     setPosition(0);
     setPlayable(0);
     fresh();
+  }, []);
+
+  // The Book is gone with its audio: stop and forget it, as before any Book was opened.
+  useEffect(() => {
+    const onDeleted = (e: Event) => {
+      if ((e as CustomEvent<string>).detail !== openBookId.current) return;
+      openBookId.current = null;
+      setBookId(null);
+      setStart({ request: null });
+      setPosition(0);
+      setPlayable(0);
+      fresh();
+    };
+    window.addEventListener(BOOK_DELETED_EVENT, onDeleted);
+    return () => window.removeEventListener(BOOK_DELETED_EVENT, onDeleted);
   }, []);
 
   const reload = useCallback(() => {

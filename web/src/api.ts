@@ -16,6 +16,9 @@ export type {
 /** Fired on window whenever the API answers 401: the session ended, so the app shows the login page. */
 export const UNAUTHORIZED_EVENT = "vocaleaf:unauthorized";
 
+/** Fired on window once a Book is deleted, with its id as the CustomEvent's detail, so whatever holds it lets go. */
+export const BOOK_DELETED_EVENT = "vocaleaf:book-deleted";
+
 export class ApiRequestError extends Error {
   constructor(
     message: string,
@@ -147,4 +150,10 @@ export function getChapterSentences(chapterId: string): Promise<Sentence[]> {
 /** Generates a 生成失败 Chapter again; it goes back to 待生成. */
 export async function retryChapter(chapterId: string): Promise<void> {
   await send(`/chapters/${chapterId}/retry`, { method: "POST" });
+}
+
+/** Deletes an uploaded Book in any state (PRD 4.3.6), then fires BOOK_DELETED_EVENT. */
+export async function deleteBook(id: string): Promise<void> {
+  await send(`/books/${id}`, { method: "DELETE" });
+  window.dispatchEvent(new CustomEvent(BOOK_DELETED_EVENT, { detail: id }));
 }

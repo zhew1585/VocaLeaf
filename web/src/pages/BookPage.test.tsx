@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { BookDetail } from "../api";
+import { BOOK_DELETED_EVENT, type BookDetail } from "../api";
 import { BookPage } from "./BookPage";
 
 afterEach(() => {
@@ -56,14 +56,17 @@ function rows() {
   return screen.getAllByRole("listitem").map((li) => li.textContent);
 }
 
-/** Answers GET /api/books/b1 with each of `books` in turn (the last one from then on) and records every call. */
+/**
+ * Answers GET /api/books/b1 with each of `books` in turn (the last one from then on), any other method with
+ * `onPost`, and records every call.
+ */
 function stubApi(books: BookDetail[], onPost: (url: string) => Response = () => new Response(null, { status: 204 })) {
   const queue = [...books];
   const calls: { url: string; method: string }[] = [];
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     calls.push({ url, method });
-    if (method === "POST") return onPost(url);
+    if (method !== "GET") return onPost(url);
     return Response.json(queue.length > 1 ? queue.shift() : queue[0]);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -171,5 +174,74 @@ describe("BookPage", () => {
     render(<BookPage id="b1" />);
     expect(await screen.findByText("已就绪")).toBeTruthy();
     expect(screen.getByRole("button", { name: "开始收听" })).toBeEnabled();
+  });
+
+  describe("删除这本书 (#8, PRD 4.3.6)", () => {
+    const CONFIRM = "删除后音频、标记和解析将被清除，已做的卡片会保留";
+
+    it.each([
+      ["解析中", { ...book, status: "parsing" as const, chapters: [] }],
+      ["生成中", generating],
+      ["解析失败", { ...book, status: "parse_failed" as const, failureReason: "文件无法读取，可能已损坏", chapters: [] }],
+      ["已就绪", { ...book, status: "ready" as const, playable: true }],
+    ])("is offered for a %s Book", async (_, detail) => {
+      stubApi([detail]);
+      render(<BookPage id="b1" />);
+      expect(await screen.findByRole("button", { name: "删除这本书" })).toBeEnabled();
+    });
+
+    it("asks first, and 取消 keeps the Book", async () => {
+      const calls = stubApi([generating]);
+      render(<BookPage id="b1" />);
+
+      fireEvent.click(await screen.findByRole("button", { name: "删除这本书" }));
+      const dialog = screen.getByRole("alertdialog", { name: "删除这本书？" });
+      expect(within(dialog).getByText(CONFIRM)).toBeTruthy();
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+      expect(screen.queryByRole("alertdialog")).toBeNull();
+      expect(calls.filter((c) => c.method !== "GET")).toEqual([]);
+    });
+
+    it("closes the question with Escape", async () => {
+      stubApi([generating]);
+      render(<BookPage id="b1" />);
+      fireEvent.click(await screen.findByRole("button", { name: "删除这本书" }));
+
+      fireEvent.keyDown(screen.getByRole("alertdialog"), { key: "Escape" });
+      expect(screen.queryByRole("alertdialog")).toBeNull();
+    });
+
+    it("deletes the Book once confirmed, ends its listening session and goes back to the start page", async () => {
+      window.history.pushState(null, "", "/books/b1");
+      const calls = stubApi([generating]);
+      const deleted: unknown[] = [];
+      const onDeleted = (e: Event) => deleted.push((e as CustomEvent).detail);
+      window.addEventListener(BOOK_DELETED_EVENT, onDeleted);
+      render(<BookPage id="b1" />);
+
+      fireEvent.click(await screen.findByRole("button", { name: "删除这本书" }));
+      fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "删除" }));
+
+      await vi.waitFor(() => expect(window.location.pathname).toBe("/"));
+      expect(calls.filter((c) => c.method !== "GET")).toEqual([{ url: "/api/books/b1", method: "DELETE" }]);
+      expect(deleted).toEqual(["b1"]);
+      window.removeEventListener(BOOK_DELETED_EVENT, onDeleted);
+    });
+
+    it("says so when the deletion fails, and keeps the question open to try again", async () => {
+      window.history.pushState(null, "", "/books/b1");
+      stubApi([generating], () => Response.json({ error: { code: "internal", message: "服务器出错了，请稍后再试" } }, { status: 500 }));
+      render(<BookPage id="b1" />);
+
+      fireEvent.click(await screen.findByRole("button", { name: "删除这本书" }));
+      const dialog = screen.getByRole("alertdialog");
+      fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
+
+      expect((await within(dialog).findByRole("alert")).textContent).toBe("服务器出错了，请稍后再试");
+      expect(within(dialog).getByRole("button", { name: "删除" })).toBeEnabled();
+      expect(window.location.pathname).toBe("/books/b1");
+      window.history.pushState(null, "", "/");
+    });
   });
 });

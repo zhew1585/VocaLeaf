@@ -1,7 +1,9 @@
 import {
   CreateBucketCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
   HeadBucketCommand,
+  ListObjectsV2Command,
   NoSuchKey,
   PutObjectCommand,
   S3Client,
@@ -12,7 +14,14 @@ export interface ObjectStorage {
   putObject(key: string, body: Uint8Array, contentType: string): Promise<void>;
   /** The object's bytes, or undefined when there is no such key. */
   getObject(key: string): Promise<Uint8Array | undefined>;
+  /** Deletes the given keys; a key with no object is fine. */
+  deleteObjects(keys: string[]): Promise<void>;
+  /** Deletes every object whose key starts with `prefix`. */
+  deletePrefix(prefix: string): Promise<void>;
 }
+
+/** S3 DeleteObjects takes at most this many keys per request, and a listing page holds at most as many. */
+const DELETE_BATCH = 1000;
 
 export interface S3Config {
   endpoint: string;
@@ -50,12 +59,43 @@ export function s3Storage(config: S3Config): ObjectStorage {
         throw err;
       }
     },
+    async deleteObjects(keys) {
+      for (let i = 0; i < keys.length; i += DELETE_BATCH) {
+        const batch = keys.slice(i, i + DELETE_BATCH);
+        const res = await client.send(
+          new DeleteObjectsCommand({
+            Bucket: config.bucket,
+            Delete: { Objects: batch.map((Key) => ({ Key })), Quiet: true },
+          }),
+        );
+        // Quiet mode lists only the keys that could not be deleted.
+        const [first] = res.Errors ?? [];
+        if (first) {
+          throw new Error(`could not delete ${res.Errors!.length} objects, first ${first.Key}: ${first.Code} ${first.Message}`);
+        }
+      }
+    },
+    async deletePrefix(prefix) {
+      let token: string | undefined;
+      do {
+        const page = await client.send(
+          new ListObjectsV2Command({ Bucket: config.bucket, Prefix: prefix, ContinuationToken: token, MaxKeys: DELETE_BATCH }),
+        );
+        await this.deleteObjects((page.Contents ?? []).flatMap((o) => (o.Key ? [o.Key] : [])));
+        token = page.NextContinuationToken;
+      } while (token);
+    },
   };
+}
+
+/** Everything stored for a Book, its original and its audio, lives under this prefix. */
+export function bookPrefix(bookId: string): string {
+  return `books/${bookId}/`;
 }
 
 /** Where a Book's original upload lives in the bucket. */
 export function sourceKey(bookId: string): string {
-  return `books/${bookId}/source.epub`;
+  return `${bookPrefix(bookId)}source.epub`;
 }
 
 /** Where the worker puts a Book's cover image, when its EPUB has one. */
@@ -68,7 +108,7 @@ export function coverKey(bookId: string): string {
  * its lease can never overwrite the segments of the claim that took over.
  */
 export function audioPrefix(bookId: string, chapterId: string, jobId: string, attempt: number): string {
-  return `books/${bookId}/audio/${chapterId}/${jobId}-${attempt}/`;
+  return `${bookPrefix(bookId)}audio/${chapterId}/${jobId}-${attempt}/`;
 }
 
 /**
