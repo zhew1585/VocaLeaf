@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { Book, Listening } from "../api";
 import alice from "../assets/empty-alice.webp";
 import gatsby from "../assets/empty-gatsby.webp";
 import pride from "../assets/empty-pride.webp";
-import { HeadphonesIcon, PlaySolidIcon, PlusIcon, UploadIcon } from "../icons";
+import { HeadphonesIcon, InfoIcon, PauseSolidIcon, PlaySolidIcon, PlusIcon, UploadIcon } from "../icons";
 import { shelfListenPath } from "../chapters";
 import { followLink, navigate } from "../router";
 import { StatusBadge } from "../StatusBadge";
@@ -11,6 +11,7 @@ import { BookCover } from "./BookCover";
 import "./shelf.css";
 import { UploadDialog } from "./UploadDialog";
 import { useShelf } from "./useShelf";
+import { useShelfPlay } from "./useShelfPlay";
 
 /** Where a Book on the Shelf leads: a playable one to its 专注页, playing (AC-SHELF-04); any other to its detail (AC-SHELF-03). */
 function bookPath(book: Book): string {
@@ -49,34 +50,71 @@ export function ShelfHeader({ active, onUpload }: { active: "shelf" | "library";
   );
 }
 
-/** 【继续收听】 (design 03-2): the Book listened to last; its play button resumes at the last Sentence. */
+/** 详情 on a cover: the Book's detail (F5), where it is deleted, its Voice changed and its Chapters managed. */
+function DetailButton({ book }: { book: Book }) {
+  return (
+    <button type="button" className="cover-action" aria-label={`${book.title} 详情`} onClick={() => navigate(`/books/${book.id}`)}>
+      <InfoIcon size={14} />
+      详情
+    </button>
+  );
+}
+
+/**
+ * Over a cover, shown under the pointer: its buttons, on the cover darkened. Elsewhere on it a click goes to `href`,
+ * as clicking the Book does (keyboard users have the Book's own link).
+ */
+function CoverActions({ href, stacked = false, children }: { href: string; stacked?: boolean; children: ReactNode }) {
+  return (
+    <div
+      className={stacked ? "cover-actions is-stacked" : "cover-actions"}
+      onClick={(e) => e.target === e.currentTarget && navigate(href)}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * 【继续收听】 (design 03-2): the Book listened to last. Anywhere on the card opens its 专注页 with playback as it
+ * was, like the sidebar's 当前收听; the play button only plays or pauses, as the session shows it; 详情 shows on
+ * the cover under the pointer.
+ */
 function ContinueCard({ book, listening }: { book: Book; listening: Listening }) {
   const pct = percent(listening);
+  const { playing, toggle } = useShelfPlay(book);
   return (
     <section className="continue-card" aria-label="继续收听">
-      <BookCover book={book} className="is-small" />
-      <div className="continue-info">
-        <div className="continue-titles">
-          <p className="continue-label">继续收听</p>
-          <h2 className="continue-title">{book.title}</h2>
-          {book.author && <p className="continue-author">{book.author}</p>}
-        </div>
-        <div className="continue-progress">
+      <div className="continue-cover">
+        <BookCover book={book} className="is-small" />
+        <CoverActions href={`/books/${book.id}/listen`}>
+          <DetailButton book={book} />
+        </CoverActions>
+      </div>
+      <a href={`/books/${book.id}/listen`} className="continue-link" onClick={followLink}>
+        <span className="continue-titles">
+          <span className="continue-label">继续收听</span>
+          <span className="continue-title" role="heading" aria-level={2}>
+            {book.title}
+          </span>
+          {book.author && <span className="continue-author">{book.author}</span>}
+        </span>
+        <span className="continue-progress">
           <span>
             {listening.chapterTitle} · {pct}%
           </span>
-          <div className="progress-track">
-            <div className="progress-fill" style={{ width: `${pct}%` }} />
-          </div>
-        </div>
-      </div>
+          <span className="progress-track">
+            <span className="progress-fill" style={{ width: `${pct}%` }} />
+          </span>
+        </span>
+      </a>
       <button
         type="button"
         className="continue-play"
-        aria-label={`继续收听 ${book.title}`}
-        onClick={() => navigate(shelfListenPath(book.id))}
+        aria-label={`${playing ? "暂停" : "继续收听"} ${book.title}`}
+        onClick={toggle}
       >
-        <PlaySolidIcon size={20} />
+        {playing ? <PauseSolidIcon size={20} /> : <PlaySolidIcon size={20} />}
       </button>
     </section>
   );
@@ -108,9 +146,21 @@ function BookState({ book }: { book: Book }) {
   );
 }
 
+/** 播放 or 暂停 on a playable Book's cover: plays it where it was left, or pauses it, staying on the Shelf. */
+function PlayButton({ book }: { book: Book }) {
+  const { playing, toggle } = useShelfPlay(book);
+  return (
+    <button type="button" className="cover-action is-play" aria-label={`${playing ? "暂停" : "播放"} ${book.title}`} onClick={toggle}>
+      {playing ? <PauseSolidIcon size={12} /> : <PlaySolidIcon size={12} />}
+      {playing ? "暂停" : "播放"}
+    </button>
+  );
+}
+
+/** A Book in the grid; under the pointer its cover darkens and offers 播放 (when playable) and 详情. */
 function BookTile({ book }: { book: Book }) {
   return (
-    <li>
+    <li className="shelf-tile">
       <a href={bookPath(book)} className="shelf-book" onClick={followLink}>
         <BookCover book={book} />
         <span className="shelf-book-meta">
@@ -118,6 +168,10 @@ function BookTile({ book }: { book: Book }) {
           <BookState book={book} />
         </span>
       </a>
+      <CoverActions href={bookPath(book)} stacked>
+        {book.playable && <PlayButton book={book} />}
+        <DetailButton book={book} />
+      </CoverActions>
     </li>
   );
 }
