@@ -10,6 +10,7 @@ import {
   RenderReportSchema,
   type ClaimedJob,
 } from "../contract.js";
+import { discardDeletedJobSegments } from "../books/delete.js";
 import { coverKey, sourceKey } from "../storage.js";
 import { validationHook } from "../validation.js";
 import { claimNextJob, failAttempt, lockCurrentAttempt, renewLease, succeedJob, type Job, type Tx } from "./lifecycle.js";
@@ -67,7 +68,7 @@ const failureRoute = report(
 );
 
 /** Routes the stateless worker uses to pull jobs and report results (ADR 0002, 0003). */
-export function jobRoutes({ db, workerToken, jobLeaseMs, now = () => new Date() }: AppDeps) {
+export function jobRoutes({ db, storage, workerToken, jobLeaseMs, now = () => new Date() }: AppDeps) {
   const app = new OpenAPIHono({ defaultHook: validationHook });
   app.use("/internal/*", bearerAuth({ token: workerToken }));
 
@@ -121,7 +122,9 @@ export function jobRoutes({ db, workerToken, jobLeaseMs, now = () => new Date() 
     const { id } = c.req.valid("param");
     const { attempt, ...body } = c.req.valid("json");
     const stored = await withCurrentJob(id, attempt, "render_chapter", (tx, job) => storeRenderReport(tx, job, body));
-    return stored ? c.body(null, 204) : c.json(jobNotRunning, 409);
+    if (stored) return c.body(null, 204);
+    await discardDeletedJobSegments(db, storage, id, attempt, body.segments.map((s) => s.key));
+    return c.json(jobNotRunning, 409);
   });
 
   app.openapi(renderResultRoute, async (c) => {
@@ -131,7 +134,9 @@ export function jobRoutes({ db, workerToken, jobLeaseMs, now = () => new Date() 
       await storeRenderReport(tx, job, body);
       await finishRender(tx, job, now());
     });
-    return stored ? c.body(null, 204) : c.json(jobNotRunning, 409);
+    if (stored) return c.body(null, 204);
+    await discardDeletedJobSegments(db, storage, id, attempt, body.segments.map((s) => s.key));
+    return c.json(jobNotRunning, 409);
   });
 
   app.openapi(failureRoute, async (c) => {
