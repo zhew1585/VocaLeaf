@@ -61,6 +61,21 @@ button {
 }
 
 /*
+ * The same grey reads darker against the white surface than against the paper, so bars over the surface (the
+ * directory, the sentence panel's chat, the card popover, the first-play guide, the cards detail panel behind the
+ * page bar) are lifted a quarter towards it and look like the ones on paper.
+ */
+.directory-list,
+.chat-scroll,
+.card-popover,
+.guide-dialog,
+body:has(.cards-page.has-detail) {
+  --scrollbar-thumb-shown: color-mix(in srgb, color-mix(in srgb, var(--ink-3) 40%, var(--paper)) 75%, var(--surface));
+  --scrollbar-thumb-hover: color-mix(in srgb, color-mix(in srgb, var(--ink-3) 58%, var(--paper)) 75%, var(--surface));
+  --scrollbar-thumb-active: color-mix(in srgb, color-mix(in srgb, var(--ink-3) 74%, var(--paper)) 75%, var(--surface));
+}
+
+/*
  * A scrollbar takes its colour from its scroll area; every element sets its own, so a shown bar does not show the
  * bars inside its area. Shown, it fades in quickly; idle, it fades out over 0.4 s. A scroll area that declares its
  * own transition must list --scrollbar-thumb in it to keep the fade.
