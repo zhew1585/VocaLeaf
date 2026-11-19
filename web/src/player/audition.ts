@@ -20,6 +20,11 @@ export interface AuditionClip {
   /** The Card's id. */
   id: string;
   src: string;
+  /**
+   * 复习's audio, which is not a 插播 (PRD 4.4.1 规则 7): it pauses a playing main playback and never plays it on,
+   * also not what an earlier 试听 interrupted.
+   */
+  keepsMainPaused?: boolean;
 }
 
 export type AuditionSource = AuditionSentence | AuditionClip;
@@ -68,7 +73,10 @@ export function useAudition({ main, src, sentenceStartsMs, resumeMain }: Options
     if (!current || !el) return;
     if (isClip(current)) el.src = current.src;
     el.play().catch((err: unknown) => {
-      if (!(err instanceof DOMException && err.name === "AbortError")) console.warn("试听 failed to play", err);
+      if (!(err instanceof DOMException)) return console.warn("试听 failed to play", err);
+      // Started without a tap (复习's autoplay) and refused by the browser: it waits for one on its button (PRD G12).
+      if (err.name === "NotAllowedError") end(false);
+      else if (err.name !== "AbortError") console.warn("试听 failed to play", err);
     });
   }, [current?.n]);
 
@@ -84,8 +92,11 @@ export function useAudition({ main, src, sentenceStartsMs, resumeMain }: Options
 
   const start = (source: AuditionSource) => {
     const el = main.current;
-    // A 试听 replacing another keeps what the first interrupted.
-    if (el && !el.paused && current === null) {
+    if (isClip(source) && source.keepsMainPaused) {
+      interruptedAtMs.current = null;
+      el?.pause();
+    } else if (el && !el.paused && current === null) {
+      // A 试听 replacing another keeps what the first interrupted.
       interruptedAtMs.current = sentenceStartAt(sentenceStartsMs(), el.currentTime * 1000);
       el.pause();
     }

@@ -3,7 +3,7 @@ import { getMe, logOut, UNAUTHORIZED_EVENT, type User } from "./api";
 import { resetSentenceChats } from "./reading/chatStore";
 import logoUrl from "./assets/logo.webp";
 import { PlayGuideProvider } from "./guide/PlayGuide";
-import { LayersIcon, LeafIcon, LibraryIcon, SettingsIcon } from "./icons";
+import { GraduationCapIcon, LayersIcon, LeafIcon, LibraryIcon, SettingsIcon } from "./icons";
 import { GleaningsPage } from "./marks/GleaningsPage";
 import { startOutbox, stopOutbox } from "./marks/marks";
 import { badgeText, useGleaningCount } from "./marks/useMarks";
@@ -13,13 +13,16 @@ import { LoginPage } from "./pages/LoginPage";
 import { NowListening } from "./player/NowListening";
 import { ListeningProvider } from "./player/session";
 import { CardsPage } from "./cards/CardsPage";
+import { ReviewPage } from "./review/ReviewPage";
+import { useReviewCount } from "./review/useReviewCount";
 import { followLink, navigate, usePathname } from "./router";
 import { SettingsPage } from "./settings/SettingsPage";
 import { LibraryPage } from "./shelf/LibraryPage";
 import { ShelfPage } from "./shelf/ShelfPage";
 
 /**
- * /books/:id is the Book's detail, /books/:id/listen its 专注页, /library the 书库, /gleanings 拾起, /cards 卡片,
+ * /books/:id is the Book's detail, /books/:id/listen its 专注页, /library the 书库, /gleanings 拾起, /review 复习,
+ * /cards 卡片, /settings 设置, anything else the 书架.
  * /settings 设置, anything else the 书架.
  */
 function route(path: string): {
@@ -27,6 +30,7 @@ function route(path: string): {
   listen: boolean;
   library: boolean;
   gleanings: boolean;
+  review: boolean;
   cards: boolean;
   settings: boolean;
 } {
@@ -36,6 +40,7 @@ function route(path: string): {
     listen: listen !== undefined,
     library: path === "/library",
     gleanings: path === "/gleanings",
+    review: path === "/review",
     cards: path === "/cards",
     settings: path === "/settings",
   };
@@ -104,7 +109,7 @@ export function App() {
     }
   }
 
-  const { bookId, listen, library, gleanings, cards, settings } = route(path);
+  const { bookId, listen, library, gleanings, review, cards, settings } = route(path);
   const { email } = session.user;
   // The listening session outlives the pages (【返回书架】 keeps playing) and ends with logging out.
   return (
@@ -114,13 +119,18 @@ export function App() {
           // The 专注页 takes the whole window, without the app's header.
           <ListenPage id={bookId} />
         ) : (
-          <Shell email={email} section={gleanings ? "gleanings" : cards ? "cards" : settings ? "settings" : "shelf"}>
+          <Shell
+            email={email}
+            section={gleanings ? "gleanings" : review ? "review" : cards ? "cards" : settings ? "settings" : "shelf"}
+          >
             {bookId ? (
               <BookPage id={bookId} />
             ) : library ? (
               <LibraryPage />
             ) : gleanings ? (
               <GleaningsPage />
+            ) : review ? (
+              <ReviewPage />
             ) : cards ? (
               <CardsPage />
             ) : settings ? (
@@ -138,8 +148,8 @@ export function App() {
 /**
  * The app around a page (design 03-2): the sidebar with the brand, the navigation, the 当前收听 entry while
  * there is a listening session, and the account, which opens 设置 (design 08-1); on a phone it becomes a bar above
- * the page. 书架, 拾起 and 卡片 so far; 复习 joins them with its ticket. 拾起 shows how many Sentences wait
- * there (PRD 4.4.4 计数).
+ * the page. 拾起 shows how many Sentences wait there (PRD 4.4.4 计数), 复习 how many Cards today's queue holds
+ * (PRD F13).
  */
 function Shell({
   email,
@@ -148,10 +158,11 @@ function Shell({
 }: {
   email: string;
   /** The navigation entry of the page shown; the account entry stands for 设置. */
-  section: "shelf" | "gleanings" | "cards" | "settings";
+  section: "shelf" | "gleanings" | "review" | "cards" | "settings";
   children: ReactNode;
 }) {
   const badge = badgeText(useGleaningCount());
+  const reviewBadge = badgeText(useReviewCount());
   const item = (name: typeof section) => ({
     className: section === name ? "side-item is-active" : "side-item",
     "aria-current": section === name ? ("page" as const) : undefined,
@@ -173,6 +184,11 @@ function Shell({
             <LeafIcon size={20} />
             拾起
             {badge && <span className="side-badge">{badge}</span>}
+          </a>
+          <a href="/review" {...item("review")}>
+            <GraduationCapIcon />
+            复习
+            {reviewBadge && <span className="side-badge">{reviewBadge}</span>}
           </a>
           <a href="/cards" {...item("cards")}>
             <LayersIcon />
