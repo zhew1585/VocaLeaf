@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getBook, type BookDetail } from "../api";
 import { PauseSolidIcon, PlaySolidIcon } from "../icons";
+import { usePresence } from "../motion";
 import { followLink } from "../router";
 import { defaultCoverColor } from "../shelf/BookCover";
 import { useListening } from "./session";
@@ -33,16 +34,24 @@ function useSessionBook(bookId: string | null): BookDetail | null {
  */
 export function NowListening() {
   const { bookId, playing, chapterId, toggle } = useListening();
-  const book = useSessionBook(bookId);
+  // It rises in once the session's Book is loaded, and sinks away when the session ends.
+  const { value: book, exiting } = usePresence(useSessionBook(bookId));
   if (!book) return null;
 
   const chapter = book.chapters.find((c) => c.id === chapterId)?.title;
   return (
-    <section className={`now-listening${playing ? " is-playing" : ""}`} aria-label="当前收听">
+    <section
+      className={["now-listening", playing && "is-playing", exiting && "is-exiting"].filter(Boolean).join(" ")}
+      aria-label="当前收听"
+    >
       <button type="button" className="now-cover" aria-label={playing ? "暂停" : "继续播放"} onClick={toggle}>
         <span className="now-cover-art" style={book.coverUrl ? undefined : { background: defaultCoverColor(book.id) }}>
           {book.coverUrl && <img src={book.coverUrl} alt="" />}
-          <span className="now-cover-control">{playing ? <PauseSolidIcon size={15} /> : <PlaySolidIcon size={15} />}</span>
+          <span className="now-cover-control">
+            <span key={playing ? "pause" : "play"} className="icon-swap">
+              {playing ? <PauseSolidIcon size={15} /> : <PlaySolidIcon size={15} />}
+            </span>
+          </span>
         </span>
       </button>
       <a href={`/books/${book.id}/listen`} className="now-info" title={book.title} onClick={followLink}>

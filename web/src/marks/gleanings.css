@@ -31,6 +31,7 @@
 }
 
 .gleanings-empty {
+  animation: fade-in var(--motion-pop) var(--ease-out);
   margin: 48px 0 0;
   color: var(--ink-2);
   font-size: 15px;
@@ -59,6 +60,16 @@
   padding: 14px 16px;
   border: 1px solid transparent;
   border-radius: 16px;
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out);
+  animation: fade-in var(--motion-pop) var(--ease-out);
+}
+
+/* Dismissed or made into a Card: it fades and the list closes up under it. */
+.gleaning.is-exiting {
+  overflow: hidden;
+  animation: collapse-out var(--motion-exit) var(--ease-in) forwards;
 }
 
 .gleaning.is-selected {
@@ -110,11 +121,16 @@
   display: grid;
   place-items: center;
   cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    opacity var(--motion-fast) var(--ease-out);
 }
 
 .gleaning-play {
   background: var(--leaf);
   color: var(--surface);
+  animation: scale-in var(--motion-fast) var(--ease-out);
 }
 
 .gleaning-play:disabled {
@@ -140,6 +156,11 @@
   height: 100vh;
 }
 
+/* Back from the 卡片浮窗: 句子精读 fades in where it was. */
+.gleaning-panel {
+  animation: fade-in var(--motion-pop) var(--ease-out);
+}
+
 .gleaning-panel > .sentence-panel {
   width: auto;
   height: 100%;
@@ -156,6 +177,8 @@
   font: inherit;
   font-size: 13px;
   cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-out);
+  animation: fade-in var(--motion-pop) var(--ease-out);
 }
 
 .pill-action:hover {

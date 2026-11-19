@@ -47,6 +47,25 @@
   font-size: 15px;
 }
 
+/* Another Sentence picked: its text, actions and chat fade in. */
+.panel-fixed,
+.sentence-panel-empty,
+.chat-scroll > * {
+  animation: fade-in var(--motion-pop) var(--ease-out);
+}
+
+/* A message said, or the start of an answer, rises in a little. */
+.chat-user,
+.chat-answer-block {
+  --rise: 6px;
+  animation: rise-in var(--motion-pop) var(--ease-out);
+}
+
+/* An answer streams in line by line, each line fading in as it starts. */
+.md-section > * {
+  animation: fade-in var(--motion-pop) var(--ease-out);
+}
+
 .panel-fixed {
   display: flex;
   flex-direction: column;
@@ -116,6 +135,10 @@
   background: var(--paper);
   color: var(--ink-2);
   cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    opacity var(--motion-fast) var(--ease-out);
 }
 
 .panel-action:disabled {
@@ -264,7 +287,7 @@
   background: var(--ink-3);
 }
 
-.chat-answer-pending {
+.chat-answer-block {
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -285,9 +308,11 @@
   height: 5px;
   border-radius: 50%;
   background: var(--leaf);
+  animation: breathe 1.4s ease-in-out infinite;
 }
 
 .chat-error {
+  animation: fade-in var(--motion-pop) var(--ease-out);
   margin: 0;
   color: var(--danger);
   font-size: 13px;
@@ -322,6 +347,12 @@
   justify-content: space-between;
   gap: 12px;
   padding-left: 8px;
+  animation: fade-in var(--motion-pop) var(--ease-out);
+}
+
+.chat-quick.is-exiting,
+.chat-new-reply.is-exiting {
+  animation: fade-out var(--motion-exit) var(--ease-in) forwards;
 }
 
 .chat-chip {
@@ -337,6 +368,7 @@
   font: inherit;
   font-size: 13px;
   cursor: pointer;
+  transition: opacity var(--motion-fast) var(--ease-out);
 }
 
 .chat-chip:disabled {
@@ -346,6 +378,7 @@
 
 .chat-new-reply {
   align-self: center;
+  animation: rise-in var(--motion-pop) var(--ease-out);
 }
 
 .chat-quota {
@@ -399,6 +432,9 @@
   background: var(--leaf);
   color: var(--surface);
   cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
 }
 
 .ask-send:disabled {

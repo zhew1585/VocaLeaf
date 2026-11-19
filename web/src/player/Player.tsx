@@ -1,5 +1,6 @@
 import { LeafIcon, LoaderIcon, NextSentenceIcon, PauseSolidIcon, PlaySolidIcon, ReplayIcon } from "../icons";
 import "../marks/marks.css";
+import { usePresence } from "../motion";
 import { SleepMenu, SpeedMenu } from "./PlayerMenus";
 import { Progress } from "./Progress";
 import { useListening } from "./session";
@@ -29,13 +30,15 @@ export function Player({ totalSeconds = null, notice = null, onMark }: PlayerPro
   const { playing, position, playable, error, needsTap, offline, toggle, replay, next, seek } = useListening();
   const shownNotice = offline ? OFFLINE_NOTICE : needsTap ? TAP_TO_PLAY : notice;
   const waitingNotice = !offline && !needsTap;
+  // The notice fades away once it no longer applies, still saying what it said.
+  const noticeShown = usePresence(shownNotice && { text: shownNotice, waiting: waitingNotice });
 
   return (
     <div className="player">
-      {shownNotice && (
-        <p className="player-notice" role="status">
-          {waitingNotice && <LoaderIcon />}
-          {shownNotice}
+      {noticeShown.value && (
+        <p className={noticeShown.exiting ? "player-notice is-exiting" : "player-notice"} role="status">
+          {noticeShown.value.waiting && <LoaderIcon />}
+          {noticeShown.value.text}
         </p>
       )}
       <div className="player-controls">
@@ -48,7 +51,9 @@ export function Player({ totalSeconds = null, notice = null, onMark }: PlayerPro
             <ReplayIcon />
           </button>
           <button type="button" className="play-button" aria-label={playing ? "暂停" : "播放"} onClick={toggle}>
-            {playing ? <PauseSolidIcon /> : <PlaySolidIcon />}
+            <span key={playing ? "pause" : "play"} className="icon-swap">
+              {playing ? <PauseSolidIcon /> : <PlaySolidIcon />}
+            </span>
           </button>
           <button type="button" className="player-icon-button" aria-label="下一句" onClick={next}>
             <NextSentenceIcon />

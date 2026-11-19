@@ -13,6 +13,7 @@
   font-size: 14px;
   white-space: nowrap;
   cursor: pointer;
+  transition: filter var(--motion-fast) var(--ease-out);
 }
 
 .mark-button svg {
@@ -53,6 +54,11 @@
   color: var(--surface);
   font-size: 14px;
   box-shadow: 0 8px 20px rgb(28 33 29 / 0.25);
+  animation: rise-in var(--motion-pop) var(--ease-out);
+}
+
+.mark-toast.is-exiting {
+  animation: rise-out var(--motion-exit) var(--ease-in) forwards;
 }
 
 .mark-toast > svg {

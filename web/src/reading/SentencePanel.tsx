@@ -13,6 +13,7 @@ import {
   TextCursorInputIcon,
   Volume2Icon,
 } from "../icons";
+import { usePresence } from "../motion";
 import { SentenceChat } from "./SentenceChat";
 import "./sentence-panel.css";
 
@@ -80,6 +81,8 @@ function FixedSentence({ sentence, cards, onOpenCards, onCardMade }: FixedSenten
   // The Target being made into a Card, kept while the selection may go (MakeCardButton onHold).
   const [held, setHeld] = useState<SelectedTarget | null>(null);
   const making = held ?? selection.selected;
+  // 【制作卡片】 fades away with the selection rather than vanishing.
+  const makeButton = usePresence(making);
   const onSelectionEnd = () => {
     setHeld(null);
     selection.update();
@@ -105,11 +108,12 @@ function FixedSentence({ sentence, cards, onOpenCards, onCardMade }: FixedSenten
       >
         <CardText text={text} cards={cards} />
       </p>
-      {making && (
+      {makeButton.value && (
         <MakeCardButton
-          key={`${making.start}-${making.end}`}
+          key={`${makeButton.value.start}-${makeButton.value.end}`}
+          exiting={makeButton.exiting}
           sentenceId={sentence.id}
-          selected={making}
+          selected={makeButton.value}
           onHold={(hold) => setHeld(hold ? making : null)}
           onMade={(made) => {
             setHeld(null);
@@ -121,7 +125,9 @@ function FixedSentence({ sentence, cards, onOpenCards, onCardMade }: FixedSenten
       {overflowing && (
         <button type="button" className="panel-sentence-fold" onClick={() => setExpanded((e) => !e)}>
           {expanded ? "收起原句" : "展开原句"}
-          {expanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
+          <span key={expanded ? "up" : "down"} className="icon-swap">
+            {expanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
+          </span>
         </button>
       )}
     </div>

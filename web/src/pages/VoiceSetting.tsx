@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { changeVoice, type BookDetail, type Voice } from "../api";
 import { CheckIcon, ChevronDownIcon, MicVocalIcon } from "../icons";
+import { usePresence } from "../motion";
 import { isWorking } from "../useBook";
 import { voiceName, VOICES } from "../voices";
 
@@ -20,6 +21,7 @@ function lockedReason(book: BookDetail): string | null {
  */
 export function VoiceSetting({ book, onChanged }: { book: BookDetail; onChanged(): void }) {
   const [open, setOpen] = useState(false);
+  const menu = usePresence(open);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
@@ -74,8 +76,8 @@ export function VoiceSetting({ book, onChanged }: { book: BookDetail; onChanged(
         </span>
         <ChevronDownIcon size={16} />
       </button>
-      {open && (
-        <div className="voice-menu" role="menu" aria-label="更换音色">
+      {menu.value && (
+        <div className={menu.exiting ? "voice-menu is-exiting" : "voice-menu"} role="menu" aria-label="更换音色">
           {VOICES.map(({ id, name }) => (
             <button
               key={id}

@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { markPlayGuideSeen } from "../api";
 import { HeadphonesIcon, LeafIcon, NextSentenceIcon, ReplayIcon } from "../icons";
+import { usePresence } from "../motion";
 import "./guide.css";
 
 /**
@@ -30,6 +31,7 @@ export function usePlayGuide(): PlayGuide {
 export function PlayGuideProvider({ seen: seenAtStart, children }: { seen: boolean; children: ReactNode }) {
   const [seen, setSeen] = useState(seenAtStart);
   const [open, setOpen] = useState<{ onStart?: () => void } | null>(null);
+  const dialog = usePresence(open !== null);
   const show = useCallback((onStart?: () => void) => setOpen({ onStart }), []);
   const hide = useCallback(() => setOpen(null), []);
 
@@ -49,7 +51,7 @@ export function PlayGuideProvider({ seen: seenAtStart, children }: { seen: boole
   return (
     <PlayGuideContext.Provider value={value}>
       {children}
-      {open && <PlayGuideDialog onStart={start} />}
+      {dialog.value && <PlayGuideDialog exiting={dialog.exiting} onStart={start} />}
     </PlayGuideContext.Provider>
   );
 }
@@ -88,13 +90,13 @@ function Gesture({
 
 /**
  * The guide's dialog (design 01 首次播放引导, with PRD V1.6 over the design: a frosted backdrop, 标记 first and
- * highlighted, 重听 replays the Sentence). Centred on the whole page; only 【开始听】 closes it.
+ * highlighted, 重听 replays the Sentence). Centred on the whole page; only 【开始听】 closes it, and it fades away.
  */
-function PlayGuideDialog({ onStart }: { onStart(): void }) {
+function PlayGuideDialog({ exiting, onStart }: { exiting: boolean; onStart(): void }) {
   const startButton = useRef<HTMLButtonElement>(null);
   useEffect(() => startButton.current?.focus(), []);
   return (
-    <div className="guide-backdrop">
+    <div className={exiting ? "guide-backdrop is-exiting" : "guide-backdrop"}>
       <div className="guide-dialog" role="dialog" aria-modal="true" aria-labelledby="play-guide-title">
         <h2 id="play-guide-title" className="guide-heading">
           没听懂？按一下

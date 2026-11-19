@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 interface Props {
   title: string;
@@ -12,14 +13,17 @@ interface Props {
   onCancel(): void;
   /** Called once `run` succeeded. */
   onDone(): void;
+  /** On its way out (usePresence): it fades away and takes no clicks. */
+  exiting?: boolean;
 }
 
 /**
  * A second confirmation in the design's shared dialog style (paper, 取消 sunken + ink confirm): 取消 (also Escape or a
  * click outside) keeps things as they are, the confirm button runs the action. Used by deleting a Book or a Card and
- * by Dismiss.
+ * by Dismiss. Rendered over the whole page (in the body), so nothing around where it is used, such as a panel
+ * sliding away, moves or fades it.
  */
-export function ConfirmDialog({ title, text, confirmLabel, run, failure, onCancel, onDone }: Props) {
+export function ConfirmDialog({ title, text, confirmLabel, run, failure, onCancel, onDone, exiting = false }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cancelButton = useRef<HTMLButtonElement>(null);
@@ -44,8 +48,11 @@ export function ConfirmDialog({ title, text, confirmLabel, run, failure, onCance
     if (!busy) onCancel();
   };
 
-  return (
-    <div className="confirm-backdrop" onClick={(e) => e.target === e.currentTarget && cancel()}>
+  return createPortal(
+    <div
+      className={exiting ? "confirm-backdrop is-exiting" : "confirm-backdrop"}
+      onClick={(e) => e.target === e.currentTarget && cancel()}
+    >
       <div
         className="confirm-dialog"
         role="alertdialog"
@@ -74,6 +81,7 @@ export function ConfirmDialog({ title, text, confirmLabel, run, failure, onCance
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

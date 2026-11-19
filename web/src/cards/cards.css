@@ -21,13 +21,21 @@
   position: relative;
 }
 
+/* It grows out under the selection and fades away with it. */
 .make-card {
+  --rise: -4px;
+  transform-origin: 0 0;
+  animation: scale-in var(--motion-pop) var(--ease-out);
   position: absolute;
   z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
+}
+
+.make-card.is-exiting {
+  animation: scale-out var(--motion-exit) var(--ease-in) forwards;
 }
 
 .make-card-button {
@@ -46,6 +54,7 @@
   white-space: nowrap;
   box-shadow: 0 8px 20px rgb(28 33 29 / 0.25);
   cursor: pointer;
+  transition: opacity var(--motion-fast) var(--ease-out);
 }
 
 .make-card-button:disabled {
@@ -63,6 +72,7 @@
 }
 
 .make-card-error {
+  animation: fade-in var(--motion-pop) var(--ease-out);
   margin: 0;
   padding: 6px 10px;
   border-radius: 8px;
@@ -72,8 +82,14 @@
   box-shadow: 0 4px 12px rgb(28 33 29 / 0.12);
 }
 
-/* The 卡片浮窗 (F16, design 01 ⑥): rounded, a light shadow, as tall as its content, scrolling inside past the view. */
+/*
+ * The 卡片浮窗 (F16, design 01 ⑥): rounded, a light shadow, as tall as its content, scrolling inside past the view.
+ * It grows in from the top of the right area.
+ */
 .card-popover {
+  --rise: -6px;
+  transform-origin: 50% 0;
+  animation: scale-in var(--motion-pop) var(--ease-out);
   max-height: 100%;
   overflow-y: auto;
   padding: 20px 24px 24px;
@@ -245,6 +261,9 @@
   font: inherit;
   font-size: 13px;
   cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    opacity var(--motion-fast) var(--ease-out);
 }
 
 .card-round {
@@ -272,6 +291,16 @@
   background: var(--sunken);
 }
 
+/* Opening a Card from the list, its detail comes in from the right; 【返回列表】, the list from the left. */
+.card-detail.is-switched,
+.card-list.is-switched {
+  animation: slide-in var(--motion-pop) var(--ease-out);
+}
+
+.card-list.is-switched {
+  --slide: -12px;
+}
+
 /* 【这里有 N 张卡片】 */
 .card-list ul {
   margin: 0;
@@ -292,6 +321,7 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out);
 }
 
 .card-row-main {

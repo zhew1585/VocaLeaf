@@ -9,6 +9,11 @@
   background: rgb(28 33 29 / 0.28);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  animation: fade-in var(--motion-panel) var(--ease-out);
+}
+
+.guide-backdrop.is-exiting {
+  animation: fade-out var(--motion-exit) var(--ease-in) forwards;
 }
 
 .guide-dialog {
@@ -22,6 +27,12 @@
   border-radius: 28px;
   background: var(--paper);
   box-shadow: 0 24px 60px rgb(28 33 29 / 0.3);
+  --rise: 10px;
+  animation: scale-in var(--motion-panel) var(--ease-out);
+}
+
+.guide-backdrop.is-exiting > .guide-dialog {
+  animation: scale-out var(--motion-exit) var(--ease-in) forwards;
 }
 
 /* The scrollbar stops short of the rounded corners. */

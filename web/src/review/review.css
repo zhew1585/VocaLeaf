@@ -7,6 +7,7 @@
 }
 
 .review-column {
+  animation: fade-in var(--motion-panel) var(--ease-out);
   width: 100%;
   max-width: 640px;
   display: flex;
@@ -27,6 +28,7 @@
   place-items: center;
   color: var(--ink-2);
   border-radius: 6px;
+  transition: color var(--motion-fast) var(--ease-out);
 }
 
 .review-exit:hover {
@@ -46,7 +48,7 @@
   height: 100%;
   border-radius: 2px;
   background: var(--leaf);
-  transition: width 0.25s ease;
+  transition: width var(--motion-panel) var(--ease-in-out);
 }
 
 .review-count {
@@ -67,7 +69,13 @@
   box-shadow: 0 16px 40px #1c211d12;
 }
 
+/*
+ * The next Card slides in from the right; showing the answer turns the Card over, a slight turn and no more,
+ * with the ratings rising in under it.
+ */
 .review-card.is-front {
+  --slide: 16px;
+  animation: slide-in var(--motion-panel) var(--ease-out);
   align-items: center;
   justify-content: center;
   gap: 40px;
@@ -76,6 +84,15 @@
 
 .review-card.is-back {
   gap: 32px;
+  transform-origin: 50% 50%;
+  animation: turn-in var(--motion-panel) var(--ease-out);
+}
+
+@keyframes turn-in {
+  from {
+    opacity: 0;
+    transform: perspective(1600px) rotateY(-8deg);
+  }
 }
 
 /* The big 原声 button; its halo shows while the audio plays. */
@@ -85,7 +102,7 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  transition: background 0.2s ease;
+  transition: background-color var(--motion-pop) var(--ease-out);
 }
 
 .review-halo.is-playing {
@@ -155,6 +172,7 @@
   font-size: 16px;
   font-weight: 500;
   cursor: pointer;
+  animation: fade-in var(--motion-pop) var(--ease-out);
 }
 
 .review-key {
@@ -303,6 +321,7 @@
 
 /* The four ratings, 记得 filled as the default answer. */
 .review-ratings {
+  animation: rise-in var(--motion-panel) var(--ease-out) var(--motion-follow) backwards;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
@@ -320,6 +339,7 @@
   font-family: var(--font-ui);
   text-align: left;
   cursor: pointer;
+  transition: opacity var(--motion-fast) var(--ease-out);
 }
 
 .review-rate:disabled {
@@ -391,7 +411,9 @@
   text-align: center;
 }
 
+/* 今日复习完成: the leaf settles in, then the words. */
 .review-done-mark {
+  animation: scale-in var(--motion-panel) var(--ease-out);
   width: 176px;
   height: 176px;
   display: grid;
@@ -447,4 +469,8 @@
   .review-ratings {
     grid-template-columns: repeat(2, 1fr);
   }
+}
+
+.review-done > :not(.review-done-mark) {
+  animation: rise-in var(--motion-panel) var(--ease-out) var(--motion-follow) backwards;
 }

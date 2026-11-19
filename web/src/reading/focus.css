@@ -37,16 +37,22 @@
   color: var(--ink);
 }
 
-/* ① The Chapter directory */
+/* ① The Chapter directory: slides in from the left edge and back, the text column following it. */
 .directory {
-  width: 264px;
+  --side: 264px;
+  width: var(--side);
   flex-shrink: 0;
+  animation: side-in-left var(--motion-panel) var(--ease-out);
   display: flex;
   flex-direction: column;
   gap: 8px;
   padding: 20px 12px 16px;
   border-right: 1px solid var(--line);
   background: var(--surface);
+}
+
+.directory.is-exiting {
+  animation: side-out-left var(--motion-exit-panel) var(--ease-in) forwards;
 }
 
 /* Design 01 ①: a 32 px leaf circle with the arrow, then 返回书架. */
@@ -59,6 +65,7 @@
   color: var(--ink-2);
   font-size: 13px;
   text-decoration: none;
+  transition: color var(--motion-fast) var(--ease-out);
 }
 
 .shelf-back-icon {
@@ -69,7 +76,7 @@
   border-radius: 50%;
   background: var(--leaf);
   color: var(--surface);
-  transition: background-color 0.15s ease;
+  transition: background-color var(--motion-fast) var(--ease-out);
 }
 
 .shelf-back:hover {
@@ -91,11 +98,13 @@
   box-shadow: 0 6px 16px rgb(38 62 45 / 0.16);
 }
 
+/* The directory collapsed: 返回书架 alone, coming in as the directory goes. */
 .directory-collapsed {
   position: absolute;
   z-index: 3;
   top: 24px;
   left: 24px;
+  animation: scale-in var(--motion-pop) var(--ease-out) var(--motion-follow) backwards;
 }
 
 .directory-label {
@@ -130,6 +139,9 @@
   font-size: 14px;
   text-align: left;
   cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
 }
 
 .directory-item:hover {
@@ -301,6 +313,7 @@
 .directory-progress-fill {
   height: 100%;
   background: var(--leaf);
+  transition: width var(--motion-panel) var(--ease-in-out);
 }
 
 /* ② The reading area: Chapters one after another, each title sticking while it is read */
@@ -326,7 +339,7 @@
   margin: 0 auto;
   /* room for the floating player under the last Sentence */
   padding-bottom: 50vh;
-  transition: width 0.2s ease;
+  transition: width var(--motion-panel) var(--ease-in-out);
 }
 
 .reading-heading {
@@ -372,7 +385,7 @@
 .reading-chevron {
   color: var(--ink-3);
   font-size: 22px;
-  transition: transform 0.2s ease;
+  transition: transform var(--motion-panel) var(--ease-in-out);
 }
 
 .reading-title[aria-expanded="false"] .reading-chevron {
@@ -390,7 +403,9 @@
 
 .sentence {
   border-radius: 6px;
-  transition: background-color 0.2s ease;
+  transition:
+    background-color var(--motion-pop) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out);
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
@@ -450,6 +465,7 @@
   place-items: center;
   transform: translateY(-50%);
   cursor: pointer;
+  animation: fade-in var(--motion-fast) var(--ease-out);
 }
 
 .play-from-here-dot {
@@ -490,7 +506,7 @@
 .reading-dock > * {
   width: min(var(--column), 100% - 32px - 2 * var(--scrollbar-size));
   pointer-events: auto;
-  transition: width 0.2s ease;
+  transition: width var(--motion-panel) var(--ease-in-out);
 }
 
 .reading-dock > .follow-button,
@@ -512,6 +528,31 @@
   font-size: 13px;
   box-shadow: 0 6px 16px rgb(38 62 45 / 0.1);
   cursor: pointer;
+  animation: rise-in var(--motion-pop) var(--ease-out);
+}
+
+.follow-button.is-exiting {
+  animation: rise-out var(--motion-exit) var(--ease-in) forwards;
+}
+
+/*
+ * The right area: 句子精读 or the 卡片浮窗 in its place. It slides in from the right edge and back, the text column
+ * following it; one taking the other's place fades in.
+ */
+.focus-side {
+  --side: 440px;
+  width: var(--side);
+  flex-shrink: 0;
+  display: flex;
+  animation: side-in-right var(--motion-panel) var(--ease-out);
+}
+
+.focus-side.is-exiting {
+  animation: side-out-right var(--motion-exit-panel) var(--ease-in) forwards;
+}
+
+.focus-side > .sentence-panel {
+  animation: fade-in var(--motion-pop) var(--ease-out);
 }
 
 /* The 卡片浮窗 (F16) in the right area, in place of 句子精读: 400 wide with 20 px either side and 24 px on top. */
@@ -522,23 +563,27 @@
   overflow: hidden;
 }
 
-/* 句子精读 (collapsed by default, AC-READ-14) */
+/* 句子精读's toggle while it is collapsed (by default, AC-READ-14); it comes in as the panel goes. */
 .panel-toggle {
   position: absolute;
   z-index: 3;
   top: 28px;
   right: 24px;
+  animation: scale-in var(--motion-pop) var(--ease-out) var(--motion-follow) backwards;
 }
 
 /* Narrow windows: the side panels lie over the reading area. */
 @media (max-width: 900px) {
   .directory,
-  .focus .sentence-panel,
-  .focus .card-popover-area {
+  .focus-side {
     position: absolute;
     z-index: 4;
     top: 0;
     bottom: 0;
+  }
+
+  .directory,
+  .focus .sentence-panel {
     box-shadow: 0 0 32px rgb(38 62 45 / 0.12);
   }
 
@@ -546,15 +591,14 @@
     left: 0;
   }
 
-  .focus .sentence-panel,
-  .focus .card-popover-area {
+  .focus-side {
+    --side: min(440px, 100%);
     right: 0;
-    width: min(440px, 100%);
   }
 
-  .focus .card-popover-area {
-    background: transparent;
-    box-shadow: none;
+  .focus-side > .sentence-panel,
+  .focus-side > .card-popover-area {
+    width: 100%;
   }
 
   .reading-content {

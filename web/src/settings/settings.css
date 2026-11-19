@@ -81,6 +81,9 @@
   color: var(--danger);
   font-size: 14px;
   cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    opacity var(--motion-fast) var(--ease-out);
 }
 
 .sign-out:hover:not(:disabled) {
@@ -137,11 +140,13 @@
   background: var(--sunken);
 }
 
+/* Fills from empty once the quotas load. */
 .meter-fill {
   display: block;
   height: 100%;
   border-radius: 2px;
   background: var(--leaf);
+  transition: width var(--motion-panel) var(--ease-out);
 }
 
 .guide-link {
@@ -154,6 +159,7 @@
   color: var(--ink-2);
   text-align: left;
   cursor: pointer;
+  transition: border-color var(--motion-fast) var(--ease-out);
 }
 
 .guide-link:hover {

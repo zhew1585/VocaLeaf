@@ -138,7 +138,8 @@ export function ChapterList({
           ) : (
             <span className="chapter-title">{c.title}</span>
           )}
-          <ChapterState chapter={c} />
+          {/* Keyed by state, so a new state fades in (a retried Chapter going 等待生成, 生成中, …). */}
+          <ChapterState key={c.skipped ? "skipped" : c.audioStatus} chapter={c} />
           {editable && c.audioStatus === "failed" && !c.skipped && <RetryButton chapter={c} onChanged={onChanged} />}
           {editable && <NarrationSwitch chapter={c} locked={voiceChanging} onChanged={onChanged} />}
         </li>

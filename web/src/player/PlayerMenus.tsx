@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CheckIcon, MoonIcon } from "../icons";
+import { usePresence } from "../motion";
 import { SLEEP_MINUTES, type SleepChoice } from "./sleep";
 import { SPEEDS, speedLabel } from "./speed";
 import { useListening } from "./session";
 
 /**
  * A button with a menu that opens above it (design 01 ④). The menu closes on a pick, on Esc and on a press
- * outside it.
+ * outside it; it grows out of the button and fades back into it.
  */
 function MenuButton({
   label,
@@ -20,6 +21,7 @@ function MenuButton({
   children: (close: () => void) => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const menu = usePresence(open);
   const root = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -48,8 +50,8 @@ function MenuButton({
       >
         {button}
       </button>
-      {open && (
-        <div className="player-popover" role="menu" aria-label={label}>
+      {menu.value && (
+        <div className={menu.exiting ? "player-popover is-exiting" : "player-popover"} role="menu" aria-label={label}>
           {children(() => setOpen(false))}
         </div>
       )}

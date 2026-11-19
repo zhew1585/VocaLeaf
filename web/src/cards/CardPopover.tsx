@@ -29,6 +29,9 @@ interface Props {
 export function CardPopover({ cards, onClose, onStudySentence, onCardChanged, audio }: Props) {
   const box = useRef<HTMLElement>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  // Whether the user switched between the list and a Card's detail: the one shown then comes in from its side
+  // (not on first showing).
+  const [switched, setSwitched] = useState(false);
   const listScroll = useRef(0);
   const single = cards.length === 1 ? cards[0]! : null;
   const open = single ?? cards.find((c) => c.id === openId) ?? null;
@@ -49,6 +52,7 @@ export function CardPopover({ cards, onClose, onStudySentence, onCardChanged, au
 
   const openCard = (id: string) => {
     listScroll.current = box.current?.scrollTop ?? 0;
+    setSwitched(true);
     setOpenId(id);
   };
 
@@ -56,7 +60,14 @@ export function CardPopover({ cards, onClose, onStudySentence, onCardChanged, au
     <aside ref={box} className="card-popover" aria-label="卡片浮窗">
       <header className="card-popover-header">
         {open && !single ? (
-          <button type="button" className="card-popover-back" onClick={() => setOpenId(null)}>
+          <button
+            type="button"
+            className="card-popover-back"
+            onClick={() => {
+              setSwitched(true);
+              setOpenId(null);
+            }}
+          >
             <ArrowLeftIcon size={16} />
             返回列表
           </button>
@@ -68,9 +79,15 @@ export function CardPopover({ cards, onClose, onStudySentence, onCardChanged, au
         </button>
       </header>
       {open ? (
-        <CardDetail card={open} audio={audio} onStudySentence={onStudySentence} onCardChanged={onCardChanged} />
+        <CardDetail
+          card={open}
+          switched={switched}
+          audio={audio}
+          onStudySentence={onStudySentence}
+          onCardChanged={onCardChanged}
+        />
       ) : (
-        <CardList cards={cards} onOpen={openCard} onStudySentence={onStudySentence} />
+        <CardList cards={cards} switched={switched} onOpen={openCard} onStudySentence={onStudySentence} />
       )}
     </aside>
   );
@@ -86,9 +103,19 @@ function StudySentenceButton({ onClick }: { onClick(): void }) {
 }
 
 /** 【这里有 N 张卡片】: one row per Card with its Target, meaning and next Review. */
-function CardList({ cards, onOpen, onStudySentence }: { cards: Card[]; onOpen(id: string): void; onStudySentence(): void }) {
+function CardList({
+  cards,
+  switched,
+  onOpen,
+  onStudySentence,
+}: {
+  cards: Card[];
+  switched: boolean;
+  onOpen(id: string): void;
+  onStudySentence(): void;
+}) {
   return (
-    <div className="card-list">
+    <div className={switched ? "card-list is-switched" : "card-list"}>
       <p className="card-meta">这里有 {cards.length} 张卡片</p>
       <ul aria-label="卡片列表">
         {cards.map((c) => (
@@ -113,16 +140,18 @@ function CardList({ cards, onOpen, onStudySentence }: { cards: Card[]; onOpen(id
 
 interface DetailProps {
   card: Card;
+  /** Opened from the list: it comes in from the right. */
+  switched: boolean;
   audio: CardAudio;
   onStudySentence(): void;
   onCardChanged(card: Card): void;
 }
 
 /** One Card (F16 单卡): kind and next Review, the Sentence, the Target and its back, 卡片原声 and 精读原句. */
-function CardDetail({ card, audio, onStudySentence, onCardChanged }: DetailProps) {
+function CardDetail({ card, switched, audio, onStudySentence, onCardChanged }: DetailProps) {
   const playing = audio.state?.id === card.id ? audio.state : null;
   return (
-    <div className="card-detail">
+    <div className={switched ? "card-detail is-switched" : "card-detail"}>
       <p className="card-meta">
         {KIND_LABELS[card.targetKind]} · {dueLabel(card.due)}
       </p>

@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ArrowDownIcon, ArrowUpIcon, RotateCwIcon, SparklesIcon } from "../icons";
+import { usePresence } from "../motion";
 import { AI_QUOTA_MESSAGE, useSentenceChat, type SentenceChat as Chat } from "./chatStore";
 
 /** The user message 【AI 解析】 sends (PRD 4.5.1 #2). */
@@ -103,25 +104,27 @@ function ChatLog({ chat, canRegenerate, onRegenerate }: { chat: Chat; canRegener
           onRegenerate={chat.content !== null && canRegenerate ? onRegenerate : undefined}
         />
       )}
-      {chat.messages.map((m, i) =>
+      {/* The question being answered and its reply come last, in the places they keep once saved, so they stay
+          the same elements and do not fade in again. */}
+      {[
+        ...chat.messages.map((m) => ({ ...m, replying: false })),
+        ...(pending?.kind === "ask"
+          ? [
+              { role: "user" as const, content: pending.question, replying: false },
+              { role: "assistant" as const, content: pending.text, replying: true },
+            ]
+          : []),
+      ].map((m, i) =>
         m.role === "user" ? (
           <Bubble key={i}>{m.content}</Bubble>
         ) : (
-          <div key={i} className="chat-answer">
-            <MarkdownText text={m.content} />
-          </div>
-        ),
-      )}
-      {pending?.kind === "ask" && (
-        <>
-          <Bubble>{pending.question}</Bubble>
-          <div className="chat-answer-pending">
-            <Replying />
+          <div key={i} className="chat-answer-block">
+            {m.replying && <Replying />}
             <div className="chat-answer">
-              <MarkdownText text={pending.text} />
+              <MarkdownText text={m.content} />
             </div>
           </div>
-        </>
+        ),
       )}
       {chat.error && (
         <p className="chat-error" role="alert">
@@ -180,6 +183,11 @@ export function SentenceChat({ sentenceId, children }: { sentenceId: string | nu
 
   const explained = chat.content !== null || chat.pending?.kind === "explain";
   const quickAction = sentenceId !== null && chat.loaded && !explained;
+  // The 【新回复】 chip and the quick row fade away when they are done, showing what they last showed.
+  const newReplyChip = usePresence(newReply);
+  const quick = usePresence(
+    (quickAction || (sentenceId !== null && exhausted)) && { quickAction, exhausted, remaining, busy },
+  );
   const question = draft.trim();
   const canSend = sentenceId !== null && !busy && !exhausted && question !== "";
 
@@ -197,24 +205,33 @@ export function SentenceChat({ sentenceId, children }: { sentenceId: string | nu
         <ChatLog chat={chat} canRegenerate={!busy && !exhausted} onRegenerate={explain} />
       </div>
       <div className="chat-dock">
-        {newReply && (
-          <button type="button" className="chat-chip chat-new-reply" onClick={toBottom}>
+        {newReplyChip.value && (
+          <button
+            type="button"
+            className={newReplyChip.exiting ? "chat-chip chat-new-reply is-exiting" : "chat-chip chat-new-reply"}
+            onClick={toBottom}
+          >
             <ArrowDownIcon />
             新回复
           </button>
         )}
-        {(quickAction || (sentenceId !== null && exhausted)) && (
-          <div className="chat-quick">
-            {quickAction && (
-              <button type="button" className="chat-chip" disabled={busy || exhausted} onClick={explain}>
+        {quick.value && (
+          <div className={quick.exiting ? "chat-quick is-exiting" : "chat-quick"}>
+            {quick.value.quickAction && (
+              <button
+                type="button"
+                className="chat-chip"
+                disabled={quick.value.busy || quick.value.exhausted}
+                onClick={explain}
+              >
                 <SparklesIcon />
                 AI 解析
               </button>
             )}
-            {exhausted ? (
+            {quick.value.exhausted ? (
               <span className="chat-quota is-out">{AI_QUOTA_MESSAGE}</span>
             ) : (
-              remaining !== null && <span className="chat-quota">今日剩余 {remaining}</span>
+              quick.value.remaining !== null && <span className="chat-quota">今日剩余 {quick.value.remaining}</span>
             )}
           </div>
         )}
@@ -229,11 +246,13 @@ export function SentenceChat({ sentenceId, children }: { sentenceId: string | nu
           />
           {busy ? (
             <button type="button" className="ask-send is-stop" aria-label="停止" title="停止" onClick={stop}>
-              <span className="ask-stop-square" />
+              <span className="ask-stop-square icon-swap" />
             </button>
           ) : (
             <button type="submit" className="ask-send" aria-label="发送" title="发送" disabled={!canSend}>
-              <ArrowUpIcon />
+              <span className="icon-swap">
+                <ArrowUpIcon />
+              </span>
             </button>
           )}
         </form>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { listCards, type Card, type CardListItem } from "../api";
 import { SearchIcon } from "../icons";
+import { PANEL_EXIT_MS, useCollapse, usePresence, usePresenceList } from "../motion";
 import { useListening } from "../player/session";
 import { CardDetailPanel } from "./CardDetailPanel";
 import { cardSources, matchesSearch, sourceKey, sourceLabel, type CardSource } from "./cardList";
@@ -9,6 +10,8 @@ import "./cardsPage.css";
 
 const EMPTY = "还没有卡片。在句子精读里选中单词，点【制作卡片】";
 const NO_MATCH = "没有找到匹配的卡片";
+/** The list before it loads; one array, so the list's presence sees no change. */
+const NOT_LOADED: CardListItem[] = [];
 
 /** Every Card of the user, kept as Cards are changed or deleted here. */
 function useCardList() {
@@ -43,7 +46,14 @@ export function CardsPage() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Whether the detail shown took the place of another (it fades in) rather than opening (it slides in).
+  const [swapped, setSwapped] = useState(false);
   const { stopAudition } = useListening();
+  // A deleted Card's row closes up rather than vanishing.
+  const listed = usePresenceList(items ?? NOT_LOADED, (c) => c.id);
+  const selected = items?.find((c) => c.id === selectedId) ?? null;
+  // The detail slides away when closed, and after its Card is deleted.
+  const panel = usePresence(selected, PANEL_EXIT_MS);
 
   // Leaving the page ends a 卡片原声 (PRD 4.4.1 试听 #5).
   useEffect(() => stopAudition, [stopAudition]);
@@ -60,42 +70,48 @@ export function CardsPage() {
   const sources = cardSources(items);
   // A source whose last Card was deleted stops filtering.
   const activeFilter = sources.some((s) => s.key === filter) ? filter : null;
-  const shown = items.filter((c) => (activeFilter === null || sourceKey(c) === activeFilter) && matchesSearch(c, query));
-  const selected = items.find((c) => c.id === selectedId) ?? null;
+  const shown = listed.filter(
+    ({ item: c }) => (activeFilter === null || sourceKey(c) === activeFilter) && matchesSearch(c, query),
+  );
+
+  const detail = panel.value;
 
   /** Another Card, or none: whatever 卡片原声 plays stops. */
   const select = (id: string | null) => {
     if (id !== selectedId) stopAudition();
+    setSwapped(selectedId !== null && id !== null);
     setSelectedId(id);
   };
 
   return (
-    <div className={selected ? "cards-page has-detail" : "cards-page"}>
+    <div className={detail ? "cards-page has-detail" : "cards-page"}>
       <section className="cards-main">
         <CardsHeader count={items.length} query={query} onQuery={setQuery} />
-        {items.length === 0 ? (
+        {/* Empty once the last row has closed up. */}
+        {listed.length === 0 ? (
           <p className="cards-empty">{EMPTY}</p>
         ) : (
           <>
             <SourceFilter sources={sources} value={activeFilter} onChange={setFilter} />
             <ul className="card-items" aria-label="卡片列表">
-              {shown.map((c) => (
-                <CardItem key={c.id} card={c} selected={c.id === selectedId} onSelect={() => select(c.id)} />
+              {shown.map(({ item: c, exiting }) => (
+                <CardItem key={c.id} card={c} exiting={exiting} selected={c.id === selectedId} onSelect={() => select(c.id)} />
               ))}
             </ul>
             {shown.length === 0 && <p className="cards-empty">{NO_MATCH}</p>}
           </>
         )}
       </section>
-      {selected && (
+      {detail && (
         <CardDetailPanel
-          key={selected.id}
-          card={selected}
+          key={detail.id}
+          card={detail}
+          motion={panel.exiting ? "exit" : swapped ? "swap" : "open"}
           onClose={() => select(null)}
           onChanged={replace}
           onDeleted={() => {
             select(null);
-            remove(selected.id);
+            remove(detail.id);
           }}
         />
       )}
@@ -142,9 +158,21 @@ function SourceFilter({ sources, value, onChange }: FilterProps) {
 }
 
 /** One row: Target, meaning, source and next Review (F14). */
-function CardItem({ card, selected, onSelect }: { card: CardListItem; selected: boolean; onSelect(): void }) {
+function CardItem({
+  card,
+  exiting,
+  selected,
+  onSelect,
+}: {
+  card: CardListItem;
+  /** Deleted, closing up before it goes. */
+  exiting: boolean;
+  selected: boolean;
+  onSelect(): void;
+}) {
+  const ref = useCollapse<HTMLLIElement>(exiting);
   return (
-    <li>
+    <li ref={ref} className={exiting ? "card-item-row is-exiting" : "card-item-row"}>
       <button type="button" className="card-item" aria-pressed={selected} onClick={onSelect}>
         <span className="card-item-text">
           <span className="card-item-target">{card.targetText}</span>
