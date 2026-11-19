@@ -12,6 +12,7 @@ import {
   ExplanationSchema,
   type ChatMessage,
   type ExplainEvent,
+  type ExplainRequest,
 } from "../contract.js";
 import type { Db } from "../db/client.js";
 import { books, chapters, explanations, sentences } from "../db/schema.js";
@@ -51,8 +52,8 @@ const postRoute = createRoute({
   },
 });
 
-/** The user's Sentence with the paragraphs around it and its Book, or undefined when it is not theirs. */
-async function loadContext(db: Db, sentenceId: string, userId: string): Promise<SentenceContext | undefined> {
+/** The user's Sentence with its Book's title and author, or undefined when it is not theirs. */
+async function ownSentence(db: Db, sentenceId: string, userId: string) {
   const [row] = await db
     .select({
       text: sentences.text,
@@ -65,6 +66,12 @@ async function loadContext(db: Db, sentenceId: string, userId: string): Promise<
     .innerJoin(chapters, eq(chapters.id, sentences.chapterId))
     .innerJoin(books, eq(books.id, chapters.bookId))
     .where(and(eq(sentences.id, sentenceId), eq(books.ownerId, userId)));
+  return row;
+}
+
+/** The user's Sentence with the paragraphs around it and its Book, or undefined when it is not theirs. */
+async function loadContext(db: Db, sentenceId: string, userId: string): Promise<SentenceContext | undefined> {
+  const row = await ownSentence(db, sentenceId, userId);
   if (!row) return undefined;
   const near = await db
     .select({ paragraphIndex: sentences.paragraphIndex, text: sentences.text })
@@ -80,7 +87,8 @@ async function loadContext(db: Db, sentenceId: string, userId: string): Promise<
     author: row.author,
     sentence: row.text,
     before: paragraph(row.paragraphIndex - 1),
-    paragraph: paragraph(row.paragraphIndex)!,
+    // The Sentence is in its own paragraph, so it is never empty.
+    paragraph: paragraph(row.paragraphIndex) ?? row.text,
     after: paragraph(row.paragraphIndex + 1),
   };
 }
@@ -112,6 +120,45 @@ async function appendMessages(db: Db, key: { userId: string; sentenceId: string 
     });
 }
 
+interface NdjsonStream {
+  stream: ReadableStream<Uint8Array>;
+  /** Aborted once the reader leaves (the client stopped or went away). */
+  stop: AbortController;
+  send(event: ExplainEvent): void;
+  close(): void;
+}
+
+/** A response body of ExplainEvent lines; writes after the reader left are dropped. */
+function ndjsonStream(): NdjsonStream {
+  const stop = new AbortController();
+  const encoder = new TextEncoder();
+  let open = true;
+  let out!: ReadableStreamDefaultController<Uint8Array>;
+  const stream = new ReadableStream<Uint8Array>({
+    start: (controller) => void (out = controller),
+    cancel: () => {
+      open = false;
+      stop.abort();
+    },
+  });
+  return {
+    stream,
+    stop,
+    send: (event) => {
+      if (!open) return;
+      try {
+        out.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+      } catch {
+        open = false;
+      }
+    },
+    close: () => {
+      if (open) out.close();
+      open = false;
+    },
+  };
+}
+
 /** GET and POST /sentences/{id}/explanation. */
 export function explanationRoutes({ db, ai, now = () => new Date() }: AppDeps) {
   const app = new OpenAPIHono<UserEnv>({ defaultHook: validationHook });
@@ -119,7 +166,7 @@ export function explanationRoutes({ db, ai, now = () => new Date() }: AppDeps) {
   app.openapi(getRoute, async (c) => {
     const { id } = c.req.valid("param");
     const userId = c.get("userId");
-    if (!(await loadContext(db, id, userId))) return c.json(sentenceNotFound, 404);
+    if (!(await ownSentence(db, id, userId))) return c.json(sentenceNotFound, 404);
     const saved = await loadExplanation(db, userId, id);
     return c.json({ ...saved, aiRemaining: await aiCallsLeft(db, userId, beijingDay(now())) }, 200);
   });
@@ -140,72 +187,64 @@ export function explanationRoutes({ db, ai, now = () => new Date() }: AppDeps) {
     const day = beijingDay(now());
     if (!(await takeAiCall(db, userId, day))) return c.json(quotaExhausted, 429);
 
-    const key = { userId, sentenceId: id };
-    // Stopped when the client stops reading (【停止】) or goes away; switching Sentences keeps reading (#9).
-    const stop = new AbortController();
-    const encoder = new TextEncoder();
-    let open = true;
-    let out!: ReadableStreamDefaultController<Uint8Array>;
-    const send = (event: ExplainEvent) => {
-      if (!open) return;
-      try {
-        out.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
-      } catch {
-        open = false;
-      }
-    };
-    const close = () => {
-      if (open) out.close();
-      open = false;
-    };
-
-    /** Streams the answer, then saves it (a stopped one counts; a failed one is given back and not saved). */
-    const run = async () => {
-      let text = "";
-      try {
-        for await (const chunk of ai.stream(request, stop.signal)) {
-          text += chunk;
-          send({ type: "delta", text: chunk });
-        }
-      } catch (err) {
-        if (!stop.signal.aborted) {
-          console.error(`AI call for Sentence ${id} failed`, err);
-          await returnAiCall(db, userId, day);
-          send({ type: "error", message: AI_FAILED_MESSAGE });
-          return close();
-        }
-      }
-      const stopped = stop.signal.aborted;
-      // A stopped Explanation is not the Sentence's Explanation (PRD 4.5.1 #7); a stopped answer keeps what it said.
-      if (body.kind === "explain" && !stopped) await saveExplanation(db, key, text, ai.model, now());
-      if (body.kind === "ask" && (text !== "" || !stopped)) {
-        await appendMessages(db, key, [{ role: "user", content: body.question }, { role: "assistant", content: text }], ai.model, now());
-      }
-      send({ type: "done", aiRemaining: await aiCallsLeft(db, userId, day) });
-      close();
-    };
-
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        out = controller;
-        void run().catch((err: unknown) => {
-          console.error(`Saving the AI answer for Sentence ${id} failed`, err);
-          send({ type: "error", message: AI_FAILED_MESSAGE });
-          close();
-        });
-      },
-      cancel() {
-        open = false;
-        stop.abort();
-      },
+    const reply = ndjsonStream();
+    // Stopped when the client stops reading (【停止】) or goes away; switching Sentences keeps reading (AC-PANEL-14).
+    c.req.raw.signal.addEventListener("abort", () => reply.stop.abort(), { once: true });
+    const call: AnswerCall = { key: { userId, sentenceId: id }, day, request, body };
+    void answer(call, reply).catch(async (err: unknown) => {
+      // Not saved, so not counted either.
+      console.error(`Saving the AI answer for Sentence ${id} failed`, err);
+      await returnAiCall(db, userId, day).catch((e: unknown) => console.error("Returning the AI call failed", e));
+      reply.send({ type: "error", message: AI_FAILED_MESSAGE });
+      reply.close();
     });
-    c.req.raw.signal.addEventListener("abort", () => stop.abort(), { once: true });
-    return new Response(stream, {
-      status: 200,
-      // nginx (web/nginx.conf) would otherwise hold the answer back until it is complete.
-      headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store", "X-Accel-Buffering": "no" },
-    }) as never;
+    // A streamed body has no typed response in the route's OpenAPI types, hence the cast. X-Accel-Buffering: nginx
+    // (web/nginx.conf) would otherwise hold the answer back until it is complete.
+    const headers = { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store", "X-Accel-Buffering": "no" };
+    return new Response(reply.stream, { status: 200, headers }) as never;
   });
+
+  interface AnswerCall {
+    key: { userId: string; sentenceId: string };
+    day: string;
+    request: AiRequest;
+    body: ExplainRequest;
+  }
+
+  /** Ends a failed AI call: given back, nothing saved (F11 异常处理). */
+  async function fail(key: AnswerCall["key"], day: string, reply: NdjsonStream, err: unknown) {
+    console.error(`AI call for Sentence ${key.sentenceId} failed`, err);
+    await returnAiCall(db, key.userId, day);
+    reply.send({ type: "error", message: AI_FAILED_MESSAGE });
+    reply.close();
+  }
+
+  /** Streams the AI's answer, then saves it: a stopped one counts, a failed one is given back and not saved. */
+  async function answer({ key, day, request, body }: AnswerCall, reply: NdjsonStream) {
+    let text = "";
+    try {
+      for await (const chunk of ai.stream(request, reply.stop.signal)) {
+        text += chunk;
+        reply.send({ type: "delta", text: chunk });
+      }
+    } catch (err) {
+      if (!reply.stop.signal.aborted) return fail(key, day, reply, err);
+    }
+    const stopped = reply.stop.signal.aborted;
+    // An empty answer would also break every later question (the model refuses empty turns in the history).
+    if (!stopped && text.trim() === "") return fail(key, day, reply, new Error("the AI answered nothing"));
+    // A stopped Explanation is not the Sentence's Explanation (PRD 4.5.1 #7); a stopped answer keeps what it said.
+    if (body.kind === "explain" && !stopped) await saveExplanation(db, key, text, ai.model, now());
+    if (body.kind === "ask" && (text !== "" || !stopped)) {
+      const turns: ChatMessage[] = [
+        { role: "user", content: body.question },
+        { role: "assistant", content: text },
+      ];
+      await appendMessages(db, key, turns, ai.model, now());
+    }
+    reply.send({ type: "done", aiRemaining: await aiCallsLeft(db, key.userId, day) });
+    reply.close();
+  }
 
   return app;
 }

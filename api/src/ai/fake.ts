@@ -40,7 +40,8 @@ export function fakeAiProvider({ delayMs = 0 }: { delayMs?: number } = {}): AiPr
       const text = fakeAnswer(request);
       for (let i = 0; i < text.length; i += CHUNK_CHARS) {
         if (signal.aborted) return;
-        if (i > 0 && request.hint.question?.includes(FAKE_FAILURE_MARKER)) throw new Error("fake AI failure");
+        const { hint } = request;
+        if (i > 0 && hint.kind === "ask" && hint.question.includes(FAKE_FAILURE_MARKER)) throw new Error("fake AI failure");
         yield text.slice(i, i + CHUNK_CHARS);
         await sleep(delayMs, signal);
       }

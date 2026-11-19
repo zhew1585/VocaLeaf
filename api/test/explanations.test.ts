@@ -294,6 +294,15 @@ describe("stopping, failing and the daily limit", () => {
     expect(await explanation(app, target.id)).toEqual({ content: null, messages: [], aiRemaining: DAILY_AI_CALLS });
   });
 
+  it("treats an empty answer as a failure, so it never enters the conversation", async () => {
+    const { app, target } = await setUp({ ai: { model: "mute", stream: () => oneShot("  ") } });
+
+    const evs = await events(await postExplain(app, target.id, { kind: "ask", question: "问题" }));
+
+    expect(evs.at(-1)).toEqual({ type: "error", message: AI_FAILED_MESSAGE });
+    expect(await explanation(app, target.id)).toEqual({ content: null, messages: [], aiRemaining: DAILY_AI_CALLS });
+  });
+
   it("refuses the 101st call of the day, and allows calls again from 00:00 Beijing time (AC-PANEL-04)", async () => {
     const t = await setUp();
     const [user] = await t.db.select().from(users);

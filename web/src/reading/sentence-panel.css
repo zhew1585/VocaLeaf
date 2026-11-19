@@ -166,26 +166,48 @@
   cursor: pointer;
 }
 
-.explanation-section {
+.md-section {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.explanation-section h4 {
+.md-section h4 {
   margin: 0;
   color: var(--leaf);
   font-size: 12px;
   font-weight: 500;
 }
 
-.explanation-section p,
-.chat-answer {
+.md-section p {
   margin: 0;
   color: var(--ink);
   font-size: 15px;
   line-height: 1.65;
   white-space: pre-wrap;
+}
+
+.chat-answer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* A list line of the AI's answer (短语与习语: one phrase per line). */
+.md-section p.md-item {
+  position: relative;
+  padding-left: 14px;
+}
+
+.md-section p.md-item::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 0.8em;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ink-3);
 }
 
 .chat-answer-pending {

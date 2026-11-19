@@ -7,8 +7,11 @@ import type { ChatMessage } from "../contract.js";
 export interface AiRequest {
   system: string;
   messages: ChatMessage[];
-  /** What is asked, for deterministic fakes only; real providers answer from `system` and `messages`. */
-  hint: { kind: "explain" | "ask"; sentence: string; question?: string };
+  /**
+   * What is asked, in plain terms, so the fake can answer without parsing the prompt; real providers answer from
+   * `system` and `messages` only.
+   */
+  hint: { kind: "explain"; sentence: string } | { kind: "ask"; sentence: string; question: string };
 }
 
 export interface AiProvider {

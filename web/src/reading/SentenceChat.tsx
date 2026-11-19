@@ -24,11 +24,17 @@ function Replying() {
   );
 }
 
+/** A line's text with **bold** shown bold and `code` marks dropped. */
+function Inline({ text }: { text: string }) {
+  const parts = text.replace(/`([^`]*)`/g, "$1").split(/\*\*(.+?)\*\*/g);
+  return <>{parts.map((part, i) => (i % 2 === 1 ? <strong key={i}>{part}</strong> : part))}</>;
+}
+
 /**
- * An Explanation's Markdown as the panel shows it: `## ` headings become section labels (句意, 结构, 短语与习语,
- * 背景), other lines paragraphs; works on a partial text while it streams.
+ * The small Markdown the AI writes, as the panel shows it: `## ` headings become section labels (句意, 结构,
+ * 短语与习语, 背景), `- ` lines list items, other lines paragraphs. Works on a partial text while it streams.
  */
-function ExplanationBody({ text }: { text: string }) {
+function MarkdownText({ text }: { text: string }) {
   const blocks: { label: string | null; lines: string[] }[] = [];
   for (const raw of text.split("\n")) {
     const line = raw.trimEnd();
@@ -42,11 +48,16 @@ function ExplanationBody({ text }: { text: string }) {
   return (
     <>
       {blocks.map((b, i) => (
-        <section key={i} className="explanation-section">
+        <section key={i} className="md-section">
           {b.label && <h4>{b.label}</h4>}
-          {b.lines.map((line, j) => (
-            <p key={j}>{line}</p>
-          ))}
+          {b.lines.map((line, j) => {
+            const item = /^\s*(?:[-*•]|\d+\.)\s+(.*)$/.exec(line);
+            return (
+              <p key={j} className={item ? "md-item" : undefined}>
+                <Inline text={item ? item[1]! : line} />
+              </p>
+            );
+          })}
         </section>
       ))}
     </>
@@ -71,7 +82,7 @@ function ExplanationBlock({ text, replying, onRegenerate }: { text: string; repl
           )}
         </header>
         {replying && <Replying />}
-        <ExplanationBody text={text} />
+        <MarkdownText text={text} />
       </article>
     </>
   );
@@ -81,7 +92,8 @@ function ExplanationBlock({ text, replying, onRegenerate }: { text: string; repl
 function ChatLog({ chat, canRegenerate, onRegenerate }: { chat: Chat; canRegenerate: boolean; onRegenerate(): void }) {
   const { pending } = chat;
   const explaining = pending?.kind === "explain";
-  const explanation = explaining ? pending.text : (chat.content ?? chat.stoppedExplanation);
+  // A stopped (re)generation is the latest thing said, so it shows over the saved Explanation until reloaded.
+  const explanation = explaining ? pending.text : (chat.stoppedExplanation ?? chat.content);
   return (
     <>
       {explanation !== null && (
@@ -95,9 +107,9 @@ function ChatLog({ chat, canRegenerate, onRegenerate }: { chat: Chat; canRegener
         m.role === "user" ? (
           <Bubble key={i}>{m.content}</Bubble>
         ) : (
-          <p key={i} className="chat-answer">
-            {m.content}
-          </p>
+          <div key={i} className="chat-answer">
+            <MarkdownText text={m.content} />
+          </div>
         ),
       )}
       {pending?.kind === "ask" && (
@@ -105,7 +117,9 @@ function ChatLog({ chat, canRegenerate, onRegenerate }: { chat: Chat; canRegener
           <Bubble>{pending.question}</Bubble>
           <div className="chat-answer-pending">
             <Replying />
-            <p className="chat-answer">{pending.text}</p>
+            <div className="chat-answer">
+              <MarkdownText text={pending.text} />
+            </div>
           </div>
         </>
       )}
@@ -122,7 +136,7 @@ function ChatLog({ chat, canRegenerate, onRegenerate }: { chat: Chat; canRegener
  * Keeps the chat at its bottom while the user is there, so a reply is followed; once they scroll up to read,
  * it stays put and offers 【新回复】 instead (AC-PANEL-10).
  */
-function useFollowBottom(changed: unknown) {
+function useFollowBottom(changed: string) {
   const scroller = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
   const [newReply, setNewReply] = useState(false);
@@ -160,7 +174,9 @@ export function SentenceChat({ sentenceId, children }: { sentenceId: string | nu
   const [draft, setDraft] = useState("");
   const busy = chat.pending !== null;
   const exhausted = remaining === 0;
-  const { scroller, onScroll, newReply, toBottom } = useFollowBottom(chat);
+  // What a reply adds; other changes (loading, an error) are no 新回复.
+  const said = `${chat.content?.length}|${chat.stoppedExplanation?.length}|${chat.messages.length}|${chat.pending?.text.length}`;
+  const { scroller, onScroll, newReply, toBottom } = useFollowBottom(said);
 
   const explained = chat.content !== null || chat.pending?.kind === "explain";
   const quickAction = sentenceId !== null && chat.loaded && !explained;

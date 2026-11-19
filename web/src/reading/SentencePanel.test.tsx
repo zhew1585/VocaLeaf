@@ -251,6 +251,39 @@ describe("AI 解析", () => {
     expect(input()).toBeEnabled();
   });
 
+  it("keeps a stopped regeneration's text in the chat over the saved Explanation (PRD 4.5.1 #7)", async () => {
+    saved.s1 = { content: EXPLANATION };
+    await renderPanel();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "重新生成解析" })));
+    await streams.at(-1)!.push({ type: "delta", text: "## 句意\n半截新译" });
+
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "停止" })));
+
+    expect(within(log()).getByText("半截新译")).toBeTruthy();
+    expect(within(log()).queryByText("你想说就说吧，我不反对听一听。")).toBeNull();
+  });
+
+  it("shows list lines as items and bold as bold", async () => {
+    saved.s1 = { content: "## 短语与习语\n- **have no objection to**：不反对" };
+    await renderPanel();
+
+    const item = within(log()).getByText("：不反对", { exact: false });
+    expect(item.classList.contains("md-item")).toBe(true);
+    expect(within(item).getByText("have no objection to").tagName).toBe("STRONG");
+  });
+
+  it("counts a reply cut off without an end (the connection broke) as failed, not stopped", async () => {
+    await renderPanel();
+    const stream = await explainClicked();
+    await stream.push({ type: "delta", text: "## 句意\n半" });
+
+    await stream.end();
+
+    expect(screen.getByRole("alert").textContent).toBe("解析失败，请重试");
+    expect(screen.getByText("今日剩余 100")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "AI 解析" })).toBeEnabled();
+  });
+
   it("says 解析失败，请重试 when the AI fails, and the call does not count (AC-PANEL-06)", async () => {
     await renderPanel();
     const stream = await explainClicked();

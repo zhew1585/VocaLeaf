@@ -71,10 +71,6 @@ function wideWindow(): boolean {
   return window.matchMedia?.(WIDE_WINDOW).matches ?? true;
 }
 
-/**
- * The Chapter playback waits for once it catches up with the generated audio: the last one in the playlist
- * while it is still generating, otherwise the next one with a wait estimate.
- */
 /** The Sentence selected for 句子精读 (PRD 4.4.5 当前选中) and its Chapter. */
 type Selected = ReadingSentence & { chapterId: string };
 
@@ -86,6 +82,10 @@ function useMarkToggle(_sentence: Selected | null): MarkToggle | null {
   return null;
 }
 
+/**
+ * The Chapter playback waits for once it catches up with the generated audio: the last one in the playlist
+ * while it is still generating, otherwise the next one with a wait estimate.
+ */
 function nextToGenerate(book: BookDetail): Pick<ChapterSummary, "waitSeconds"> {
   const last = book.chapters.findLast((c) => c.startMs !== null);
   if (last && (last.audioStatus === "pending" || last.audioStatus === "generating")) return last;
@@ -94,9 +94,9 @@ function nextToGenerate(book: BookDetail): Pick<ChapterSummary, "waitSeconds"> {
 
 /**
  * 专注页 (design 01, PRD 4.4.5): the Chapter directory, the Book's text following the audio, the floating
- * player, and the collapsed 句子精读. The page opens its Book in the listening session once it has audio, at the
- * Sentence the user last listened to;
- * until then it waits and checks again. Picking a Chapter (here or in the Chapter list) plays it from its
+ * player, and 句子精读 (collapsed until opened or a Sentence is clicked). The page opens its Book in the
+ * listening session once it has audio, at the Sentence the user last listened to; until then it waits and
+ * checks again. Picking a Chapter (here or in the Chapter list) plays it from its
  * start; one not generated yet says how long that takes and starts by itself once it is (PRD 4.3.4,
  * AC-BOOK-03). Playback that catches up with the generated audio waits the same way and goes on by itself.
  * Clicking a Sentence selects it and opens 句子精读 on it (AC-READ-15); clicking blank text or Esc deselects.
