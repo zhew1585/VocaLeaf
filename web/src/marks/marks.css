@@ -1,0 +1,80 @@
+/* 【标记】 on the player and the Mark Toast (design 01 ④, master design Toasts). */
+/* Design 01 ④ Mark action: amber pill with the M key hint. */
+.mark-button {
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 14px;
+  border: 0;
+  border-radius: 20px;
+  background: var(--amber-soft);
+  color: var(--amber-ink);
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mark-button svg {
+  color: var(--amber);
+}
+
+.mark-button kbd {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: rgb(255 253 248 / 0.7);
+  font-family: var(--font-num);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.mark-button:hover {
+  filter: brightness(0.97);
+}
+
+.mark-button:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+/* The Mark Toast (master design Toasts): ink pill, amber leaf, sentence start, 撤销. */
+.mark-toast {
+  max-width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 18px 0 16px;
+  border-radius: 24px;
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 14px;
+  box-shadow: 0 8px 20px rgb(28 33 29 / 0.25);
+}
+
+.mark-toast > svg {
+  flex: none;
+  color: #e9b866;
+}
+
+.mark-toast-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mark-toast-undo {
+  flex: none;
+  margin-left: auto;
+  padding: 4px 0 4px 8px;
+  border: 0;
+  background: transparent;
+  color: #9cc3a6;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}

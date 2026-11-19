@@ -36,7 +36,8 @@ describe("GET /api/books/:id/timeline", () => {
     const book = await generatedBook(t, "Pride and Prejudice", CHAPTERS);
     const [one, , two] = book.chapters;
 
-    expect(await timeline(t.app, book.id)).toEqual({
+    const { sentenceIds: _, ...got } = await timeline(t.app, book.id);
+    expect(got).toEqual({
       sentenceStartsMs: [0, 4000, 8000, 12000, 16000],
       chapters: [
         { id: one!.id, startMs: 0, endMs: 8000 },
@@ -44,6 +45,18 @@ describe("GET /api/books/:id/timeline", () => {
       ],
       complete: true,
     });
+  });
+
+  it("names the Sentence at each start, so the player can tell which one to mark (#13)", async () => {
+    const t = await testApp();
+    const book = await generatedBook(t, "Pride and Prejudice", CHAPTERS);
+    const ids: string[] = [];
+    for (const c of book.chapters.filter((c) => !c.skipped)) {
+      const rows = (await (await t.app.request(`/api/chapters/${c.id}/sentences`)).json()) as { id: string }[];
+      ids.push(...rows.map((s) => s.id));
+    }
+
+    expect((await timeline(t.app, book.id)).sentenceIds).toEqual(ids);
   });
 
   it("holds only what is generated so far, the generating Chapter's end unknown", async () => {
@@ -84,7 +97,7 @@ describe("GET /api/books/:id/timeline", () => {
   it("is empty while the Book is parsing", async () => {
     const t = await testApp();
     const { id } = await uploadBook(t.app);
-    expect(await timeline(t.app, id)).toEqual({ sentenceStartsMs: [], chapters: [], complete: true });
+    expect(await timeline(t.app, id)).toEqual({ sentenceStartsMs: [], sentenceIds: [], chapters: [], complete: true });
   });
 
   it("returns 404 for another user's Book", async () => {

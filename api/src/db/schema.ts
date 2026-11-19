@@ -5,6 +5,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  index,
   integer,
   jsonb,
   pgEnum,
@@ -21,6 +22,7 @@ import {
   BOOK_STATUSES,
   DEFAULT_VOICE,
   DIFFICULTIES,
+  MARK_STATUSES,
   VOICES,
   type WordTiming,
 } from "../contract.js";
@@ -31,6 +33,7 @@ export const voice = pgEnum("voice", VOICES);
 export const difficulty = pgEnum("difficulty", DIFFICULTIES);
 export const jobType = pgEnum("job_type", ["parse", "render_chapter"]);
 export const jobStatus = pgEnum("job_status", ["queued", "running", "succeeded", "failed"]);
+export const markStatus = pgEnum("mark_status", MARK_STATUSES);
 
 /** Invited emails (PRD 4.1.1): only these may ask for a login code. Managed by scripts/allowlist.ts. */
 export const allowlist = pgTable("allowlist", {
@@ -223,4 +226,29 @@ export const shelfEntries = pgTable(
     sentenceId: uuid("sentence_id").references(() => sentences.id, { onDelete: "set null" }),
   },
   (t) => [primaryKey({ columns: [t.userId, t.bookId] })],
+);
+
+/**
+ * A Sentence one user flagged while listening (PRD 4.4.2): one Mark per user and Sentence, whatever happens to it.
+ * Pending Marks make up the user's Gleanings (PRD 4.4.4). Goes with its Book (PRD 4.3.6).
+ */
+export const marks = pgTable(
+  "marks",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sentenceId: uuid("sentence_id")
+      .notNull()
+      .references(() => sentences.id, { onDelete: "cascade" }),
+    // Redundant with the Sentence's Chapter, for listing a Book's Marks without joins (PRD 4.4.2).
+    bookId: uuid("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    status: markStatus("status").notNull().default("pending"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // When the status last changed; Gleanings list pending Marks by it, newest first.
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.sentenceId] }), index("marks_user_status_idx").on(t.userId, t.status)],
 );

@@ -27,3 +27,11 @@ export function chapterListenPath(bookId: string, chapterId: string): string {
 export function shelfListenPath(bookId: string): string {
   return `/books/${bookId}/listen?autoplay`;
 }
+
+/**
+ * The 专注页 opened by 【定位原文】 (F10): scrolled to the Sentence, playback kept to PRD 4.4.1 收听会话 #3 (paused, at
+ * the Book's last progress rather than the Sentence).
+ */
+export function locatePath(bookId: string, chapterId: string, sentenceId: string): string {
+  return `/books/${bookId}/listen?${new URLSearchParams({ locate: sentenceId, locateChapter: chapterId })}`;
+}

@@ -1,5 +1,6 @@
 // Where the player's controls take playback, from the Book's timeline (GET /books/:id/timeline): 重听 (PRD
-// 4.4.3), 下一句, and the end of the Chapter for the sleep timer. All positions are milliseconds of the Book's audio.
+// 4.4.3), 下一句, the Sentence 【标记】 marks (PRD 4.4.2), and the end of the Chapter for the sleep timer.
+// All positions are milliseconds of the Book's audio.
 import type { BookTimeline } from "../api";
 
 /** Reaction compensation (PRD 4.7.2): a Sentence that began less than this long ago counts as not heard yet. */
@@ -29,17 +30,24 @@ export interface ReplayContext {
 }
 
 /**
- * 重听 (PRD 4.4.3): the start of the previous Sentence when the current one began less than 1.5 s of listening
- * ago, otherwise the start of the current one. Before the first Sentence, the first one; null without Sentences.
+ * Index of the target Sentence (PRD 4.4.2 目标句判定), shared by 重听 and Mark: the previous Sentence when the
+ * current one began less than 1.5 s of listening ago, otherwise the current one. Before the first Sentence, the
+ * first one; null without Sentences.
  */
-export function replayTargetMs(starts: readonly number[], positionMs: number, { rate, landedAtMs }: ReplayContext): number | null {
+export function targetIndex(starts: readonly number[], positionMs: number, { rate, landedAtMs }: ReplayContext): number | null {
   if (starts.length === 0) return null;
   const i = currentIndex(starts, positionMs);
-  if (i < 0) return starts[0]!;
+  if (i < 0) return 0;
   const start = starts[i]!;
   const justJumped = landedAtMs !== null && landedAtMs >= start;
   const justBegan = (positionMs - start) / rate < REACTION_MS;
-  return justBegan && !justJumped && i > 0 ? starts[i - 1]! : start;
+  return justBegan && !justJumped && i > 0 ? i - 1 : i;
+}
+
+/** 重听 (PRD 4.4.3): the start of the target Sentence; null without Sentences. */
+export function replayTargetMs(starts: readonly number[], positionMs: number, context: ReplayContext): number | null {
+  const i = targetIndex(starts, positionMs, context);
+  return i === null ? null : starts[i]!;
 }
 
 /** 下一句: the start of the Sentence after the current one, or null at the last Sentence known. */

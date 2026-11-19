@@ -98,14 +98,6 @@ export const PlayIcon = ({ size = 12 }) => (
   </Icon>
 );
 
-/** 标记 in the first-play guide: Lucide leaf. */
-export const LeafIcon = ({ size = 26 }) => (
-  <Icon size={size}>
-    <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
-    <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
-  </Icon>
-);
-
 export const PauseSolidIcon = ({ size = 18 }) => <SolidIcon size={size} d="M6 4h4v16h-4z m8 0h4v16h-4z" />;
 
 export const RotateCwIcon = ({ size = 12 }) => (
@@ -226,5 +218,24 @@ export const NextSentenceIcon = ({ size = 22 }) => (
 export const MoonIcon = ({ size = 18 }) => (
   <Icon size={size}>
     <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+  </Icon>
+);
+
+/** 标记, the 拾起 navigation and the first-play guide: Lucide leaf. */
+export const LeafIcon = ({ size = 17 }) => (
+  <Icon size={size}>
+    <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
+    <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
+  </Icon>
+);
+
+/** 定位原文: Lucide locate. */
+export const LocateIcon = ({ size = 18 }) => (
+  <Icon size={size}>
+    <line x1="2" x2="5" y1="12" y2="12" />
+    <line x1="19" x2="22" y1="12" y2="12" />
+    <line x1="12" x2="12" y1="2" y2="5" />
+    <line x1="12" x2="12" y1="19" y2="22" />
+    <circle cx="12" cy="12" r="7" />
   </Icon>
 );
