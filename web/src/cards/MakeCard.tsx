@@ -81,14 +81,17 @@ export function useTextSelection(container: RefObject<HTMLElement | null>, text:
   return { selected, update, clear };
 }
 
-/** Where the button goes: under the selection's first line, from its left, relative to the text's parent. */
+/** Room between the selection's last line and 【制作卡片】. */
+const BUTTON_GAP_PX = 8;
+
+/** Where the button goes: under the selection's last line, from its left, relative to the text's parent. */
 function placeBelow(el: HTMLElement, range: Range): SelectedTarget["place"] {
   const rects = range.getClientRects?.();
   const parent = el.parentElement;
   if (!rects || rects.length === 0 || !parent) return null;
   const box = parent.getBoundingClientRect();
   const last = rects[rects.length - 1]!;
-  return { top: last.bottom - box.top + 8, left: Math.max(0, rects[0]!.left - box.left) };
+  return { top: last.bottom - box.top + BUTTON_GAP_PX, left: Math.max(0, rects[0]!.left - box.left) };
 }
 
 interface Props {
@@ -119,7 +122,8 @@ export function MakeCardButton({ sentenceId, selected, onHold, onMade }: Props) 
       onMade(await createCard(allowDuplicate ? { ...body, allowDuplicate } : body));
     } catch (err) {
       if (err instanceof ApiRequestError && err.status === 409) setDuplicate(err.message);
-      else setError(err instanceof Error ? err.message : "制作失败，请稍后再试");
+      // The API's and the network's messages are the user's language; anything else is not.
+      else setError(err instanceof ApiRequestError ? err.message : "制作失败，请稍后再试");
       setBusy(false);
     }
   };

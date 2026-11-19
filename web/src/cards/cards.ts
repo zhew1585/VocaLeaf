@@ -36,6 +36,8 @@ export function cardsHit(cards: readonly Card[], hitIds: readonly string[] | nul
 
 /** A Card without a back (PRD 4.5.2 规则 6); the API says the same (contract CARD_BACK_FAILED_MESSAGE). */
 export const CARD_BACK_FAILED = "释义生成失败，点击重试";
+/** The same, short, where a Card's meaning would be (the popover's list). */
+export const BACK_MISSING = "释义生成失败";
 
 export const KIND_LABELS: Record<TargetKind, string> = { word: "单词", phrase: "短语", sentence: "整句" };
 

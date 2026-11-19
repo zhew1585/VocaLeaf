@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Card, Gleaning } from "../api";
 import { App } from "../App";
-import { stubMediaPlayback } from "../test-media";
+import { hlsInstances, stubMediaPlayback } from "../test-media";
 
 vi.mock("hls.js", async () => ({ default: (await import("../test-media")).FakeHls }));
 
@@ -19,6 +19,7 @@ const gleaning = (sentenceId: string, text: string, bookId: string): Gleaning =>
   chapterId: `${bookId}-c1`,
   chapterTitle: "Chapter 1",
   startMs: 4_000,
+  endMs: 7_700,
   markedAt: "2026-11-18T00:00:00.000Z",
 });
 
@@ -115,6 +116,14 @@ describe("句子精读 in 拾起 (F10, F11)", () => {
     expect(within(shown).getByRole("button", { name: "取消标记" })).toBeTruthy();
     expect(within(shown).getByRole("button", { name: "忽略这一句" })).toBeTruthy();
     expect(await within(shown).findByRole("button", { name: "AI 解析" })).toBeTruthy();
+  });
+
+  it("plays the Sentence alone from its own Book's audio with 试听本句", async () => {
+    await pick(TEXT);
+
+    await click(within(panel()!).getByRole("button", { name: "试听本句" }));
+
+    expect(hlsInstances.at(-1)?.source).toBe("/api/books/b1/audio.m3u8");
   });
 
   it("takes the item out of Gleanings when the leaf takes the Mark back", async () => {

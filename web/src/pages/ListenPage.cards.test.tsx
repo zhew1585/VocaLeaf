@@ -252,8 +252,10 @@ describe("the 卡片浮窗 (F16)", () => {
     await act(async () => void fireEvent.keyDown(document.body, { key: "Escape" }));
 
     expect(popover()).toBeNull();
-    // Still the Sentence clicked last, as 句子精读 keeps the selection.
-    expect(panel()!.querySelector(".panel-sentence-text")!.textContent).toBe(S1);
+    // The Sentence 句子精读 showed before, selected again: a Sentence with Cards is studied through 精读原句.
+    expect(panel()!.querySelector(".panel-sentence-text")!.textContent).toBe(S2);
+    expect(sentenceEl("s2").classList.contains("is-selected")).toBe(true);
+    expect(sentenceEl("s1").classList.contains("is-selected")).toBe(false);
 
     await click(within(sentenceEl("s1")).getByText("come"));
     await click(within(popover()!).getByRole("button", { name: "关闭卡片浮窗" }));
@@ -261,15 +263,17 @@ describe("the 卡片浮窗 (F16)", () => {
     expect(panel()).not.toBeNull();
   });
 
-  it("stays collapsed after closing when 句子精读 was collapsed", async () => {
+  it("stays collapsed after closing when 句子精读 was collapsed, nothing selected", async () => {
     await openPage();
     expect(panel()).toBeNull();
 
     await click(within(sentenceEl("s1")).getByText("come"));
+    expect(sentenceEl("s1").classList.contains("is-selected")).toBe(true);
     await act(async () => void fireEvent.mouseDown(document.body));
 
     expect(popover()).toBeNull();
     expect(panel()).toBeNull();
+    expect(document.querySelector(".reading .is-selected")).toBeNull();
   });
 
   it("opens 句子精读 on the Sentence with 精读原句, without asking the AI (AC-POP-03)", async () => {

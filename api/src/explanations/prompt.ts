@@ -2,6 +2,7 @@
 // instructions written in a Book are explained, not followed (F11 风险: prompt injection).
 import type { ChatMessage } from "../contract.js";
 import type { AiRequest } from "../ai/provider.js";
+import { tag } from "../ai/prompt-data.js";
 
 /** The Sentence and what surrounds it, as the AI sees it. */
 export interface SentenceContext {
@@ -29,18 +30,6 @@ const EXPLAIN = `请解析目标句，按下面的小节输出。每节以二级
 逐条列出，每条以「- 」开头，附该语境下的含义。
 ## 背景
 文化或文学背景，仅在理解本句确有必要时出现。`;
-
-const TAGS = ["book", "title", "author", "before", "paragraph", "after", "target_sentence", "target", "explanation"];
-const TAG_PATTERN = new RegExp(`</?\\s*(?:${TAGS.join("|")})\\b[^>]*>`, "gi");
-
-/** Removes anything in Book text (or an earlier answer) that would open or close one of the prompt's tags. */
-export function data(text: string): string {
-  return text.replace(TAG_PATTERN, "");
-}
-
-function tag(name: string, text: string | null): string[] {
-  return text === null ? [] : [`<${name}>${data(text)}</${name}>`];
-}
 
 /** The Book's text around the Sentence, wrapped as data. */
 function bookBlock(ctx: SentenceContext): string {

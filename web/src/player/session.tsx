@@ -106,7 +106,8 @@ const PLAYBACK_FAILED = "播放失败，请刷新页面重试";
 /** A drag lands this close to the end of the generated audio or beyond: it waits for more to be generated. */
 const GENERATED_EDGE_SECONDS = 0.5;
 
-function playlistUrl(bookId: string): string {
+/** Where a Book's audio is, as one HLS playlist. */
+export function playlistUrl(bookId: string): string {
   return `/api/books/${bookId}/audio.m3u8`;
 }
 

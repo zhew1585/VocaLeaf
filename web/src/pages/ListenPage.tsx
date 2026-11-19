@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { cardAudioUrl, type BookDetail, type Card, type ChapterSummary, type MadeCard } from "../api";
-import { CardPopover, type CardAudio } from "../cards/CardPopover";
+import type { BookDetail, Card, ChapterSummary } from "../api";
+import { CardPopover } from "../cards/CardPopover";
 import { useBookCards } from "../cards/useBookCards";
+import { useCardPopover } from "../cards/useCardPopover";
 import { isPlayableChapter, waitMessage } from "../chapters";
-import { announceCardMade } from "../marks/marks";
 import { useMarkPress } from "../marks/useMarkPress";
 import { useBookMarks, type MarksInBook } from "../marks/useMarks";
 import type { StartRequest } from "../player/playback";
@@ -126,10 +126,13 @@ function wideWindow(): boolean {
 /** The Sentence selected for 句子精读 (PRD 4.4.5 当前选中) and its Chapter. */
 type Selected = ReadingSentence & { chapterId: string };
 
-/** The 卡片浮窗 (F16): the Cards it shows and the Sentence they are of (where 【精读原句】 goes). */
-interface Popover {
-  cards: Card[];
+/**
+ * Where the 卡片浮窗 (F16) was opened: the Sentence its Cards are of (where 【精读原句】 goes), and the Sentence
+ * selected before, which closing it selects again, so the right area is as it was (AC-POP-04).
+ */
+interface PopoverAnchor {
   sentence: Selected;
+  before: Selected | null;
 }
 
 /** The 叶片 toggle of 句子精读 (AC-PANEL-13): marks the selected Sentence or takes its Mark back. */
@@ -161,7 +164,8 @@ function nextToGenerate(book: BookDetail): Pick<ChapterSummary, "waitSeconds"> {
  * AC-BOOK-03). Playback that catches up with the generated audio waits the same way and goes on by itself.
  * Clicking a Sentence selects it and opens 句子精读 on it (AC-READ-15); clicking blank text or Esc deselects.
  * Clicking a Sentence with Cards selects it and shows the 卡片浮窗 instead (PRD 4.4.5 点击规则 2, F16): in the right
- * area in place of 句子精读, which comes back as it was once the popover closes (AC-POP-04). A Card made in 句子精读
+ * area in place of 句子精读, which comes back as it was, on the same Sentence, once the popover closes (AC-POP-04);
+ * 句子精读 of a Sentence with Cards is reached through 【精读原句】 (PRD 4.4.5 点击规则 3). A Card made in 句子精读
  * opens the popover as its preview (F12).
  */
 export function ListenPage({ id }: { id: string }) {
@@ -174,8 +178,8 @@ export function ListenPage({ id }: { id: string }) {
   const [directoryOpen, setDirectoryOpen] = useState(wideWindow);
   const [panelOpen, setPanelOpen] = useState(false);
   const [selected, setSelected] = useState<Selected | null>(null);
-  const [popover, setPopover] = useState<Popover | null>(null);
   const cards = useBookCards(id);
+  const popover = useCardPopover<PopoverAnchor>(cards);
   const reading = useRef<ReadingViewHandle>(null);
   const playable = book?.playable ?? false;
   const guide = useFirstPlayGuide(playable);
@@ -196,40 +200,29 @@ export function ListenPage({ id }: { id: string }) {
     if (selected?.id !== sentence.id) stopAudition();
     const chosen = { ...sentence, chapterId };
     setSelected(chosen);
-    if (hit.length > 0) return setPopover({ cards: hit, sentence: chosen });
-    setPopover(null);
+    if (hit.length > 0) return popover.show(hit, { sentence: chosen, before: popover.open?.anchor.before ?? selected });
+    popover.close();
     setPanelOpen(true);
   };
   const deselect = () => {
     stopAudition();
     setSelected(null);
-    setPopover(null);
+    popover.close();
   };
-  const closePopover = useCallback(() => {
-    stopAudition();
-    setPopover(null);
-  }, [stopAudition]);
+  /** Closing the popover selects again what was selected before it opened. */
+  const closePopover = () => {
+    if (popover.open) setSelected(popover.open.anchor.before);
+    popover.close();
+  };
   /** 【精读原句】 (AC-POP-03): 句子精读 on the Cards' Sentence, scrolled into view; nothing is asked of the AI. */
   const studySentence = (sentence: Selected) => {
-    closePopover();
+    popover.close();
     setSelected(sentence);
     setPanelOpen(true);
     reading.current?.showSentence(sentence.chapterId, sentence.id);
   };
-  const onCardMade = ({ card, created }: MadeCard) => {
-    cards.put(card);
-    // A new Card processed the Sentence's pending Mark (PRD 4.5.2 规则 7): its amber underline and leaf go.
-    if (created && card.sentenceId) announceCardMade(card.sentenceId);
-    if (selected) setPopover({ cards: [card], sentence: selected });
-  };
-  const onCardChanged = (card: Card) => {
-    cards.put(card);
-    setPopover((p) => p && { ...p, cards: p.cards.map((c) => (c.id === card.id ? card : c)) });
-  };
-  const cardAudio: CardAudio = {
-    state: listening.audition,
-    play: (card) => listening.startAudition({ id: card.id, src: cardAudioUrl(card.id) }),
-  };
+  /** The popover over 句子精读's own Sentence (its underline, a Card just made): closing it changes nothing. */
+  const showOverPanel = (shown: Card[]) => selected && popover.show(shown, { sentence: selected, before: selected });
   useShortcuts(
     here && !guide.showing
       ? {
@@ -238,7 +231,7 @@ export function ListenPage({ id }: { id: string }) {
           next: listening.next,
           mark: markPress.press,
           // Esc closes the top layer only: the popover, else the selection (PRD 4.4.1 桌面快捷键).
-          escape: () => (popover ? closePopover() : deselect()),
+          escape: () => (popover.open ? closePopover() : deselect()),
         }
       : null,
   );
@@ -302,7 +295,7 @@ export function ListenPage({ id }: { id: string }) {
   const totalSeconds = book.durationMs === null ? null : book.durationMs / 1000;
   const notice = targetPending ? waitMessage(target) : waitingForAudio ? waitMessage(nextToGenerate(book)) : null;
   // The popover takes the right area like 句子精读, never over the text (AC-POP-08).
-  const width = columnWidth({ directory: directoryOpen, sentencePanel: panelOpen || popover !== null });
+  const width = columnWidth({ directory: directoryOpen, sentencePanel: panelOpen || popover.open !== null });
 
   const playFrom =
     here && playable ? (sentence: ReadingSentence) => sentence.startMs !== null && listening.playFrom(sentence.startMs / 1000) : null;
@@ -375,17 +368,17 @@ export function ListenPage({ id }: { id: string }) {
           onDeselect={deselect}
           onPlayFrom={playFrom}
         />
-        {!panelOpen && !popover && <SentencePanelToggle onOpen={() => setPanelOpen(true)} />}
+        {!panelOpen && !popover.open && <SentencePanelToggle onOpen={() => setPanelOpen(true)} />}
       </main>
-      {popover ? (
+      {popover.open ? (
         <div className="card-popover-area">
           <CardPopover
-            key={popover.cards.map((c) => c.id).join()}
-            cards={popover.cards}
+            key={popover.open.cards.map((c) => c.id).join()}
+            cards={popover.open.cards}
             onClose={closePopover}
-            onStudySentence={() => studySentence(popover.sentence)}
-            onCardChanged={onCardChanged}
-            audio={cardAudio}
+            onStudySentence={() => studySentence(popover.open!.anchor.sentence)}
+            onCardChanged={popover.changed}
+            audio={popover.audio}
           />
         </div>
       ) : (
@@ -400,8 +393,8 @@ export function ListenPage({ id }: { id: string }) {
             audition={audition}
             mark={mark}
             cards={selected ? cards.of(selected.id) : []}
-            onOpenCards={(hit) => selected && setPopover({ cards: hit, sentence: selected })}
-            onCardMade={onCardMade}
+            onOpenCards={showOverPanel}
+            onCardMade={(made) => selected && popover.made(made, { sentence: selected, before: selected })}
           />
         )
       )}

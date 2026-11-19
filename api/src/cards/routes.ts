@@ -108,7 +108,7 @@ export function cardRoutes({ db, storage, ai, now = () => new Date() }: AppDeps)
   app.openapi(backRoute, async (c) => {
     const card = await ownCard(db, c.get("userId"), c.req.valid("param").id);
     if (!card) return c.json(cardNotFound, 404);
-    const updated = await regenerateBack(db, ai, card);
+    const updated = await regenerateBack({ db, ai }, card);
     return updated ? c.json(updated, 200) : c.json(backFailed, 502);
   });
 

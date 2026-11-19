@@ -36,12 +36,11 @@ export function useBookCards(bookId: string | null): CardsInBook {
   }, []);
 
   return useMemo(() => {
+    const ordered = cards.toSorted((a, b) => a.targetStart - b.targetStart || a.targetEnd - b.targetEnd);
     const bySentence = new Map<string, Card[]>();
-    for (const c of cards) {
-      if (c.sentenceId === null) continue;
-      bySentence.set(c.sentenceId, [...(bySentence.get(c.sentenceId) ?? []), c]);
+    for (const c of ordered) {
+      if (c.sentenceId !== null) bySentence.set(c.sentenceId, [...(bySentence.get(c.sentenceId) ?? []), c]);
     }
-    for (const list of bySentence.values()) list.sort((a, b) => a.targetStart - b.targetStart || a.targetEnd - b.targetEnd);
     return { bySentence, of: (id) => bySentence.get(id) ?? NONE, put };
   }, [cards, put]);
 }

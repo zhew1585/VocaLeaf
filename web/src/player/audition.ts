@@ -11,6 +11,8 @@ export interface AuditionSentence {
   id: string;
   startMs: number;
   endMs: number;
+  /** The playlist of its Book when that is not the session's (拾起 lists Sentences of every Book). */
+  playlist?: string;
 }
 
 /** A Card's own copy of its Sentence's audio, played whole (【卡片原声】). */
@@ -59,7 +61,7 @@ export function useAudition({ main, src, sentenceStartsMs, resumeMain }: Options
 
   const sentence = current && !isClip(current) ? current : null;
   // A fresh hls.js per 试听 of a Sentence, loading from it; a Card's clip is a plain file.
-  useHls(element, sentence && src, current?.n ?? 0, () => end(true), (sentence?.startMs ?? 0) / 1000);
+  useHls(element, sentence && (sentence.playlist ?? src), current?.n ?? 0, () => end(true), (sentence?.startMs ?? 0) / 1000);
 
   useEffect(() => {
     const el = element.current;

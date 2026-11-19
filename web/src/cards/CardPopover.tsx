@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { regenerateCardBack, type Card } from "../api";
 import { ArrowLeftIcon, BookOpenIcon, ChevronRightIcon, Volume2Icon, XIcon } from "../icons";
 import type { AuditionState } from "../player/audition";
-import { CARD_BACK_FAILED, cardMeaning, dueLabel, dueShort, KIND_LABELS } from "./cards";
+import { BACK_MISSING, CARD_BACK_FAILED, cardMeaning, dueLabel, dueShort, KIND_LABELS } from "./cards";
 import "./cards.css";
 
 /** 【卡片原声】 of the Cards in the popover (PRD 4.4.1 试听). */
@@ -95,7 +95,7 @@ function CardList({ cards, onOpen, onStudySentence }: { cards: Card[]; onOpen(id
             <button type="button" className="card-row" onClick={() => onOpen(c.id)}>
               <span className="card-row-main">
                 <span className="card-row-target">{c.targetText}</span>
-                <span className="card-row-meaning">{cardMeaning(c) || "释义生成失败"}</span>
+                <span className="card-row-meaning">{cardMeaning(c) || BACK_MISSING}</span>
               </span>
               <span className="card-row-due">{dueShort(c.due)}</span>
               <ChevronRightIcon />
@@ -211,19 +211,29 @@ function CardBackView({ card }: { card: Card }) {
 /** 【释义生成失败，点击重试】 (PRD 4.5.2 规则 6): generates the back again, not counted against the AI limit. */
 function RetryBack({ card, onCardChanged }: { card: Card; onCardChanged(card: Card): void }) {
   const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
   const retry = async () => {
     setBusy(true);
+    setFailed(false);
     try {
       onCardChanged(await regenerateCardBack(card.id));
     } catch (err) {
       console.warn("generating the Card's back again failed", err);
+      setFailed(true);
     } finally {
       setBusy(false);
     }
   };
   return (
-    <button type="button" className="card-retry" disabled={busy} onClick={() => void retry()}>
-      {busy ? "正在生成释义…" : CARD_BACK_FAILED}
-    </button>
+    <>
+      <button type="button" className="card-retry" disabled={busy} onClick={() => void retry()}>
+        {busy ? "正在生成释义…" : CARD_BACK_FAILED}
+      </button>
+      {failed && (
+        <p className="card-audio-error" role="alert">
+          还是没有生成，请稍后再试
+        </p>
+      )}
+    </>
   );
 }

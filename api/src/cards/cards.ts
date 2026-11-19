@@ -8,9 +8,9 @@ import type { Db } from "../db/client.js";
 import { audioSegments, books, cards, chapters, sentences, shelfEntries } from "../db/schema.js";
 import { markProcessed } from "../marks/marks.js";
 import { cardAudioKey, type ObjectStorage } from "../storage.js";
-import { cutClip } from "./audio-clip.js";
+import { cutClip, type ClipSegment } from "./audio-clip.js";
 import { generateBack, type BackContext } from "./back.js";
-import { resolveTarget } from "./target.js";
+import { resolveTarget, type Target } from "./target.js";
 
 type CardRow = typeof cards.$inferSelect;
 
@@ -100,7 +100,7 @@ async function sentenceAudio(db: Db, storage: ObjectStorage, s: CardableSentence
     .where(and(eq(audioSegments.chapterId, s.chapterId), eq(audioSegments.voice, s.voice)))
     .orderBy(asc(audioSegments.index));
   try {
-    const needed: { bytes: Uint8Array; startMs: number }[] = [];
+    const needed: ClipSegment[] = [];
     let startMs = 0;
     for (const seg of segments) {
       if (startMs < s.endMs && startMs + seg.durationMs > s.startMs) {
@@ -118,6 +118,44 @@ async function sentenceAudio(db: Db, storage: ObjectStorage, s: CardableSentence
   }
 }
 
+/** What a back is generated from, out of a Card's snapshot. */
+function backContextOf(card: Pick<CardRow, "bookTitle" | "sentenceText" | "contextBefore" | "contextAfter" | "targetText" | "targetKind">): BackContext {
+  return {
+    bookTitle: card.bookTitle,
+    sentence: card.sentenceText,
+    before: card.contextBefore,
+    after: card.contextAfter,
+    target: card.targetText,
+    targetKind: card.targetKind,
+  };
+}
+
+/** The user's Card of this Target of the Sentence (PRD 4.5.2 规则 3), as a condition. */
+function sameTarget(userId: string, sentenceId: string, target: Target) {
+  return and(
+    eq(cards.userId, userId),
+    eq(cards.sentenceId, sentenceId),
+    eq(cards.targetStart, target.start),
+    eq(cards.targetEnd, target.end),
+  );
+}
+
+/** Whether the user has a Card of the same Target text, ignoring case, from another Sentence (PRD 4.5.2 规则 4). */
+async function hasTwin(db: Db, userId: string, sentenceId: string, targetText: string): Promise<boolean> {
+  const [twin] = await db
+    .select({ id: cards.id })
+    .from(cards)
+    .where(
+      and(
+        eq(cards.userId, userId),
+        sql`lower(${cards.targetText}) = lower(${targetText})`,
+        sql`${cards.sentenceId} is distinct from ${sentenceId}`,
+      ),
+    )
+    .limit(1);
+  return twin !== undefined;
+}
+
 export type CreateCardOutcome =
   | { result: "created" | "existing"; card: Card }
   | { result: "duplicate"; targetText: string }
@@ -130,18 +168,20 @@ export interface CreateCardInput {
   allowDuplicate?: boolean;
 }
 
+/** What creating a Card needs. */
+export interface CardDeps {
+  db: Db;
+  storage: ObjectStorage;
+  ai: AiProvider;
+}
+
 /**
  * Makes a Card of a selection of a Sentence (PRD 4.5.2 制卡规则): widened to whole words; the Card of the same
  * Target of the Sentence when there is one (规则 3); refused as a duplicate when the user has a Card of the same
  * Target text in another Sentence, unless allowed (规则 4). A new Card copies the Sentence and its audio and gets its
  * back from the AI, which may fail (规则 5, 6); then the Sentence's pending Mark is processed (规则 7, PRD 4.4.4).
  */
-export async function createCard(
-  deps: { db: Db; storage: ObjectStorage; ai: AiProvider },
-  userId: string,
-  input: CreateCardInput,
-  now: Date,
-): Promise<CreateCardOutcome> {
+export async function createCard(deps: CardDeps, userId: string, input: CreateCardInput, now: Date): Promise<CreateCardOutcome> {
   const { db, storage, ai } = deps;
   const sentence = await cardableSentence(db, userId, input.sentenceId);
   if (!sentence) return { result: "not_found" };
@@ -149,89 +189,66 @@ export async function createCard(
   if (!target) return { result: "no_words" };
   const targetText = sentence.text.slice(target.start, target.end);
 
-  const sameTarget = and(
-    eq(cards.userId, userId),
-    eq(cards.sentenceId, sentence.id),
-    eq(cards.targetStart, target.start),
-    eq(cards.targetEnd, target.end),
-  );
-  const [existing] = await db.select().from(cards).where(sameTarget);
+  const [existing] = await db.select().from(cards).where(sameTarget(userId, sentence.id, target));
   if (existing) return { result: "existing", card: toCard(existing) };
+  if (!input.allowDuplicate && (await hasTwin(db, userId, sentence.id, targetText))) return { result: "duplicate", targetText };
 
-  if (!input.allowDuplicate) {
-    const [twin] = await db
-      .select({ id: cards.id })
-      .from(cards)
-      .where(
-        and(
-          eq(cards.userId, userId),
-          sql`lower(${cards.targetText}) = lower(${targetText})`,
-          sql`${cards.sentenceId} is distinct from ${sentence.id}`,
-        ),
-      )
-      .limit(1);
-    if (twin) return { result: "duplicate", targetText };
-  }
-
-  const id = crypto.randomUUID();
   const { before, after } = await neighbours(db, sentence);
-  const context: BackContext = {
-    bookTitle: sentence.bookTitle,
-    sentence: sentence.text,
-    before,
-    after,
-    target: targetText,
+  const snapshot = {
+    id: crypto.randomUUID(),
+    userId,
+    sentenceId: sentence.id,
+    targetText,
     targetKind: target.kind,
+    targetStart: target.start,
+    targetEnd: target.end,
+    sentenceText: sentence.text,
+    contextBefore: before,
+    contextAfter: after,
+    bookTitle: sentence.bookTitle,
+    due: now,
+    createdAt: now,
   };
-  const [audio, back] = await Promise.all([sentenceAudio(db, storage, sentence), generateBack(ai, context)]);
-  const audioKey = audio ? cardAudioKey(id) : null;
-  if (audio && audioKey) await storage.putObject(audioKey, audio, "audio/aac");
+  const [audio, back] = await Promise.all([sentenceAudio(db, storage, sentence), generateBack(ai, backContextOf(snapshot))]);
+  const inserted = await insertCard(deps, { ...snapshot, back }, audio, now);
+  if (inserted) return { result: "created", card: toCard(inserted) };
+  // The same Target was made meanwhile (a double click, another device): that Card stands.
+  const [winner] = await db.select().from(cards).where(sameTarget(userId, sentence.id, target));
+  if (!winner) throw new Error(`Card of Sentence ${sentence.id} clashed but is not there`);
+  return { result: "existing", card: toCard(winner) };
+}
 
-  const [inserted] = await db
-    .insert(cards)
-    .values({
-      id,
-      userId,
-      sentenceId: sentence.id,
-      targetText,
-      targetKind: target.kind,
-      targetStart: target.start,
-      targetEnd: target.end,
-      sentenceText: sentence.text,
-      contextBefore: before,
-      contextAfter: after,
-      audioKey,
-      bookTitle: sentence.bookTitle,
-      back,
-      due: now,
-      createdAt: now,
-    })
-    .onConflictDoNothing()
-    .returning();
-  if (!inserted) {
-    // The same Target was made meanwhile (a double click, another device): that Card stands.
-    if (audioKey) await storage.deleteObjects([audioKey]);
-    const [winner] = await db.select().from(cards).where(sameTarget);
-    if (!winner) throw new Error(`Card of Sentence ${sentence.id} clashed but is not there`);
-    return { result: "existing", card: toCard(winner) };
+/**
+ * Stores the Card's audio, then the Card and its Sentence's processed Mark in one transaction. Undefined when the
+ * same Target's Card got there first. The audio goes again unless the Card holding it is in.
+ */
+async function insertCard(
+  { db, storage }: CardDeps,
+  values: Omit<typeof cards.$inferInsert, "audioKey"> & { id: string; sentenceId: string },
+  audio: Uint8Array | null,
+  now: Date,
+): Promise<CardRow | undefined> {
+  const audioKey = audio ? cardAudioKey(values.id) : null;
+  if (audio && audioKey) await storage.putObject(audioKey, audio, "audio/aac");
+  let inserted: CardRow | undefined;
+  try {
+    inserted = await db.transaction(async (tx) => {
+      const [row] = await tx.insert(cards).values({ ...values, audioKey }).onConflictDoNothing().returning();
+      if (row) await markProcessed(tx, values.userId, values.sentenceId, now);
+      return row;
+    });
+  } finally {
+    if (!inserted && audioKey) await storage.deleteObjects([audioKey]);
   }
-  await markProcessed(db, userId, sentence.id, now);
-  return { result: "created", card: toCard(inserted) };
+  return inserted;
 }
 
 /**
  * Generates the Card's back again from its own snapshot (【释义生成失败，点击重试】, later 【重新生成】 in the Card
  * list), replacing the old one; not counted against the daily AI limit. Undefined when the AI failed again.
  */
-export async function regenerateBack(db: Db, ai: AiProvider, card: CardRow): Promise<Card | undefined> {
-  const back = await generateBack(ai, {
-    bookTitle: card.bookTitle,
-    sentence: card.sentenceText,
-    before: card.contextBefore,
-    after: card.contextAfter,
-    target: card.targetText,
-    targetKind: card.targetKind,
-  });
+export async function regenerateBack({ db, ai }: Pick<CardDeps, "db" | "ai">, card: CardRow): Promise<Card | undefined> {
+  const back = await generateBack(ai, backContextOf(card));
   if (!back) return undefined;
   const [updated] = await db.update(cards).set({ back }).where(eq(cards.id, card.id)).returning();
   return updated && toCard(updated);
