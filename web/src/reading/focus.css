@@ -49,21 +49,35 @@
   background: var(--surface);
 }
 
+/* Design 01 ①: a 32 px leaf circle with the arrow, then 返回书架. */
 .shelf-back {
   align-self: flex-start;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 8px;
-  border-radius: 8px;
+  gap: 14px;
+  padding: 0 8px;
   color: var(--ink-2);
   font-size: 13px;
   text-decoration: none;
 }
 
+.shelf-back-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--leaf);
+  color: var(--surface);
+  transition: background-color 0.15s ease;
+}
+
 .shelf-back:hover {
-  background: var(--sunken);
   color: var(--ink);
+}
+
+.shelf-back:hover .shelf-back-icon {
+  background: color-mix(in srgb, var(--leaf) 88%, var(--ink));
 }
 
 .shelf-back.is-compact {
@@ -469,8 +483,12 @@
   pointer-events: none;
 }
 
+/*
+ * As wide as .reading-content, the Sentences' column. The dock spans the scroll area's two scrollbar gutters and
+ * keeps 32 px sides, so the column's 96 px of room becomes 32 px plus the gutters here.
+ */
 .reading-dock > * {
-  width: min(var(--column), 100%);
+  width: min(var(--column), 100% - 32px - 2 * var(--scrollbar-size));
   pointer-events: auto;
   transition: width 0.2s ease;
 }
@@ -541,6 +559,11 @@
 
   .reading-content {
     width: calc(100% - 32px);
+  }
+
+  /* The same column under the player: the dock's 64 px of sides less the column's 32 px and the gutters. */
+  .reading-dock > * {
+    width: calc(100% + 32px - 2 * var(--scrollbar-size));
   }
 
   /* Clear of the floating back and 句子精读 buttons. */

@@ -835,9 +835,8 @@ button.chapter-title:hover {
   animation: spin 1.2s linear infinite;
 }
 
-/* Design 01 ④: floating player, same width as the reading column. */
+/* Design 01 ④: floating player, same width as the reading column; .reading-dock sets that width. */
 .player {
-  width: 100%;
   padding: 14px 20px;
   display: flex;
   flex-direction: column;
