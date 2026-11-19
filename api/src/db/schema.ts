@@ -5,6 +5,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  date,
   integer,
   jsonb,
   pgEnum,
@@ -15,7 +16,7 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
-import { AUDIO_STATUSES, BOOK_STATUSES, DEFAULT_VOICE, VOICES, type WordTiming } from "../contract.js";
+import { AUDIO_STATUSES, BOOK_STATUSES, DEFAULT_VOICE, VOICES, type ChatMessage, type WordTiming } from "../contract.js";
 
 export const bookStatus = pgEnum("book_status", BOOK_STATUSES);
 export const audioStatus = pgEnum("audio_status", AUDIO_STATUSES);
@@ -197,4 +198,42 @@ export const shelfEntries = pgTable(
     sentenceId: uuid("sentence_id").references(() => sentences.id, { onDelete: "set null" }),
   },
   (t) => [primaryKey({ columns: [t.userId, t.bookId] })],
+);
+
+/**
+ * A user's Explanation of one Sentence with their follow-up questions (PRD 4.5.1): private to the user, even for a
+ * shared Book. A row exists once the user asked the AI anything about the Sentence.
+ */
+export const explanations = pgTable(
+  "explanations",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sentenceId: uuid("sentence_id")
+      .notNull()
+      .references(() => sentences.id, { onDelete: "cascade" }),
+    // Markdown; null while the user only asked questions. Regenerating replaces it and keeps the messages.
+    content: text("content"),
+    // Follow-up questions and answers in order; the AI sees them, with the Explanation, on the next question.
+    messages: jsonb("messages").$type<ChatMessage[]>().notNull().default([]),
+    // The model that wrote the latest answer.
+    model: text("model"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.sentenceId] })],
+);
+
+/** AI calls a user made on one day in Asia/Shanghai, against the daily limit (PRD 4.7.2, DAILY_AI_CALLS). */
+export const aiUsage = pgTable(
+  "ai_usage",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    day: date("day", { mode: "string" }).notNull(),
+    count: integer("count").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.day] })],
 );

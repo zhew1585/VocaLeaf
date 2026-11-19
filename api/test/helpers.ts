@@ -1,6 +1,8 @@
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
+import { fakeAiProvider } from "../src/ai/fake.js";
+import type { AiProvider } from "../src/ai/provider.js";
 import { createApp } from "../src/app.js";
 import type { Mailer } from "../src/auth/mailer.js";
 import { SESSION_COOKIE } from "../src/auth/session.js";
@@ -116,8 +118,13 @@ export async function logIn(
 /**
  * The real app over an in-process Postgres (PGlite) with the real migrations applied.
  * `app` is a device logged in as READER_EMAIL (every user route needs a session); `anon` has no session.
+ * The AI is the instant fake unless a test brings its own.
  */
-export async function testApp({ leaseMs = TEST_LEASE_MS, secureCookie = false } = {}) {
+export async function testApp({
+  leaseMs = TEST_LEASE_MS,
+  secureCookie = false,
+  ai = fakeAiProvider(),
+}: { leaseMs?: number; secureCookie?: boolean; ai?: AiProvider } = {}) {
   const db = drizzle(new PGlite(), { schema }) as unknown as Db;
   await migrate(db as never, { migrationsFolder: MIGRATIONS_FOLDER });
   const storage = memoryStorage();
@@ -130,6 +137,7 @@ export async function testApp({ leaseMs = TEST_LEASE_MS, secureCookie = false } 
     secureCookie,
     workerToken: WORKER_TOKEN,
     jobLeaseMs: leaseMs,
+    ai,
     now: clock.now,
   });
   await db.insert(schema.allowlist).values({ email: READER_EMAIL });

@@ -203,6 +203,53 @@ export const SentenceSchema = z
   })
   .openapi("Sentence");
 
+// ---- 句子精读: Explanations and follow-up questions (PRD 4.5.1, F11) ----
+
+/** AI calls (Explanation, regeneration, follow-up) one user may make per day, reset at 00:00 Asia/Shanghai (PRD 4.7.2). */
+export const DAILY_AI_CALLS = 100;
+/** Longest follow-up question accepted, in characters. */
+export const MAX_QUESTION_CHARS = 500;
+/** What the panel says when the day's AI calls are used up (PRD 4.7.2). */
+export const AI_QUOTA_MESSAGE = "今日 AI 解析次数已用完，明天再来";
+/** What the panel says when an AI call failed; a failed call is not counted (F11 异常处理). */
+export const AI_FAILED_MESSAGE = "解析失败，请重试";
+
+/** One turn of the follow-up conversation kept on a Sentence: the user's question or the AI's answer. */
+export const ChatMessageSchema = z
+  .object({ role: z.enum(["user", "assistant"]), content: z.string() })
+  .openapi("ChatMessage");
+
+/** The user's Explanation of a Sentence with its follow-up questions and answers, and today's AI calls left. */
+export const ExplanationSchema = z
+  .object({
+    /** The Explanation (Markdown, sections 句意 / 结构 / 短语与习语 / 背景 as `## ` headings); null before one. */
+    content: z.string().nullable(),
+    /** Follow-up questions and answers, oldest first; questions may come before any Explanation. */
+    messages: z.array(ChatMessageSchema),
+    /** AI calls the user has left today. */
+    aiRemaining: z.int().min(0),
+  })
+  .openapi("Explanation");
+
+/** Asks the AI about a Sentence: generate (or regenerate) its Explanation, or ask a follow-up question. */
+export const ExplainRequestSchema = z
+  .discriminatedUnion("kind", [
+    z.object({ kind: z.literal("explain") }),
+    z.object({ kind: z.literal("ask"), question: z.string().trim().min(1).max(MAX_QUESTION_CHARS) }),
+  ])
+  .openapi("ExplainRequest");
+
+/**
+ * One line of the streamed answer (application/x-ndjson): text as it is generated, then `done` once the answer
+ * is saved, or `error` when the AI call failed (nothing saved, not counted). A stream the client stops ends with
+ * neither; what was generated is saved for a question, not for an Explanation (PRD 4.5.1 #7).
+ */
+export const ExplainEventSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("delta"), text: z.string() }),
+  z.object({ type: z.literal("done"), aiRemaining: z.int().min(0) }),
+  z.object({ type: z.literal("error"), message: z.string() }),
+]);
+
 export const UploadBookSchema = z.object({
   file: z.instanceof(File).openapi({ type: "string", format: "binary" }),
   /** The UPLOAD_DECLARATION version the user just confirmed; needed while they have not confirmed it before. */
@@ -347,3 +394,7 @@ export type UploadPolicy = z.infer<typeof UploadPolicySchema>;
 export type Listening = z.infer<typeof ListeningSchema>;
 export type CodeSent = z.infer<typeof CodeSentSchema>;
 export type ApiError = z.infer<typeof ErrorSchema>;
+export type ChatMessage = z.infer<typeof ChatMessageSchema>;
+export type Explanation = z.infer<typeof ExplanationSchema>;
+export type ExplainRequest = z.input<typeof ExplainRequestSchema>;
+export type ExplainEvent = z.infer<typeof ExplainEventSchema>;
