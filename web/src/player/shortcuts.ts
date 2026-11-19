@@ -21,16 +21,20 @@ function isTyping(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest(TYPING) !== null;
 }
 
-type Action = keyof ShortcutHandlers;
+/** What one key does with a page's handlers (nothing when the handler is missing), and whether holding it repeats it. */
+interface Binding<H> {
+  run(handlers: H): (() => void) | undefined;
+  repeats: boolean;
+}
 
-/** Which action each key triggers, and whether holding it down repeats it (moving by Sentence does). */
-const KEYS: Record<string, { action: Action; repeats: boolean }> = {
-  " ": { action: "toggle", repeats: false },
-  ArrowLeft: { action: "replay", repeats: true },
-  ArrowRight: { action: "next", repeats: true },
-  m: { action: "mark", repeats: false },
-  M: { action: "mark", repeats: false },
-  Escape: { action: "escape", repeats: false },
+/** The 专注页's keys; moving by Sentence repeats while held. */
+const PLAYER_KEYS: Record<string, Binding<ShortcutHandlers>> = {
+  " ": { run: (h) => h.toggle, repeats: false },
+  ArrowLeft: { run: (h) => h.replay, repeats: true },
+  ArrowRight: { run: (h) => h.next, repeats: true },
+  m: { run: (h) => h.mark, repeats: false },
+  M: { run: (h) => h.mark, repeats: false },
+  Escape: { run: (h) => h.escape, repeats: false },
 };
 
 /** The keys above as the settings page lists them (design 08-1); Esc only closes layers, so it is not listed. */
@@ -41,6 +45,33 @@ export const PLAYER_SHORTCUTS = [
   { name: "标记", keys: ["M"] },
 ] as const;
 
+/** What the 复习页's keys do (PRD F13 桌面快捷键). */
+export interface ReviewShortcutHandlers {
+  /** Space: 【显示答案】. */
+  reveal?(): void;
+  /** 1 to 4: 忘了, 困难, 记得, 简单. */
+  rate?(rating: 1 | 2 | 3 | 4): void;
+}
+
+const rateKey = (rating: 1 | 2 | 3 | 4): Binding<ReviewShortcutHandlers> => ({
+  run: (h) => h.rate && (() => h.rate!(rating)),
+  repeats: false,
+});
+
+const REVIEW_KEYS: Record<string, Binding<ReviewShortcutHandlers>> = {
+  " ": { run: (h) => h.reveal, repeats: false },
+  "1": rateKey(1),
+  "2": rateKey(2),
+  "3": rateKey(3),
+  "4": rateKey(4),
+};
+
+/** The 复习页's keys as the settings page lists them (design 08-1). */
+export const REVIEW_SHORTCUTS = [
+  { name: "显示答案", keys: ["空格"] },
+  { name: "评分", keys: ["1", "2", "3", "4"] },
+] as const;
+
 /**
  * Desktop keys of the 专注页 while it is mounted: Space, ←, →, M and Esc. Keys held with a modifier, or typed into a
  * field, are left alone, and so is every key while `handlers` is null (the page's Book is not the one playing).
@@ -48,6 +79,15 @@ export const PLAYER_SHORTCUTS = [
  * focused button.
  */
 export function useShortcuts(handlers: ShortcutHandlers | null) {
+  useKeys(PLAYER_KEYS, handlers);
+}
+
+/** Desktop keys of the 复习页 while it is mounted: Space and 1 to 4, by the same rules as useShortcuts. */
+export function useReviewShortcuts(handlers: ReviewShortcutHandlers | null) {
+  useKeys(REVIEW_KEYS, handlers);
+}
+
+function useKeys<H>(keys: Record<string, Binding<H>>, handlers: H | null) {
   const latest = useRef(handlers);
   latest.current = handlers;
 
@@ -55,15 +95,15 @@ export function useShortcuts(handlers: ShortcutHandlers | null) {
     const skip = (e: KeyboardEvent) =>
       latest.current === null || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target);
     const onKeyDown = (e: KeyboardEvent) => {
-      const key = KEYS[e.key];
-      const handler = key && latest.current?.[key.action];
+      const key = keys[e.key];
+      const handler = key && latest.current !== null ? key.run(latest.current) : undefined;
       if (skip(e) || !key || !handler) return;
       e.preventDefault();
       // Holding Space or M down must not toggle or mark again and again.
       if (e.repeat && !key.repeats) return;
       handler();
     };
-    // A focused button presses itself on Space's keyup; the keydown already played or paused.
+    // A focused button presses itself on Space's keyup; the keydown already did what Space does.
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.key === " " && !skip(e)) e.preventDefault();
     };
@@ -73,5 +113,5 @@ export function useShortcuts(handlers: ShortcutHandlers | null) {
       window.removeEventListener("keydown", onKeyDown, { capture: true });
       window.removeEventListener("keyup", onKeyUp, { capture: true });
     };
-  }, []);
+  }, [keys]);
 }

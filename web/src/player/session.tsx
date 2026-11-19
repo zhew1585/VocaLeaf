@@ -65,6 +65,12 @@ export interface Listening {
    */
   follow(book: BookDetail): void;
   toggle(): void;
+  /**
+   * Pauses the main playback and anything that would start it on its own (a start or seek waiting for audio, the
+   * network coming back, a 试听 that interrupted it), so it stays paused until the user plays it: entering 复习
+   * (AC-REV-07).
+   */
+  pause(): void;
   /** 重听 (PRD 4.4.3): back to the start of the Sentence the user wants to hear again. */
   replay(): void;
   /** 下一句: to the start of the next Sentence. */
@@ -349,6 +355,14 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     else el.pause();
   };
 
+  const pause = () => {
+    audition.stop();
+    starter.drop();
+    offline.forget();
+    if (voiceResume.current) voiceResume.current = { ...voiceResume.current, autoplay: false };
+    audio.current?.pause();
+  };
+
   const seeks = useRef(0);
   /** Moves to `seconds`, then plays when `autoplay`, otherwise keeps playing or paused. */
   const moveTo = (seconds: number, autoplay: boolean) => {
@@ -399,6 +413,7 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     reload,
     follow,
     toggle,
+    pause,
     replay: () => {
       audition.stop();
       jumps.replay();

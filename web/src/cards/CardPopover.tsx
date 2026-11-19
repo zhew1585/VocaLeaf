@@ -209,7 +209,7 @@ function CardBackView({ card }: { card: Card }) {
 }
 
 /** 【释义生成失败，点击重试】 (PRD 4.5.2 规则 6): generates the back again, not counted against the AI limit. */
-function RetryBack({ card, onCardChanged }: { card: Card; onCardChanged(card: Card): void }) {
+export function RetryBack({ card, onCardChanged }: { card: Card; onCardChanged(card: Card): void }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const retry = async () => {

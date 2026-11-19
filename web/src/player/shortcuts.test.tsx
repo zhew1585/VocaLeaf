@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useShortcuts, type ShortcutHandlers } from "./shortcuts";
+import { useReviewShortcuts, useShortcuts, type ReviewShortcutHandlers, type ShortcutHandlers } from "./shortcuts";
 
 afterEach(cleanup);
 
@@ -77,5 +77,35 @@ describe("desktop shortcuts (PRD 4.4.1)", () => {
     view.unmount();
     fireEvent.keyDown(document.body, { key: " " });
     expect(handlers.toggle).not.toHaveBeenCalled();
+  });
+});
+
+describe("复习 shortcuts (PRD F13)", () => {
+  function setUpReview(handlers: ReviewShortcutHandlers) {
+    function Page() {
+      useReviewShortcuts(handlers);
+      return <input aria-label="搜索" />;
+    }
+    return render(<Page />);
+  }
+
+  it("sends Space to 显示答案 and 1 to 4 to the ratings, the same keys a held-down one does not repeat", () => {
+    const reveal = vi.fn();
+    const rate = vi.fn();
+    setUpReview({ reveal, rate });
+    fireEvent.keyDown(document.body, { key: " " });
+    for (const key of ["1", "2", "3", "4", "5"]) fireEvent.keyDown(document.body, { key });
+    fireEvent.keyDown(document.body, { key: "3", repeat: true });
+    expect(reveal).toHaveBeenCalledTimes(1);
+    expect(rate.mock.calls).toEqual([[1], [2], [3], [4]]);
+  });
+
+  it("leaves keys alone without their handler, while typing, and with a modifier", () => {
+    const rate = vi.fn();
+    const view = setUpReview({ rate });
+    expect(fireEvent.keyDown(document.body, { key: " " })).toBe(true);
+    fireEvent.keyDown(view.getByLabelText("搜索"), { key: "1" });
+    fireEvent.keyDown(document.body, { key: "2", metaKey: true });
+    expect(rate).not.toHaveBeenCalled();
   });
 });

@@ -1,0 +1,450 @@
+/* 复习页 (design 06-1, 06-2, 06-3): a 640 wide column centered in the main area. */
+
+.review {
+  display: flex;
+  justify-content: center;
+  padding-top: 4px;
+}
+
+.review-column {
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* 退出 X, the progress bar and 已完成 / 总数. */
+.review-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 20px;
+}
+
+.review-exit {
+  display: grid;
+  place-items: center;
+  color: var(--ink-2);
+  border-radius: 6px;
+}
+
+.review-exit:hover {
+  color: var(--ink);
+}
+
+.review-progress {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--sunken);
+  overflow: hidden;
+}
+
+.review-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--leaf);
+  transition: width 0.25s ease;
+}
+
+.review-count {
+  font-family: var(--font-num);
+  font-size: 13px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.review-card {
+  min-height: min(676px, calc(100vh - 260px));
+  padding: 44px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 32px;
+  background: var(--surface);
+  box-shadow: 0 16px 40px #1c211d12;
+}
+
+.review-card.is-front {
+  align-items: center;
+  justify-content: center;
+  gap: 40px;
+  text-align: center;
+}
+
+.review-card.is-back {
+  gap: 32px;
+}
+
+/* The big 原声 button; its halo shows while the audio plays. */
+.review-halo {
+  width: 116px;
+  height: 116px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  transition: background 0.2s ease;
+}
+
+.review-halo.is-playing {
+  background: #dfe9da80;
+}
+
+.review-play {
+  width: 80px;
+  height: 80px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--leaf);
+  color: var(--surface);
+  cursor: pointer;
+}
+
+.review-play:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.review-cloze {
+  max-width: 470px;
+  margin: 0;
+  font-family: var(--font-read);
+  font-size: 28px;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+/* The Target blanked out: a green line as long as the Target. */
+.review-blank {
+  display: inline-block;
+  height: 1.1em;
+  margin: 0 4px;
+  vertical-align: -0.2em;
+  border-bottom: 2px solid var(--leaf);
+}
+
+.review-audio-note {
+  margin: -24px 0 0;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.review-audio-note.is-error {
+  color: var(--danger);
+}
+
+.review-card.is-back .review-audio-note {
+  margin: -20px 0 0;
+}
+
+.review-reveal {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border: none;
+  border-radius: 30px;
+  background: var(--leaf);
+  color: var(--surface);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.review-key {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 9px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 7px;
+  background: #fffdf826;
+  color: #fffdf8;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* 06-2: the source, the Sentence with the Target highlighted, the back. */
+.review-source-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.review-source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-family: var(--font-read);
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+.review-replay {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.review-replay:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.review-sentence {
+  margin: -14px 0 0;
+  font-family: var(--font-read);
+  font-size: 25px;
+  line-height: 1.36;
+  color: var(--ink-2);
+}
+
+.review-target {
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--leaf-soft);
+  color: var(--leaf);
+  font-weight: 600;
+}
+
+.review-divider {
+  width: 100%;
+  margin: 0;
+  border: none;
+  border-top: 1px solid var(--line);
+}
+
+.review-back {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.review-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.review-target-text {
+  margin: 0;
+  font-family: var(--font-read);
+  font-size: 34px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.review-phonetic {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+.review-meaning {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--leaf);
+}
+
+.review-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 32px;
+}
+
+.review-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.review-detail-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+.review-usage,
+.review-notes {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+.review-notes {
+  padding-left: 18px;
+}
+
+.review-example {
+  margin: 0;
+  font-family: var(--font-read);
+  font-size: 17px;
+  color: var(--ink);
+}
+
+/* The four ratings, 记得 filled as the default answer. */
+.review-ratings {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.review-rate {
+  height: 68px;
+  padding: 0 14px 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--surface);
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+
+.review-rate:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.review-rate-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.review-rate-name {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.review-rate-interval {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.review-rate.is-danger .review-rate-name {
+  color: var(--danger);
+}
+
+.review-rate.is-amber .review-rate-name {
+  color: var(--amber);
+}
+
+.review-rate.is-leaf .review-rate-name {
+  color: var(--leaf);
+}
+
+.review-rate .review-key {
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink-3);
+  font-family: var(--font-num);
+  font-weight: 600;
+}
+
+.review-rate.is-primary {
+  border-color: var(--leaf);
+  background: var(--leaf);
+}
+
+.review-rate.is-primary .review-rate-name {
+  color: var(--surface);
+}
+
+.review-rate.is-primary .review-rate-interval {
+  color: #fffdf8b3;
+}
+
+.review-rate.is-primary .review-key {
+  background: #fffdf826;
+  color: #fffdf8;
+}
+
+/* 06-3 今日复习完成. */
+.review-done {
+  min-height: calc(100vh - 140px);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  text-align: center;
+}
+
+.review-done-mark {
+  width: 176px;
+  height: 176px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #dfe9da66;
+}
+
+.review-done-mark > span {
+  width: 120px;
+  height: 120px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--leaf-soft);
+  color: var(--leaf);
+}
+
+.review-done h1 {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: 32px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.review-done-count {
+  margin: -20px 0 0;
+  font-size: 16px;
+  color: var(--ink-2);
+}
+
+.review-done-count strong {
+  margin-right: 6px;
+  font-family: var(--font-read);
+  font-size: 38px;
+  font-weight: 500;
+  color: var(--leaf);
+}
+
+.review-done-hint {
+  margin: -20px 0 0;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+@media (max-width: 720px) {
+  .review-card {
+    padding: 28px 20px;
+    border-radius: 24px;
+  }
+
+  .review-ratings {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

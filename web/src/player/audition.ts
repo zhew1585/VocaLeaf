@@ -68,7 +68,10 @@ export function useAudition({ main, src, sentenceStartsMs, resumeMain }: Options
     if (!current || !el) return;
     if (isClip(current)) el.src = current.src;
     el.play().catch((err: unknown) => {
-      if (!(err instanceof DOMException && err.name === "AbortError")) console.warn("试听 failed to play", err);
+      if (!(err instanceof DOMException)) return console.warn("试听 failed to play", err);
+      // Started without a tap (复习's autoplay) and refused by the browser: it waits for one on its button (PRD G12).
+      if (err.name === "NotAllowedError") end(false);
+      else if (err.name !== "AbortError") console.warn("试听 failed to play", err);
     });
   }, [current?.n]);
 

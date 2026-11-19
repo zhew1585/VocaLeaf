@@ -6,6 +6,7 @@ import {
   boolean,
   check,
   date,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -21,6 +22,7 @@ import {
   AUDIO_STATUSES,
   BOOK_SOURCES,
   BOOK_STATUSES,
+  CARD_STATES,
   DEFAULT_VOICE,
   DIFFICULTIES,
   MARK_STATUSES,
@@ -41,6 +43,7 @@ export const jobType = pgEnum("job_type", ["parse", "render_chapter", "render_vo
 export const jobStatus = pgEnum("job_status", ["queued", "running", "succeeded", "failed"]);
 export const markStatus = pgEnum("mark_status", MARK_STATUSES);
 export const targetKind = pgEnum("target_kind", TARGET_KINDS);
+export const cardState = pgEnum("card_state", CARD_STATES);
 
 /** Invited emails (PRD 4.1.1): only these may ask for a login code. Managed by scripts/allowlist.ts. */
 export const allowlist = pgTable("allowlist", {
@@ -356,11 +359,24 @@ export const cards = pgTable(
     back: jsonb("back").$type<CardBack>(),
     // When the Card is next due for Review; a new Card is due at once.
     due: timestamp("due", { withTimezone: true }).notNull(),
+    // Its FSRS memory state (ts-fsrs Card, review/schedule.ts), set by each rating in Review (PRD 4.5.3).
+    state: cardState("state").notNull().default("new"),
+    stability: doublePrecision("stability").notNull().default(0),
+    difficulty: doublePrecision("difficulty").notNull().default(0),
+    scheduledDays: integer("scheduled_days").notNull().default(0),
+    learningSteps: integer("learning_steps").notNull().default(0),
+    reps: integer("reps").notNull().default(0),
+    lapses: integer("lapses").notNull().default(0),
+    lastReviewedAt: timestamp("last_reviewed_at", { withTimezone: true }),
+    // When it was first rated: the new Cards a day took in count toward the daily limit (PRD 4.7.2).
+    firstReviewedAt: timestamp("first_reviewed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   // One Card per Target of a Sentence (PRD 4.5.2 规则 3); Cards of a deleted Book (no Sentence) never clash.
   (t) => [
     unique("cards_user_sentence_target").on(t.userId, t.sentenceId, t.targetStart, t.targetEnd),
     index("cards_sentence_idx").on(t.sentenceId),
+    // Today's Review queue of a user (review/queue.ts).
+    index("cards_user_due_idx").on(t.userId, t.due),
   ],
 );
