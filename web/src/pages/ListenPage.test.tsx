@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BookDetail, Sentence } from "../api";
+import type { BookDetail, BookTimeline, Sentence } from "../api";
+import { layoutOf } from "../player/layout";
 import { ListeningProvider } from "../player/session";
 import { audio, audioWithGenerated, grow, hlsInstances, stubMediaPlayback, timeUpdate } from "../test-media";
 import { ListenPage } from "./ListenPage";
@@ -84,10 +85,11 @@ const sentence = (id: string, paragraphIndex: number, text: string, startMs: num
   wordTimings: null,
 });
 
-/** The Book timeline the served Sentences make (GET /api/books/b1/timeline). */
-function timelineOf(sentences: Record<string, Sentence[]>) {
+/** The Book timeline the served Sentences and the Book as last served make (GET /api/books/b1/timeline). */
+function timelineOf(sentences: Record<string, Sentence[]>, book: BookDetail): BookTimeline {
   const starts = Object.values(sentences).flatMap((list) => list.flatMap((s) => (s.startMs === null ? [] : [s.startMs])));
-  return { sentenceStartsMs: starts.sort((a, b) => a - b), chapters: [], complete: true };
+  // Settled, so the session does not poll it; the page's own polls tell it of a new layout.
+  return { sentenceStartsMs: starts.sort((a, b) => a - b), chapters: layoutOf(book), complete: true, settled: true };
 }
 
 /**
@@ -96,11 +98,13 @@ function timelineOf(sentences: Record<string, Sentence[]>) {
  */
 function serve(books: BookDetail[], sentences: Record<string, Sentence[]> = {}) {
   const queue = [...books];
+  let last = queue[0]!;
   const fetchMock = vi.fn(async (url: string) => {
     const chapterId = /^\/api\/chapters\/([^/]+)\/sentences$/.exec(url)?.[1];
     if (chapterId) return Response.json(sentences[chapterId] ?? []);
-    if (url.endsWith("/timeline")) return Response.json(timelineOf(sentences));
-    return Response.json(queue.length > 1 ? queue.shift() : queue[0]);
+    if (url.endsWith("/timeline")) return Response.json(timelineOf(sentences, last));
+    last = (queue.length > 1 ? queue.shift() : queue[0])!;
+    return Response.json(last);
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;

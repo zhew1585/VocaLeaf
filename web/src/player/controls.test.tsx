@@ -16,6 +16,7 @@ const TIMELINE: BookTimeline = {
     { id: "c2", startMs: 8000, endMs: 20000 },
   ],
   complete: true,
+  settled: true,
 };
 
 let media: ReturnType<typeof stubMediaPlayback>;
@@ -150,7 +151,7 @@ describe("下一句", () => {
   });
 
   it("loads the timeline again when playback is past what it holds (the Book is still generating)", async () => {
-    const growing: BookTimeline = { ...TIMELINE, sentenceStartsMs: [0, 4000], complete: false };
+    const growing: BookTimeline = { ...TIMELINE, sentenceStartsMs: [0, 4000], complete: false, settled: false };
     vi.mocked(fetch)
       .mockImplementationOnce(async () => Response.json(growing))
       .mockImplementationOnce(async () => Response.json(TIMELINE));

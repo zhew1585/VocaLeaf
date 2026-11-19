@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BOOK_DELETED_EVENT, type BookDetail } from "../api";
+import { layoutOf } from "../player/layout";
 import { ListeningProvider, useListening, type Listening } from "../player/session";
 import { audioWithGenerated, hlsInstances, stubMediaPlayback } from "../test-media";
 import { BookPage } from "./BookPage";
@@ -83,13 +84,17 @@ function rows() {
  */
 function stubApi(books: BookDetail[], onPost: (url: string) => Response = () => new Response(null, { status: 204 })) {
   const queue = [...books];
+  let last = queue[0]!;
   const calls: { url: string; method: string; body?: unknown }[] = [];
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     calls.push({ url, method, body: init?.body });
-    if (url.endsWith("/timeline")) return Response.json({ sentenceStartsMs: [], chapters: [], complete: true });
+    if (url.endsWith("/timeline")) {
+      return Response.json({ sentenceStartsMs: [], chapters: layoutOf(last), complete: true, settled: true });
+    }
     if (method !== "GET") return onPost(url);
-    return Response.json(queue.length > 1 ? queue.shift() : queue[0]);
+    last = (queue.length > 1 ? queue.shift() : queue[0])!;
+    return Response.json(last);
   });
   vi.stubGlobal("fetch", fetchMock);
   return calls;

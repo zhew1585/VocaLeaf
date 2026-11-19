@@ -11,7 +11,7 @@ export function isWorking(book: BookDetail): boolean {
   return (
     book.status === "parsing" ||
     book.status === "generating" ||
-    // A retried Chapter generates again in a Book that is already 已就绪.
+    // A retried or newly narrated Chapter generates in a Book that is already 已就绪.
     book.chapters.some((c) => !c.skipped && (c.audioStatus === "pending" || c.audioStatus === "generating"))
   );
 }
@@ -27,7 +27,7 @@ export function nextPollMs(book: BookDetail, eager = false): number | null {
 
 /**
  * Loads a Book and keeps it current while the worker is still working on it. `reload` loads it again at once,
- * after the user changed it (a retried Chapter); so does `eager` turning on.
+ * after the user changed it (a retried Chapter, one set Skipped or narrated); so does `eager` turning on.
  */
 export function useBook(id: string, { eager = false } = {}) {
   const [book, setBook] = useState<BookDetail | null>(null);

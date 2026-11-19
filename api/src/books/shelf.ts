@@ -37,27 +37,34 @@ export async function onShelf(db: Db, userId: string, bookId: string): Promise<b
   return entry !== undefined;
 }
 
+/** Where playback resumes: a position in the Book's audio (null while it has none there), in a Chapter. */
+interface ResumeAt {
+  startMs: number | null;
+  chapterTitle: string;
+}
+
 /**
  * Where a Chapter set Skipped resumes (PRD 4.2.5): the start of the next narrated Chapter in the playlist, or null
  * while there is none yet.
  */
-async function nextChapterStarts(
+async function nextNarratedChapters(
   db: Db,
   skippedAt: { bookId: string; chapterIndex: number }[],
   timelines: Map<string, Timeline>,
-): Promise<Map<string, number | null>> {
+): Promise<Map<string, ResumeAt | null>> {
   if (skippedAt.length === 0) return new Map();
   const rows = await db
-    .select({ id: chapters.id, index: chapters.index })
+    .select({ id: chapters.id, index: chapters.index, title: chapters.title })
     .from(chapters)
     .where(inArray(chapters.bookId, skippedAt.map((s) => s.bookId)));
-  const indexOf = new Map(rows.map((r) => [r.id, r.index]));
+  const byId = new Map(rows.map((r) => [r.id, r]));
   return new Map(
     skippedAt.map(({ bookId, chapterIndex }) => {
-      const next = timelines
-        .get(bookId)
-        ?.entries.find((e) => e.segments.length > 0 && indexOf.get(e.chapterId)! > chapterIndex);
-      return [bookId, next?.offsetMs ?? null];
+      const next = timelines.get(bookId)?.entries.find((e) => {
+        const chapter = byId.get(e.chapterId);
+        return e.segments.length > 0 && chapter !== undefined && chapter.index > chapterIndex;
+      });
+      return [bookId, next ? { startMs: next.offsetMs, chapterTitle: byId.get(next.chapterId)!.title } : null];
     }),
   );
 }
@@ -103,21 +110,25 @@ export async function loadListening(
     .groupBy(shelfEntries.bookId, shelfEntries.lastListenedAt, at.id, atChapter.id);
 
   const durations = await loadDurations(db, rows.map((r) => r.bookId));
-  const skippedStarts = await nextChapterStarts(db, rows.filter((r) => r.chapterSkipped), timelines);
+  const skippedResumes = await nextNarratedChapters(db, rows.filter((r) => r.chapterSkipped), timelines);
+  /** The Sentence's own place, while its Chapter is narrated. */
+  const ownPlace = (r: (typeof rows)[number]): ResumeAt => {
+    const entry = timelines.get(r.bookId)?.entries.find((e) => e.chapterId === r.chapterId && e.segments.length > 0);
+    const startMs = entry && r.sentenceStartMs !== null ? entry.offsetMs + r.sentenceStartMs : null;
+    return { startMs, chapterTitle: r.chapterTitle };
+  };
   return new Map(
     rows.map((r) => {
-      const entry = timelines.get(r.bookId)?.entries.find((e) => e.chapterId === r.chapterId && e.segments.length > 0);
-      const startMs = r.chapterSkipped
-        ? (skippedStarts.get(r.bookId) ?? null)
-        : entry && r.sentenceStartMs !== null
-          ? entry.offsetMs + r.sentenceStartMs
-          : null;
+      const resume = r.chapterSkipped
+        ? (skippedResumes.get(r.bookId) ?? { startMs: null, chapterTitle: r.chapterTitle })
+        : ownPlace(r);
+      const startMs = resume.startMs;
       const durationMs = durations.get(r.bookId) ?? null;
       const share =
         startMs !== null && durationMs ? startMs / durationMs : r.totalChars > 0 ? r.charsBefore / r.totalChars : 0;
       const listening: Listening = {
         sentenceId: r.sentenceId,
-        chapterTitle: r.chapterTitle,
+        chapterTitle: resume.chapterTitle,
         share: Math.min(share, 1),
         startMs,
         listenedAt: r.listenedAt!.toISOString(),

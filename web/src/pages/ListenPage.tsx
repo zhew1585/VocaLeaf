@@ -108,8 +108,9 @@ export function ListenPage({ id }: { id: string }) {
   useEffect(() => {
     if (playable) open(id);
   }, [playable, id, open]);
-  // A retried Chapter came into the playlist before its end: the session loads it again and resumes. Before the
-  // request below, so a Chapter picked meanwhile wins over that resume.
+  // A Chapter came into the playlist before its end or left it (retried, narrated, set Skipped): the session loads
+  // it again and resumes. Before the request below, so a Chapter picked meanwhile wins over that resume and is
+  // never asked of the old playlist.
   useEffect(() => {
     if (book) follow(book);
   }, [book, follow]);

@@ -1,11 +1,11 @@
 // Setting a Chapter Skipped or narrated (PRD 4.2.5 用户调整, F5): the user's route and what it does to the
 // generation queue. The playlist follows by itself: it is built from the Chapters' flags (books/timeline.ts).
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, count, eq, inArray, lte } from "drizzle-orm";
+import { and, count, eq, gt, gte, inArray, lt, max, sql } from "drizzle-orm";
 import type { AppDeps } from "../app.js";
 import type { UserEnv } from "../auth/session.js";
 import { ChapterSkippedUpdateSchema, ErrorSchema } from "../contract.js";
-import { books, chapters, jobs, sentences } from "../db/schema.js";
+import { audioSegments, books, chapters, jobs, sentences } from "../db/schema.js";
 import { finishBookIfDone, type Tx } from "../jobs/lifecycle.js";
 import { validationHook } from "../validation.js";
 import { notFound } from "./own-book.js";
@@ -43,16 +43,50 @@ async function skipChapter(tx: Tx, chapter: ChapterRow) {
 }
 
 /**
+ * Whether generation already went past the Chapter: a later narrated Chapter has audio. The Chapter is then
+ * generated out of Chapter order, behind where playback may already be, and must not hold the playlist back.
+ */
+async function generationPassed(tx: Tx, chapter: ChapterRow): Promise<boolean> {
+  const [later] = await tx
+    .select({ id: audioSegments.id })
+    .from(audioSegments)
+    .innerJoin(chapters, eq(chapters.id, audioSegments.chapterId))
+    .where(and(eq(chapters.bookId, chapter.bookId), eq(chapters.skipped, false), gt(chapters.index, chapter.index)))
+    .limit(1);
+  return later !== undefined;
+}
+
+/**
+ * Queues the Chapter's generation right after the Chapters before it, moving the Book's queued Chapters after it
+ * one place back, so the Book's Chapters are still claimed in Chapter order (claimNextJob).
+ */
+async function queueInChapterOrder(tx: Tx, chapter: ChapterRow) {
+  const [before] = await tx
+    .select({ position: max(jobs.position) })
+    .from(jobs)
+    .innerJoin(chapters, eq(chapters.id, jobs.chapterId))
+    .where(and(eq(jobs.bookId, chapter.bookId), lt(chapters.index, chapter.index)));
+  const position = (before?.position ?? 0) + 1;
+  await tx
+    .update(jobs)
+    .set({ position: sql`${jobs.position} + 1` })
+    .where(and(eq(jobs.bookId, chapter.bookId), eq(jobs.status, "queued"), gte(jobs.position, position)));
+  await tx.insert(jobs).values({ bookId: chapter.bookId, type: "render_chapter", chapterId: chapter.id, position });
+}
+
+/**
  * Narrates a Skipped Chapter. Generated audio comes back into the playlist at once. Otherwise the Chapter is
- * generated out of Chapter order (narratedByUser), queued among the Book's other narrated Chapters in Chapter order,
- * and comes into the playlist once generated (AC-BOOK-01). A Book's status does not change: 已就绪 is final
- * (PRD 4.3.3), and a generating one now also waits for this Chapter.
+ * queued in Chapter order and comes into the playlist once generated (AC-BOOK-01): in its turn, holding playback
+ * like any Chapter still to generate, or, when generation already went past it, out of order (narratedByUser)
+ * and whole. A Book's status does not change: 已就绪 is final (PRD 4.3.3), and a generating one now also waits
+ * for this Chapter.
  */
 async function narrateChapter(tx: Tx, chapter: ChapterRow) {
-  const late = chapter.audioStatus === "pending" || chapter.audioStatus === "generating";
+  const toGenerate = chapter.audioStatus === "pending" || chapter.audioStatus === "generating";
+  const outOfOrder = toGenerate && (await generationPassed(tx, chapter));
   await tx
     .update(chapters)
-    .set({ skipped: false, ...(late ? { narratedByUser: true } : {}) })
+    .set({ skipped: false, ...(outOfOrder ? { narratedByUser: true } : {}) })
     .where(eq(chapters.id, chapter.id));
   if (chapter.audioStatus !== "pending") return;
 
@@ -69,12 +103,7 @@ async function narrateChapter(tx: Tx, chapter: ChapterRow) {
     await finishBookIfDone(tx, chapter.bookId);
     return;
   }
-  // Its place among the narrated Chapters, as the jobs queued at parse time (jobs/parse.ts).
-  const [rank] = await tx
-    .select({ n: count() })
-    .from(chapters)
-    .where(and(eq(chapters.bookId, chapter.bookId), eq(chapters.skipped, false), lte(chapters.index, chapter.index)));
-  await tx.insert(jobs).values({ bookId: chapter.bookId, type: "render_chapter", chapterId: chapter.id, position: rank!.n });
+  await queueInChapterOrder(tx, chapter);
 }
 
 /** PUT /chapters/{id}/skipped. */

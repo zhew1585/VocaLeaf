@@ -1,12 +1,13 @@
 // Where each Chapter sits in a Book's playlist, and how a position carries over when that changes. The playlist
 // normally only grows at its end, which the player follows by itself; when a Chapter comes in before its end (a
 // retried or newly narrated Chapter, api/src/books/timeline.ts) or leaves it (set Skipped), the player must load
-// it again and resume at the same place (session.tsx `follow`).
-import type { BookDetail } from "../api";
+// it again and resume at the same place (session.tsx).
+import type { BookDetail, BookTimeline } from "../api";
 
 /** The Chapters with audio in the playlist, in playlist order; `endMs` is null while one is still generating. */
-export type Layout = { id: string; startMs: number; endMs: number | null }[];
+export type Layout = BookTimeline["chapters"];
 
+/** The layout as the Book detail tells it. */
 export function layoutOf(book: BookDetail): Layout {
   return book.chapters.flatMap((c) =>
     c.startMs === null

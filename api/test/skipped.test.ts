@@ -10,6 +10,7 @@ import {
   generatedBook,
   logIn,
   renderAll,
+  reportFailure,
   reportParse,
   reportRenderResult,
   testApp,
@@ -89,6 +90,8 @@ describe("turning a Skipped Chapter's narration on (AC-BOOK-01)", () => {
     // The rest of the Book still plays, at the same places, while the first Chapter is generated out of order.
     expect(await playlistSegments(t.app, book.id)).toEqual(before);
     expect(placed(d)).toEqual(placed(book));
+    // The playlist ends where it did, but a player keeps checking it: the Imprint will come in before its end.
+    expect(await timeline(t.app, book.id)).toMatchObject({ complete: true, settled: false });
 
     const job = await claimRender(t.app);
     expect(job.chapterId).toBe(imprint.id);
@@ -107,6 +110,7 @@ describe("turning a Skipped Chapter's narration on (AC-BOOK-01)", () => {
     expect(after).toHaveLength(6);
     expect(after.slice(1)).toEqual(before);
     expect(await playlistEnded(t.app, book.id)).toBe(true);
+    expect(await timeline(t.app, book.id)).toMatchObject({ complete: true, settled: true });
 
     // AC-BOOK-01 with the Chapter at the end.
     expect((await setSkipped(t.app, ack.id, false)).status).toBe(204);
@@ -131,6 +135,23 @@ describe("turning a Skipped Chapter's narration on (AC-BOOK-01)", () => {
     const d = await bookDetail(t.app, book.id);
     expect(d).toMatchObject({ status: "ready", progress: { generated: 5, narrated: 5 } });
     expect(placed(d).map(([title]) => title)).toEqual(["Imprint", "I", "II", "III", "Acknowledgments"]);
+  });
+
+  it("holds playback for a Chapter generation has not reached yet, as for any other Chapter in order", async () => {
+    const t = await testApp();
+    const book = await parsedBook(t);
+    await renderFully(t, await claimRender(t.app));
+    await setSkipped(t.app, chapterNamed(book, "Acknowledgments").id, false);
+    await renderFully(t, await claimRender(t.app));
+    await renderFully(t, await claimRender(t.app));
+
+    // III is done; the playlist does not end there, the Acknowledgments come next.
+    expect(placed(await bookDetail(t.app, book.id)).map(([title]) => title)).toEqual(["I", "II", "III"]);
+    expect(await playlistEnded(t.app, book.id)).toBe(false);
+    const job = await claimRender(t.app);
+    expect(job.chapterId).toBe(chapterNamed(book, "Acknowledgments").id);
+    await renderFully(t, job);
+    expect(placed(await bookDetail(t.app, book.id)).at(-1)).toEqual(["Acknowledgments", 20000]);
   });
 
   it("makes a Chapter without text generated at once, with nothing to queue", async () => {
@@ -193,6 +214,23 @@ describe("setting a narrated Chapter Skipped", () => {
     expect(await playlistEnded(t.app, book.id)).toBe(true);
   });
 
+  it("drops a running Chapter's job instead of trying it again when the attempt fails after it was set Skipped", async () => {
+    const t = await testApp();
+    const book = await parsedBook(t);
+    const job = await claimRender(t.app);
+    expect(job.chapterId).toBe(chapterNamed(book, "I").id);
+    expect((await setSkipped(t.app, job.chapterId, true)).status).toBe(204);
+
+    expect((await reportFailure(t.app, job, "RuntimeError: kokoro crashed")).status).toBe(204);
+    expect((await claimRender(t.app)).chapterId).toBe(chapterNamed(book, "II").id);
+    expect(chapterNamed(await bookDetail(t.app, book.id), "I")).toMatchObject({ skipped: true, audioStatus: "pending" });
+
+    // Narrated again, it is queued anew.
+    expect((await setSkipped(t.app, job.chapterId, false)).status).toBe(204);
+    const open = await t.db.select().from(jobs).where(eq(jobs.chapterId, job.chapterId));
+    expect(open.map((j) => j.status)).toEqual(["queued"]);
+  });
+
   it("resumes a listener whose Sentence was in it at the start of the next narrated Chapter", async () => {
     const t = await testApp();
     const book = await generatedBook(t, "Pride", chapters);
@@ -205,7 +243,7 @@ describe("setting a narrated Chapter Skipped", () => {
     expect((await bookDetail(t.app, book.id)).listening?.startMs).toBe(12_000);
 
     await setSkipped(t.app, chapterNamed(book, "II").id, true);
-    expect((await bookDetail(t.app, book.id)).listening).toMatchObject({ startMs: 8000, chapterTitle: "II" });
+    expect((await bookDetail(t.app, book.id)).listening).toMatchObject({ startMs: 8000, chapterTitle: "III" });
   });
 });
 

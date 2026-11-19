@@ -39,15 +39,20 @@ export function bookTimelineRoutes({ db }: AppDeps) {
 
   app.openapi(timelineRoute, async (c) => {
     const { id } = c.req.valid("param");
-    if (!(await ownBook(db, id, c.get("userId")))) return c.json(notFound, 404);
+    const book = await ownBook(db, id, c.get("userId"));
+    if (!book) return c.json(notFound, 404);
 
     const timeline = await loadTimeline(db, id);
     const offsets = new Map(timeline.entries.map((e) => [e.chapterId, e.offsetMs]));
-    const statuses = new Map(
-      (await db.select({ id: chapters.id, audioStatus: chapters.audioStatus }).from(chapters).where(eq(chapters.bookId, id))).map(
-        (c) => [c.id, c.audioStatus] as const,
-      ),
-    );
+    const chapterRows = await db
+      .select({ id: chapters.id, skipped: chapters.skipped, audioStatus: chapters.audioStatus })
+      .from(chapters)
+      .where(eq(chapters.bookId, id));
+    const statuses = new Map(chapterRows.map((c) => [c.id, c.audioStatus] as const));
+    // A Book still parsing has its Chapters to come.
+    const settled =
+      book.status !== "parsing" &&
+      chapterRows.every((c) => c.skipped || c.audioStatus === "generated" || c.audioStatus === "failed");
     // Stored times count from their Chapter's start; Chapters outside the playlist have none that count.
     const rows = await db
       .select({ chapterId: sentences.chapterId, startMs: sentences.startMs })
@@ -62,7 +67,7 @@ export function bookTimelineRoutes({ db }: AppDeps) {
       })
       .sort((a, b) => a - b);
 
-    return c.json({ sentenceStartsMs, chapters: chapterSpans(timeline, statuses), complete: timeline.complete }, 200);
+    return c.json({ sentenceStartsMs, chapters: chapterSpans(timeline, statuses), complete: timeline.complete, settled }, 200);
   });
 
   return app;

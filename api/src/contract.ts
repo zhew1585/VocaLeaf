@@ -87,7 +87,10 @@ export const ListeningSchema = z
   .object({
     /** The Sentence playback resumes at, from its start. */
     sentenceId: z.uuid(),
-    /** Title of that Sentence's Chapter (【继续收听】: Chapter 1 · 34%). */
+    /**
+     * Title of the Chapter playback resumes in (【继续收听】: Chapter 1 · 34%): the Sentence's own, or the next narrated
+     * one when the Sentence's Chapter was set Skipped since.
+     */
     chapterTitle: z.string(),
     /**
      * How much of the Book was listened to, 0 to 1: its audio up to that Sentence out of the whole (as the 专注页
@@ -186,8 +189,13 @@ export const BookTimelineSchema = z
     sentenceStartsMs: z.array(z.int().min(0)),
     /** The narrated Chapters in the playlist, in order; a Chapter still generating has no end yet. */
     chapters: z.array(z.object({ id: z.uuid(), startMs: z.int().min(0), endMs: z.int().min(0).nullable() })),
-    /** No more audio will be appended: every narrated Chapter is in the playlist or failed. */
+    /** No more audio will be appended at the end (the playlist has ENDLIST). */
     complete: z.boolean(),
+    /**
+     * Every narrated Chapter is generated or failed, so the playlist changes no more unless the user changes the
+     * Book. While false, a Chapter may still come in, at the end or (generated out of order) before it.
+     */
+    settled: z.boolean(),
   })
   .openapi("BookTimeline");
 
