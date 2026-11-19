@@ -1,7 +1,7 @@
 // Shared helpers for the end-to-end tests against the running compose stack.
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import type { Book, BookDetail, UploadPolicy } from "../api/src/contract.js";
+import type { Book, BookDetail, UploadPolicy, Voice } from "../api/src/contract.js";
 
 export const BASE = process.env.E2E_BASE_URL ?? "http://localhost:8080";
 /** Mailpit's web UI and API, where the stack's login code emails land. */
@@ -96,9 +96,10 @@ export function userApi(cookie: () => Promise<string>) {
     const { status, body } = await anonApi<T>(path, { ...init, headers });
     return { status, body };
   }
-  async function upload(name: string, bytes: BlobPart, { declare = true } = {}) {
+  async function upload(name: string, bytes: BlobPart, { declare = true, voice }: { declare?: boolean; voice?: Voice } = {}) {
     const form = new FormData();
     form.append("file", new File([bytes], name));
+    if (voice) form.append("voice", voice);
     if (declare) form.append("declarationVersion", (await api<UploadPolicy>("/upload-policy")).body.declaration.version);
     return api<UploadResult>("/books", { method: "POST", body: form });
   }

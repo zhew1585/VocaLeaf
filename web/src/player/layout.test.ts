@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapPosition, onlyAppends, type Layout } from "./layout";
+import { mapPosition, onlyAppends, sentenceIndexAt, type Layout } from "./layout";
 
 // Chapters I and III are in the playlist; II failed and is out of it.
 const before: Layout = [
@@ -39,5 +39,13 @@ describe("mapPosition", () => {
   it("waits at the end of the playlist when no Chapter after the one that left is in it yet", () => {
     expect(mapPosition(950, after, after.slice(0, 2))).toBe(900);
     expect(mapPosition(5, before, [])).toBe(0);
+  });
+});
+
+describe("sentenceIndexAt", () => {
+  it("is the Sentence playing at a position: the last one starting at or before it", () => {
+    expect(sentenceIndexAt([0, 4000, 8000], 8000)).toBe(2);
+    expect(sentenceIndexAt([0, 4000, 8000], 7999)).toBe(1);
+    expect(sentenceIndexAt([1500, 4000], 0)).toBe(0);
   });
 });

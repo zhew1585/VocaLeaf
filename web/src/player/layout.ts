@@ -36,3 +36,8 @@ export function mapPosition(seconds: number, from: Layout, to: Layout): number {
   const last = to.at(-1);
   return last ? (last.endMs ?? last.startMs) / 1000 : 0;
 }
+
+/** How many Sentences of the playlist start at or before `ms`, less one: the index of the Sentence playing there. */
+export function sentenceIndexAt(starts: readonly number[], ms: number): number {
+  return Math.max(0, starts.findLastIndex((s) => s <= ms));
+}

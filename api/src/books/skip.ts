@@ -7,6 +7,7 @@ import type { UserEnv } from "../auth/session.js";
 import { ChapterSkippedUpdateSchema, ErrorSchema } from "../contract.js";
 import { audioSegments, books, chapters, jobs, sentences } from "../db/schema.js";
 import { finishBookIfDone, type Tx } from "../jobs/lifecycle.js";
+import { isVoiceChanging } from "../jobs/voice-change.js";
 import { validationHook } from "../validation.js";
 import { notFound, readableBy } from "./readable-book.js";
 
@@ -22,8 +23,11 @@ const skippedRoute = createRoute({
     204: { description: "Set; setting it to what it already is changes nothing" },
     403: { description: "A Library Book's Chapter", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "The Book's Voice is changing", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
+
+const voiceChanging = { error: { code: "voice_change_running", message: "正在更换音色，完成后再调整" } } as const;
 
 const libraryBook = {
   error: { code: "library_book", message: "书库的书不能调整朗读章节" },
@@ -123,6 +127,8 @@ export function skipRoutes({ db }: AppDeps) {
           audioStatus: chapters.audioStatus,
           skipped: chapters.skipped,
           source: books.source,
+          voiceChangeTo: books.voiceChangeTo,
+          voiceChangeFailed: books.voiceChangeFailed,
         })
         .from(chapters)
         .innerJoin(books, eq(books.id, chapters.bookId))
@@ -130,11 +136,14 @@ export function skipRoutes({ db }: AppDeps) {
         .for("update", { of: chapters });
       if (!row) return "not_found";
       if (row.source !== "upload") return "library_book";
+      // A Chapter narrated now would be generated in the old Voice and miss the change (#19).
+      if (isVoiceChanging(row)) return "voice_changing";
       if (row.skipped !== skipped) await (skipped ? skipChapter(tx, row) : narrateChapter(tx, row));
       return "set";
     });
     if (outcome === "not_found") return c.json(notFound, 404);
     if (outcome === "library_book") return c.json(libraryBook, 403);
+    if (outcome === "voice_changing") return c.json(voiceChanging, 409);
     return c.body(null, 204);
   });
 

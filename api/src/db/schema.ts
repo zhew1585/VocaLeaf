@@ -33,7 +33,9 @@ export const bookStatus = pgEnum("book_status", BOOK_STATUSES);
 export const audioStatus = pgEnum("audio_status", AUDIO_STATUSES);
 export const voice = pgEnum("voice", VOICES);
 export const difficulty = pgEnum("difficulty", DIFFICULTIES);
-export const jobType = pgEnum("job_type", ["parse", "render_chapter"]);
+// render_voice_change generates a Chapter's audio in the Voice a Book is changing to (PRD 4.2.4, 4.3.4), next
+// to the audio that plays meanwhile.
+export const jobType = pgEnum("job_type", ["parse", "render_chapter", "render_voice_change"]);
 export const jobStatus = pgEnum("job_status", ["queued", "running", "succeeded", "failed"]);
 export const markStatus = pgEnum("mark_status", MARK_STATUSES);
 
@@ -100,8 +102,12 @@ export const books = pgTable(
     format: text("format", { enum: ["epub"] }).notNull().default("epub"),
     fileSize: integer("file_size").notNull(),
     status: bookStatus("status").notNull().default("parsing"),
-    // Fixed to the default until Voice selection (#19).
+    // The Voice of the audio that plays (PRD 4.2.4), chosen at upload.
     voice: voice("voice").notNull().default(DEFAULT_VOICE),
+    // The Voice the Book is changing to (jobs/voice-change.ts): being generated, or the change failed. Null otherwise.
+    voiceChangeTo: voice("voice_change_to"),
+    // The change to voiceChangeTo failed and the Book kept its Voice (PRD 4.3.5 #11); shown until the next change.
+    voiceChangeFailed: boolean("voice_change_failed").notNull().default(false),
     parserVersion: text("parser_version"),
     // User-facing reason shown with parse_failed (PRD 4.3.5 #4 to #6, #10).
     failureReason: text("failure_reason"),
@@ -174,11 +180,14 @@ export const jobs = pgTable(
       .notNull()
       .references(() => books.id, { onDelete: "cascade" }),
     type: jobType("type").notNull(),
-    // The Chapter a render_chapter job generates.
+    // The Chapter a render job generates.
     chapterId: uuid("chapter_id").references(() => chapters.id, { onDelete: "cascade" }),
     // Place of the job in its Book's pipeline: 0 = parse, n = the nth narrated Chapter. Claims take the lowest
     // first, so a newly uploaded Book's first Chapter is never stuck behind another Book's later Chapters.
     position: integer("position").notNull().default(0),
+    // The Voice a render job generates (PRD 4.3.1): set when a render_chapter job is claimed (the Book's Voice
+    // then), and when a render_voice_change job is queued (the Voice changed to). Null for parse jobs.
+    voice: voice("voice"),
     status: jobStatus("status").notNull().default("queued"),
     // Incremented on every claim, and the fencing token callbacks must echo (see jobs/routes.ts).
     attempt: integer("attempt").notNull().default(0),
@@ -192,12 +201,16 @@ export const jobs = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  // A render_chapter job always names its Chapter; a parse job never does. Compared as text because the
-  // migration that adds the enum value cannot use it in the same transaction.
-  (t) => [check("jobs_chapter_matches_type", sql`(${t.type}::text = 'render_chapter') = (${t.chapterId} is not null)`)],
+  // A render job always names its Chapter; a parse job never does. Compared as text because the migration that
+  // adds an enum value cannot use it in the same transaction.
+  (t) => [check("jobs_chapter_matches_type", sql`(${t.type}::text <> 'parse') = (${t.chapterId} is not null)`)],
 );
 
-/** HLS segments of a Chapter's audio, about 10 seconds each (PRD 4.7.2), as the worker reported them. */
+/**
+ * HLS segments of a Chapter's audio, about 10 seconds each (PRD 4.7.2), as the worker reported them. Only the
+ * segments in the Book's Voice play; while the Voice changes the new Voice's segments wait here unplayed, and
+ * after the change the old Voice's stay (servable, for a player still holding them) until the next change.
+ */
 export const audioSegments = pgTable(
   "audio_segments",
   {
@@ -205,12 +218,27 @@ export const audioSegments = pgTable(
     chapterId: uuid("chapter_id")
       .notNull()
       .references(() => chapters.id, { onDelete: "cascade" }),
+    voice: voice("voice").notNull(),
     index: integer("index").notNull(),
     key: text("key").notNull(),
     durationMs: integer("duration_ms").notNull(),
   },
-  (t) => [unique().on(t.chapterId, t.index)],
+  (t) => [unique().on(t.chapterId, t.voice, t.index)],
 );
+
+/**
+ * Sentence timings in the Voice a Book is changing to, kept aside while the old Voice's timings (on sentences)
+ * still play; they replace those when the change completes (jobs/voice-change.ts).
+ */
+export const stagedSentenceTimings = pgTable("staged_sentence_timings", {
+  sentenceId: uuid("sentence_id")
+    .primaryKey()
+    .references(() => sentences.id, { onDelete: "cascade" }),
+  voice: voice("voice").notNull(),
+  startMs: integer("start_ms").notNull(),
+  endMs: integer("end_ms").notNull(),
+  wordTimings: jsonb("word_timings").$type<WordTiming[]>().notNull(),
+});
 
 /**
  * A user's Shelf (PRD 4.2.3): the Books they uploaded and the Library Books they added, with where they

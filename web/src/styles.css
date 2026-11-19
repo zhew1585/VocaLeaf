@@ -1256,3 +1256,77 @@ button.chapter-title:hover {
     display: none;
   }
 }
+
+/* 开始收听 and the Voice under it (design 04-2 Actions). */
+.book-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.voice-setting {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.voice-button {
+  height: 52px;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 26px;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.voice-button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.voice-button:focus-visible {
+  outline: 2px solid var(--leaf);
+  outline-offset: 2px;
+}
+
+.voice-button-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.voice-button-label svg {
+  color: var(--ink-2);
+}
+
+/* Opens below the button, like the player's menus (design 01 ④). */
+.voice-menu {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  right: 0;
+  top: 60px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  box-shadow: 0 16px 40px rgb(28 33 29 / 0.2);
+}
+
+.voice-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-2);
+}

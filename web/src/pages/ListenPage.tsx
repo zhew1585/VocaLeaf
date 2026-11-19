@@ -210,12 +210,14 @@ export function ListenPage({ id }: { id: string }) {
   }, [bookLoaded, located]);
 
   const { open, follow, requestStart } = listening;
+  const voice = book?.voice;
   useEffect(() => {
-    if (playable) open(id);
+    if (playable) open(id, voice);
+    // The Voice only matters when the Book is opened; a later change is followed (below).
   }, [playable, id, open]);
-  // A Chapter came into the playlist before its end or left it (retried, narrated, set Skipped): the session loads
-  // it again and resumes. Before the request below, so a Chapter picked meanwhile wins over that resume and is
-  // never asked of the old playlist.
+  // A Chapter came into the playlist before its end or left it (retried, narrated, set Skipped), or the Book's
+  // Voice changed (#19): the session loads it again and resumes. Before the request below, so a Chapter picked
+  // meanwhile wins over that resume and is never asked of the old playlist.
   useEffect(() => {
     if (book) follow(book);
   }, [book, follow]);

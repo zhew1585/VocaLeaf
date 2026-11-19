@@ -78,6 +78,13 @@
       "when": 1795076835984,
       "tag": "0010_chapter_narrated_by_user",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795077107844,
+      "tag": "0011_voice_change",
+      "breakpoints": true
     }
   ]
 }

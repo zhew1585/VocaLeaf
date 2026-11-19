@@ -644,3 +644,100 @@
     padding: 24px;
   }
 }
+
+/* 音色 in the upload dialog (design 04-1): four Voices in a row, each with its 试听 button. */
+.voice-field {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.voice-legend {
+  padding: 0;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.voice-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.voice-option {
+  height: 52px;
+  padding: 0 10px 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+.voice-option.is-selected {
+  background: var(--leaf-soft);
+  border: 1.5px solid var(--leaf);
+}
+
+.voice-preview {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  background: var(--paper);
+  color: var(--ink-2);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.voice-preview[aria-pressed="true"] {
+  color: var(--leaf);
+}
+
+.voice-name {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.voice-option.is-selected .voice-name {
+  font-weight: 500;
+}
+
+/* The radio stays for keyboards and screen readers; the chip shows the choice. */
+.voice-name input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+}
+
+.voice-option:has(input:focus-visible) {
+  outline: 2px solid var(--leaf);
+  outline-offset: 2px;
+}
+
+.voice-field:disabled .voice-option {
+  opacity: 0.6;
+}
+
+@media (max-width: 520px) {
+  .voice-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

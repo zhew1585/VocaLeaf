@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
-import { getUploadPolicy, uploadBook, type Book, type UploadPolicy } from "../api";
+import { getUploadPolicy, uploadBook, type Book, type UploadPolicy, type Voice } from "../api";
 import { UploadIcon, XIcon } from "../icons";
+import { DEFAULT_VOICE } from "../voices";
 import { maxFileMb, uploadRefusal } from "./uploadCheck";
+import { VoicePicker } from "./VoicePicker";
 
 interface Props {
   onClose(): void;
@@ -13,15 +15,17 @@ function isAbort(err: unknown): boolean {
 }
 
 /**
- * 上传书籍 (F4, design 04-1): pick or drop an EPUB, confirm the upload rights declaration when the user has not
- * confirmed this version yet (PRD 4.1.2), and upload it with a progress bar that can be cancelled. A file the API
- * would refuse (format, size, quota: AC-UP-01 to AC-UP-03) is refused here as soon as it is chosen, and every
- * refusal is shown in the dialog, which stays open. The Voice is always the default one until #19.
+ * 上传书籍 (F4, design 04-1): pick or drop an EPUB, choose its Voice (美音女声 unless the user picks another, each
+ * with a 5-second preview, PRD 4.2.4), confirm the upload rights declaration when the user has not confirmed this
+ * version yet (PRD 4.1.2), and upload it with a progress bar that can be cancelled. A file the API would refuse
+ * (format, size, quota: AC-UP-01 to AC-UP-03) is refused here as soon as it is chosen, and every refusal is shown
+ * in the dialog, which stays open.
  */
 export function UploadDialog({ onClose, onUploaded }: Props) {
   const input = useRef<HTMLInputElement>(null);
   const [policy, setPolicy] = useState<UploadPolicy | null>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [voice, setVoice] = useState<Voice>(DEFAULT_VOICE);
   const [declared, setDeclared] = useState(false);
   const [dragging, setDragging] = useState(false);
   /** Share sent while uploading, null otherwise. */
@@ -73,6 +77,7 @@ export function UploadDialog({ onClose, onUploaded }: Props) {
     setProgress(0);
     try {
       const book = await uploadBook(file, {
+        voice,
         declarationVersion: needsDeclaration ? policy.declaration.version : undefined,
         onProgress: setProgress,
         signal: controller.signal,
@@ -136,6 +141,7 @@ export function UploadDialog({ onClose, onUploaded }: Props) {
             e.target.value = "";
           }}
         />
+        <VoicePicker value={voice} disabled={uploading} onChange={setVoice} />
         {needsDeclaration && (
           <label className="declaration">
             <input

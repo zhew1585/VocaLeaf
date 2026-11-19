@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, type RefObject } from "react";
-import { getBook, saveListening } from "../api";
+import { getBook, saveListening, type Voice } from "../api";
 import { sentenceStartMs } from "./navigation";
 
 /** Playback syncs its position this often while it plays (PRD 4.7.2 进度同步间隔). */
@@ -13,6 +13,8 @@ interface Options {
   sentenceStarts(): readonly number[];
   /** Moves paused playback to a position another device synced, keeping it paused. */
   moveTo(seconds: number): void;
+  /** The Voice of the audio positions are in, sent with them (#19); undefined when not known. */
+  voice?(): Voice | undefined;
 }
 
 /** The position this device last sent or took for the session's Book, and whether the API holds it. */
@@ -48,7 +50,7 @@ export function useProgressSync(audio: RefObject<HTMLAudioElement | null>, optio
     if (!force && held?.bookId === bookId && held.ms === ms && held.state !== "failed") return;
     const sent: Synced = { bookId, ms, state: "sending" };
     synced.current = sent;
-    saveListening(bookId, ms, { keepalive }).then(
+    saveListening(bookId, ms, { keepalive, voice: latest.current.voice?.() }).then(
       () => {
         if (synced.current === sent) synced.current = { ...sent, state: "held" };
       },
