@@ -6,6 +6,7 @@ import { useCardPopover } from "../cards/useCardPopover";
 import { isPlayableChapter, waitMessage } from "../chapters";
 import { useMarkPress } from "../marks/useMarkPress";
 import { useBookMarks, type MarksInBook } from "../marks/useMarks";
+import { PANEL_EXIT_MS, usePresence } from "../motion";
 import type { StartRequest } from "../player/playback";
 import { Player } from "../player/Player";
 import { useListening } from "../player/session";
@@ -180,6 +181,10 @@ export function ListenPage({ id }: { id: string }) {
   const [selected, setSelected] = useState<Selected | null>(null);
   const cards = useBookCards(id);
   const popover = useCardPopover<PopoverAnchor>(cards);
+  // The side panels slide in and out; the right one keeps what it showed while it slides away.
+  const directory = usePresence(directoryOpen, PANEL_EXIT_MS);
+  const side = usePresence(popover.open ? "popover" : panelOpen ? "panel" : null, PANEL_EXIT_MS);
+  const shownPopover = usePresence(popover.open, PANEL_EXIT_MS).value;
   const reading = useRef<ReadingViewHandle>(null);
   const playable = book?.playable ?? false;
   const guide = useFirstPlayGuide(playable);
@@ -333,15 +338,17 @@ export function ListenPage({ id }: { id: string }) {
 
   return (
     <div className="focus">
-      {directoryOpen ? (
+      {directory.value && (
         <ChapterDirectory
+          exiting={directory.exiting}
           book={book}
           playingChapterId={playingId}
           playing={here && listening.playing}
           listened={here && totalSeconds ? Math.min(listening.position / totalSeconds, 1) : 0}
           onPick={onPick}
         />
-      ) : (
+      )}
+      {!directoryOpen && (
         <div className="directory-collapsed">
           <BackToShelf compact />
         </div>
@@ -370,33 +377,35 @@ export function ListenPage({ id }: { id: string }) {
         />
         {!panelOpen && !popover.open && <SentencePanelToggle onOpen={() => setPanelOpen(true)} />}
       </main>
-      {popover.open ? (
-        <div className="card-popover-area">
-          <CardPopover
-            key={popover.open.cards.map((c) => c.id).join()}
-            cards={popover.open.cards}
-            onClose={closePopover}
-            onStudySentence={() => studySentence(popover.open!.anchor.sentence)}
-            onCardChanged={popover.changed}
-            audio={popover.audio}
-          />
+      {side.value && (
+        <div className={side.exiting ? "focus-side is-exiting" : "focus-side"}>
+          {side.value === "popover" && shownPopover ? (
+            <div className="card-popover-area">
+              <CardPopover
+                key={shownPopover.cards.map((c) => c.id).join()}
+                cards={shownPopover.cards}
+                onClose={closePopover}
+                onStudySentence={() => studySentence(shownPopover.anchor.sentence)}
+                onCardChanged={popover.changed}
+                audio={popover.audio}
+              />
+            </div>
+          ) : (
+            <SentencePanel
+              sentence={selected}
+              onClose={() => {
+                stopAudition();
+                setPanelOpen(false);
+              }}
+              onLocate={() => selected && reading.current?.showSentence(selected.chapterId, selected.id)}
+              audition={audition}
+              mark={mark}
+              cards={selected ? cards.of(selected.id) : []}
+              onOpenCards={showOverPanel}
+              onCardMade={(made) => selected && popover.made(made, { sentence: selected, before: selected })}
+            />
+          )}
         </div>
-      ) : (
-        panelOpen && (
-          <SentencePanel
-            sentence={selected}
-            onClose={() => {
-              stopAudition();
-              setPanelOpen(false);
-            }}
-            onLocate={() => selected && reading.current?.showSentence(selected.chapterId, selected.id)}
-            audition={audition}
-            mark={mark}
-            cards={selected ? cards.of(selected.id) : []}
-            onOpenCards={showOverPanel}
-            onCardMade={(made) => selected && popover.made(made, { sentence: selected, before: selected })}
-          />
-        )
       )}
     </div>
   );

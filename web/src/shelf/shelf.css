@@ -27,6 +27,7 @@
   line-height: 46px;
   color: var(--ink-3);
   text-decoration: none;
+  transition: color var(--motion-fast) var(--ease-out);
 }
 
 .shelf-tab.is-active {
@@ -44,6 +45,7 @@
   font-weight: 500;
   text-decoration: none;
   cursor: pointer;
+  transition: border-color var(--motion-fast) var(--ease-out);
 }
 
 .upload-button {
@@ -232,6 +234,7 @@
   display: block;
   height: 100%;
   background: var(--leaf);
+  transition: width var(--motion-panel) var(--ease-in-out);
 }
 
 .continue-play {
@@ -357,8 +360,10 @@
   gap: 40px 32px;
 }
 
+/* A Book put on the Shelf (an upload) fades in among the others. */
 .shelf-tile {
   position: relative;
+  animation: fade-in var(--motion-pop) var(--ease-out);
 }
 
 .shelf-book {
@@ -644,9 +649,16 @@
   place-items: center;
   padding: 16px;
   background: rgb(28 33 29 / 0.45);
+  animation: fade-in var(--motion-pop) var(--ease-out);
+}
+
+.dialog-scrim.is-exiting {
+  animation: fade-out var(--motion-exit) var(--ease-in) forwards;
 }
 
 .upload-dialog {
+  --rise: 8px;
+  animation: scale-in var(--motion-pop) var(--ease-out);
   width: 100%;
   max-width: 540px;
   padding: 32px;
@@ -656,6 +668,10 @@
   background: var(--paper);
   border-radius: 28px;
   box-shadow: 0 24px 60px rgb(28 33 29 / 0.3);
+}
+
+.dialog-scrim.is-exiting > .upload-dialog {
+  animation: scale-out var(--motion-exit) var(--ease-in) forwards;
 }
 
 .upload-dialog-head {
@@ -672,6 +688,7 @@
   background: none;
   color: var(--ink-2);
   cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out);
 }
 
 .dropzone:disabled {
@@ -687,6 +704,7 @@
   line-height: 20px;
   color: var(--ink-2);
   cursor: pointer;
+  animation: fade-in var(--motion-pop) var(--ease-out);
 }
 
 .declaration input {
@@ -706,6 +724,7 @@
   gap: 10px;
   font-size: 14px;
   color: var(--ink-2);
+  animation: fade-in var(--motion-pop) var(--ease-out);
 }
 
 .upload-progress-row {
@@ -806,6 +825,10 @@
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 16px;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    opacity var(--motion-fast) var(--ease-out);
 }
 
 .voice-option.is-selected {
@@ -825,6 +848,7 @@
   display: grid;
   place-items: center;
   cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out);
 }
 
 .voice-preview[aria-pressed="true"] {

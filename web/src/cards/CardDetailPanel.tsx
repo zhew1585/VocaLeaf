@@ -2,6 +2,7 @@ import { useState } from "react";
 import { cardAudioUrl, deleteCard, type Card, type CardListItem } from "../api";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { BookOpenIcon, RotateCwIcon, TrashIcon, XIcon } from "../icons";
+import { usePresence } from "../motion";
 import { useListening } from "../player/session";
 import { CardAudioButton, CardBackView, HighlightedSentence, useRegenerateBack } from "./CardContent";
 import { sourceDetail } from "./cardList";
@@ -9,6 +10,11 @@ import { CARD_BACK_FAILED, dueLabel, isDueToday, KIND_LABELS } from "./cards";
 
 interface Props {
   card: CardListItem;
+  /**
+   * How it shows: opening beside the list (slides in), taking another Card's place (fades in), or leaving (slides
+   * away, usePresence).
+   */
+  motion?: "open" | "swap" | "exit";
   onClose(): void;
   /** Its back was generated again. */
   onChanged(card: Card): void;
@@ -21,11 +27,12 @@ interface Props {
  * 卡片原声, the back, 【重新生成】 (its next Review and the AI allowance unchanged, AC-CLIST-04) and 删除 after a
  * confirmation (PRD 4.5.2 删除).
  */
-export function CardDetailPanel({ card, onClose, onChanged, onDeleted }: Props) {
+export function CardDetailPanel({ card, motion = "open", onClose, onChanged, onDeleted }: Props) {
   const { busy, failed, regenerate } = useRegenerateBack(card.id, onChanged);
   const [deleting, setDeleting] = useState(false);
+  const confirm = usePresence(deleting);
   return (
-    <aside className="card-panel" aria-label="卡片详情">
+    <aside className={`card-panel is-${motion === "exit" ? "exiting" : motion}`} aria-label="卡片详情">
       <header className="card-panel-header">
         <span className="card-panel-kind">{KIND_LABELS[card.targetKind]}</span>
         <span className={isDueToday(card.due) ? "card-panel-due is-today" : "card-panel-due"}>{dueLabel(card.due)}</span>
@@ -60,7 +67,7 @@ export function CardDetailPanel({ card, onClose, onChanged, onDeleted }: Props) 
           删除
         </button>
       </footer>
-      {deleting && (
+      {confirm.value && (
         <ConfirmDialog
           title="删除这张卡片？"
           text="删除后不可恢复，复习中也不会再出现"
@@ -68,7 +75,11 @@ export function CardDetailPanel({ card, onClose, onChanged, onDeleted }: Props) 
           run={() => deleteCard(card.id)}
           failure="删除失败，请稍后再试"
           onCancel={() => setDeleting(false)}
-          onDone={onDeleted}
+          onDone={() => {
+            setDeleting(false);
+            onDeleted();
+          }}
+          exiting={confirm.exiting}
         />
       )}
     </aside>

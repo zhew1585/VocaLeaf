@@ -15,6 +15,7 @@ import type { BookDetail, Card, ChapterSummary } from "../api";
 import { cardsHit } from "../cards/cards";
 import { CardText, hitCardIds } from "../cards/CardText";
 import { PlaySolidIcon } from "../icons";
+import { usePresence } from "../motion";
 import { currentSentenceId, paragraphs, type ReadingSentence } from "./timeline";
 import { useChapterSentences } from "./useChapterSentences";
 
@@ -211,6 +212,8 @@ export function ReadingView({
 
   // Follow playback: keep the current Sentence (or, before its Sentences load, the playing Chapter) in view.
   const followed = positionMs !== null && following;
+  // 【回到播放处】 fades away once pressed, rather than vanishing.
+  const followButton = usePresence(positionMs !== null && !following);
   useEffect(() => {
     if (!followed) return;
     const el = container.current!;
@@ -328,8 +331,12 @@ export function ReadingView({
         </div>
       </div>
       <div className="reading-dock">
-        {positionMs !== null && !following && (
-          <button type="button" className="follow-button" onClick={() => setFollowing(true)}>
+        {followButton.value && (
+          <button
+            type="button"
+            className={followButton.exiting ? "follow-button is-exiting" : "follow-button"}
+            onClick={() => setFollowing(true)}
+          >
             回到播放处
           </button>
         )}

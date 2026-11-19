@@ -3,8 +3,10 @@
 // Card of the same Target in another Sentence.
 import { resolveTarget, type Target } from "@vocaleaf/api/card-target";
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { ApiRequestError, createCard, type MadeCard } from "../api";
 import { PlusIcon } from "../icons";
+import { usePresence } from "../motion";
 
 /** Characters of `container`'s text before (node, offset). */
 function charOffset(container: Node, node: Node, offset: number): number {
@@ -97,6 +99,8 @@ function placeBelow(el: HTMLElement, range: Range): SelectedTarget["place"] {
 interface Props {
   sentenceId: string;
   selected: SelectedTarget;
+  /** The selection went: the button fades away (usePresence). */
+  exiting?: boolean;
   /**
    * Called with true once making starts: the button, its error and the duplicate prompt then stay, even when the
    * selection goes (the prompt takes the focus); false when the prompt is cancelled.
@@ -107,10 +111,11 @@ interface Props {
 }
 
 /** 【制作卡片】 under a selection: loading while the Card is made (F12), then hands it over; asks on a duplicate. */
-export function MakeCardButton({ sentenceId, selected, onHold, onMade }: Props) {
+export function MakeCardButton({ sentenceId, selected, exiting = false, onHold, onMade }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [duplicate, setDuplicate] = useState<string | null>(null);
+  const prompt = usePresence(duplicate);
 
   const make = async (allowDuplicate: boolean) => {
     onHold(true);
@@ -130,7 +135,7 @@ export function MakeCardButton({ sentenceId, selected, onHold, onMade }: Props) 
 
   return (
     <>
-      <div className="make-card" style={selected.place ?? undefined}>
+      <div className={exiting ? "make-card is-exiting" : "make-card"} style={selected.place ?? undefined}>
         <button
           type="button"
           className="make-card-button"
@@ -149,9 +154,10 @@ export function MakeCardButton({ sentenceId, selected, onHold, onMade }: Props) 
           </p>
         )}
       </div>
-      {duplicate && (
+      {prompt.value && (
         <ConfirmDuplicate
-          message={duplicate}
+          message={prompt.value}
+          exiting={prompt.exiting}
           onCancel={() => {
             setDuplicate(null);
             onHold(false);
@@ -163,13 +169,26 @@ export function MakeCardButton({ sentenceId, selected, onHold, onMade }: Props) 
   );
 }
 
-/** 重复提示 (PRD 4.5.2 规则 4): the Target has a Card in another Sentence; 仍要创建 makes another, never merged. */
-function ConfirmDuplicate({ message, onCancel, onConfirm }: { message: string; onCancel(): void; onConfirm(): void }) {
+/**
+ * 重复提示 (PRD 4.5.2 规则 4): the Target has a Card in another Sentence; 仍要创建 makes another, never merged.
+ * Over the whole page, like ConfirmDialog.
+ */
+function ConfirmDuplicate({
+  message,
+  exiting,
+  onCancel,
+  onConfirm,
+}: {
+  message: string;
+  exiting: boolean;
+  onCancel(): void;
+  onConfirm(): void;
+}) {
   const cancelButton = useRef<HTMLButtonElement>(null);
   useEffect(() => cancelButton.current?.focus(), []);
-  return (
+  return createPortal(
     <div
-      className="confirm-backdrop"
+      className={exiting ? "confirm-backdrop is-exiting" : "confirm-backdrop"}
       // Clicks here keep the Sentence's selection, which the dialog is about.
       onMouseDown={(e) => e.preventDefault()}
       onClick={(e) => e.target === e.currentTarget && onCancel()}
@@ -193,6 +212,7 @@ function ConfirmDuplicate({ message, onCancel, onConfirm }: { message: string; o
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

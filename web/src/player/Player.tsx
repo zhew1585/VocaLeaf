@@ -48,7 +48,9 @@ export function Player({ totalSeconds = null, notice = null, onMark }: PlayerPro
             <ReplayIcon />
           </button>
           <button type="button" className="play-button" aria-label={playing ? "暂停" : "播放"} onClick={toggle}>
-            {playing ? <PauseSolidIcon /> : <PlaySolidIcon />}
+            <span key={playing ? "pause" : "play"} className="icon-swap">
+              {playing ? <PauseSolidIcon /> : <PlaySolidIcon />}
+            </span>
           </button>
           <button type="button" className="player-icon-button" aria-label="下一句" onClick={next}>
             <NextSentenceIcon />

@@ -5,6 +5,7 @@ import gatsby from "../assets/empty-gatsby.webp";
 import pride from "../assets/empty-pride.webp";
 import { HeadphonesIcon, InfoIcon, PauseSolidIcon, PlaySolidIcon, PlusIcon, UploadIcon } from "../icons";
 import { shelfListenPath } from "../chapters";
+import { usePresence } from "../motion";
 import { followLink, navigate } from "../router";
 import { StatusBadge } from "../StatusBadge";
 import { BookCover } from "./BookCover";
@@ -114,7 +115,9 @@ function ContinueCard({ book, listening }: { book: Book; listening: Listening })
         aria-label={`${playing ? "暂停" : "继续收听"} ${book.title}`}
         onClick={toggle}
       >
-        {playing ? <PauseSolidIcon size={20} /> : <PlaySolidIcon size={20} />}
+        <span key={playing ? "pause" : "play"} className="icon-swap">
+          {playing ? <PauseSolidIcon size={20} /> : <PlaySolidIcon size={20} />}
+        </span>
       </button>
     </section>
   );
@@ -208,6 +211,7 @@ function EmptyShelf({ onUpload }: { onUpload: () => void }) {
 export function ShelfPage() {
   const { books, error, reload } = useShelf();
   const [uploading, setUploading] = useState(false);
+  const dialog = usePresence(uploading);
   const openUpload = () => setUploading(true);
 
   // The Shelf is in order, so a Book listened to is first when there is one.
@@ -232,8 +236,9 @@ export function ShelfPage() {
           ))}
         </ul>
       )}
-      {uploading && (
+      {dialog.value && (
         <UploadDialog
+          exiting={dialog.exiting}
           onClose={() => setUploading(false)}
           onUploaded={() => {
             setUploading(false);

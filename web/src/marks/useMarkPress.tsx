@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { LeafIcon } from "../icons";
+import { usePresence } from "../motion";
 import "./marks.css";
 import type { MarksInBook } from "./useMarks";
 
@@ -67,12 +68,19 @@ export function useMarkPress({ target, textOf, marks }: Options): { press(): voi
     }
   };
 
-  const toast = shown && (
-    <div key={shown.n} className="mark-toast" role="status" aria-label="标记提示">
+  // It fades down and away when its time is up or 撤销 is pressed; a new one takes an old one's place at once.
+  const { value: toastShown, exiting } = usePresence(shown);
+  const toast = toastShown && (
+    <div
+      key={toastShown.n}
+      className={exiting ? "mark-toast is-exiting" : "mark-toast"}
+      role="status"
+      aria-label="标记提示"
+    >
       <LeafIcon size={16} />
-      <span className="mark-toast-text">{shown.text}</span>
-      {shown.undo && (
-        <button type="button" className="mark-toast-undo" onClick={shown.undo}>
+      <span className="mark-toast-text">{toastShown.text}</span>
+      {toastShown.undo && (
+        <button type="button" className="mark-toast-undo" onClick={toastShown.undo}>
           撤销
         </button>
       )}

@@ -9,6 +9,7 @@ import { startOutbox, stopOutbox } from "./marks/marks";
 import { badgeText, useGleaningCount } from "./marks/useMarks";
 import { BookPage } from "./pages/BookPage";
 import { ListenPage } from "./pages/ListenPage";
+import { usePresence } from "./motion";
 import { LoginPage } from "./pages/LoginPage";
 import { NowListening } from "./player/NowListening";
 import { ListeningProvider } from "./player/session";
@@ -183,12 +184,12 @@ function Shell({
           <a href="/gleanings" {...item("gleanings")}>
             <LeafIcon size={20} />
             拾起
-            {badge && <span className="side-badge">{badge}</span>}
+            <SideBadge text={badge} />
           </a>
           <a href="/review" {...item("review")}>
             <GraduationCapIcon />
             复习
-            {reviewBadge && <span className="side-badge">{reviewBadge}</span>}
+            <SideBadge text={reviewBadge} />
           </a>
           <a href="/cards" {...item("cards")}>
             <LayersIcon />
@@ -208,4 +209,10 @@ function Shell({
       <main className={section === "gleanings" || section === "cards" ? "shell-main is-flush" : "shell-main"}>{children}</main>
     </div>
   );
+}
+
+/** A navigation entry's count; it pops in when there comes to be one and shrinks away when there is none left. */
+function SideBadge({ text }: { text: string | null }) {
+  const { value, exiting } = usePresence(text);
+  return value && <span className={exiting ? "side-badge is-exiting" : "side-badge"}>{value}</span>;
 }

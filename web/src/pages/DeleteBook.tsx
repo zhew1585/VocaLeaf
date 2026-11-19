@@ -2,6 +2,7 @@ import { useState } from "react";
 import { deleteBook, removeFromShelf, type BookSource } from "../api";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { TrashIcon } from "../icons";
+import { usePresence } from "../motion";
 import { navigate } from "../router";
 
 /**
@@ -31,19 +32,32 @@ const REMOVAL: Record<BookSource, { button: string; title: string; text: string;
  */
 export function DeleteBookButton({ bookId, source = "upload" }: { bookId: string; source?: BookSource }) {
   const [asking, setAsking] = useState(false);
+  const dialog = usePresence(asking);
   return (
     <>
       <button type="button" className="delete-book-button" onClick={() => setAsking(true)}>
         <TrashIcon />
         {REMOVAL[source].button}
       </button>
-      {asking && <ConfirmDelete bookId={bookId} source={source} onCancel={() => setAsking(false)} />}
+      {dialog.value && (
+        <ConfirmDelete bookId={bookId} source={source} exiting={dialog.exiting} onCancel={() => setAsking(false)} />
+      )}
     </>
   );
 }
 
 /** The confirmation: 取消 (also Escape or a click outside) keeps the Book, 删除 or 移出 goes ahead. */
-function ConfirmDelete({ bookId, source, onCancel }: { bookId: string; source: BookSource; onCancel(): void }) {
+function ConfirmDelete({
+  bookId,
+  source,
+  exiting,
+  onCancel,
+}: {
+  bookId: string;
+  source: BookSource;
+  exiting: boolean;
+  onCancel(): void;
+}) {
   const removal = REMOVAL[source];
   return (
     <ConfirmDialog
@@ -54,6 +68,7 @@ function ConfirmDelete({ bookId, source, onCancel }: { bookId: string; source: B
       failure="删除失败，请稍后再试"
       onCancel={onCancel}
       onDone={() => navigate("/")}
+      exiting={exiting}
     />
   );
 }

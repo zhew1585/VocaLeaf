@@ -8,12 +8,15 @@ const STATUS_LABEL: Record<BookStatus, string> = {
   parse_failed: "解析失败",
 };
 
-/** A Book's main status with its icon (PRD 4.3.3), as the Shelf and the Book detail show it. */
+/**
+ * A Book's main status with its icon (PRD 4.3.3), as the Shelf and the Book detail show it. A new status fades in
+ * (it is keyed by status).
+ */
 export function StatusBadge({ status }: { status: BookStatus }) {
   const icon =
     status === "parse_failed" ? <CircleAlertIcon /> : status === "parsing" ? <LoaderIcon /> : <AudioLinesIcon size={12} />;
   return (
-    <span className={`status status-${status}`}>
+    <span key={status} className={`status status-${status}`}>
       {icon}
       {STATUS_LABEL[status]}
     </span>

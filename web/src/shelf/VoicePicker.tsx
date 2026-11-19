@@ -61,7 +61,9 @@ export function VoicePicker({ value, disabled, onChange }: { value: Voice; disab
                 aria-pressed={playing}
                 onClick={() => preview.toggle(id)}
               >
-                {playing ? <SquareSolidIcon /> : <Volume2Icon size={13} />}
+                <span key={playing ? "stop" : "play"} className="icon-swap">
+                  {playing ? <SquareSolidIcon /> : <Volume2Icon size={13} />}
+                </span>
               </button>
               <label className="voice-name">
                 <input type="radio" name="voice" value={id} checked={value === id} onChange={() => onChange(id)} />

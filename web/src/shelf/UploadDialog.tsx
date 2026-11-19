@@ -6,6 +6,8 @@ import { maxFileMb, uploadRefusal } from "./uploadCheck";
 import { VoicePicker } from "./VoicePicker";
 
 interface Props {
+  /** On its way out (usePresence): it fades away and takes no clicks. */
+  exiting?: boolean;
   onClose(): void;
   onUploaded(book: Book): void;
 }
@@ -21,7 +23,7 @@ function isAbort(err: unknown): boolean {
  * (format, size, quota: AC-UP-01 to AC-UP-03) is refused here as soon as it is chosen, and every refusal is shown
  * in the dialog, which stays open.
  */
-export function UploadDialog({ onClose, onUploaded }: Props) {
+export function UploadDialog({ exiting = false, onClose, onUploaded }: Props) {
   const input = useRef<HTMLInputElement>(null);
   const [policy, setPolicy] = useState<UploadPolicy | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -97,7 +99,7 @@ export function UploadDialog({ onClose, onUploaded }: Props) {
 
   return (
     <div
-      className="dialog-scrim"
+      className={exiting ? "dialog-scrim is-exiting" : "dialog-scrim"}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

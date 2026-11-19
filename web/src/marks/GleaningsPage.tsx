@@ -5,6 +5,7 @@ import { useBookCards } from "../cards/useBookCards";
 import { useCardPopover } from "../cards/useCardPopover";
 import { locatePath } from "../chapters";
 import { PauseSolidIcon, PlaySolidIcon, XIcon } from "../icons";
+import { useCollapse, usePresence, usePresenceList } from "../motion";
 import type { AuditionControl } from "../reading/SentencePanel";
 import { playlistUrl, useListening } from "../player/session";
 import { SentencePanel } from "../reading/SentencePanel";
@@ -15,6 +16,8 @@ import { useMarksChanged } from "./useMarks";
 import "./gleanings.css";
 
 const EMPTY = "都拾起来了。听书时点标记，句子会出现在这里";
+/** The list before it loads; one array, so the list's presence sees no change. */
+const NOT_LOADED: Gleaning[] = [];
 
 /**
  * Gleanings from the API. A Sentence whose Mark stops being pending (Dismissed, unmarked, made into a Card) leaves
@@ -66,6 +69,9 @@ export function GleaningsPage() {
   const [bookFilter, setBookFilter] = useState<string | null>(null);
   const [selected, setSelected] = useState<Gleaning | null>(null);
   const [asking, setAsking] = useState<Gleaning | null>(null);
+  const confirm = usePresence(asking);
+  // An item that leaves (Dismissed, unmarked, made into a Card) closes up in place rather than vanishing.
+  const listed = usePresenceList(items ?? NOT_LOADED, (g) => g.sentenceId);
   const listening = useListening();
   const cards = useBookCards(selected?.bookId ?? null);
   const popover = useCardPopover<null>(cards);
@@ -92,7 +98,7 @@ export function GleaningsPage() {
   const books = booksOf(items);
   // A Book whose last item left stops filtering.
   const filter = books.some((b) => b.id === bookFilter) ? bookFilter : null;
-  const shown = filter === null ? items : items.filter((g) => g.bookId === filter);
+  const shown = filter === null ? listed : listed.filter(({ item }) => item.bookId === filter);
   const pending = (g: Gleaning | null) => g !== null && items.some((i) => i.sentenceId === g.sentenceId);
 
   /**
@@ -123,10 +129,11 @@ export function GleaningsPage() {
           <>
             <BookFilter books={books} value={filter} onChange={setBookFilter} />
             <ul className="gleaning-list" aria-label="拾起列表">
-              {shown.map((g) => (
+              {shown.map(({ item: g, exiting }) => (
                 <GleaningItem
                   key={g.sentenceId}
                   gleaning={g}
+                  exiting={exiting}
                   selected={g.sentenceId === selected?.sentenceId}
                   onSelect={() => {
                     // Another Sentence: its own right side, and no 试听 goes on (PRD 4.4.1 试听 #5).
@@ -166,12 +173,13 @@ export function GleaningsPage() {
           onCardMade={(made) => popover.made(made, null)}
         />
       )}
-      {asking && (
+      {confirm.value && (
         <ConfirmDismiss
-          sentenceId={asking.sentenceId}
+          sentenceId={confirm.value.sentenceId}
+          exiting={confirm.exiting}
           onCancel={() => setAsking(null)}
           onDismissed={() => {
-            remove(asking.sentenceId);
+            remove(confirm.value!.sentenceId);
             setAsking(null);
           }}
         />
@@ -211,6 +219,8 @@ function BookFilter({ books, value, onChange }: FilterProps) {
 
 interface ItemProps {
   gleaning: Gleaning;
+  /** Gone from Gleanings, closing up before it goes. */
+  exiting: boolean;
   selected: boolean;
   /** 试听 of the Sentence, or null while it has no audio. */
   audition: AuditionControl | null;
@@ -223,10 +233,11 @@ interface ItemProps {
  * One item: the Sentence and where it is from. Picked, it also offers 播放这一句: the Sentence alone (试听, PRD
  * 4.4.1), stopping at its end; while it plays the same button pauses it, and playing again goes on from there.
  */
-function GleaningItem({ gleaning: g, selected, audition, onSelect, onPause, onDismiss }: ItemProps) {
+function GleaningItem({ gleaning: g, exiting, selected, audition, onSelect, onPause, onDismiss }: ItemProps) {
   const playing = audition !== null && audition.state !== "idle";
+  const ref = useCollapse<HTMLLIElement>(exiting);
   return (
-    <li className={selected ? "gleaning is-selected" : "gleaning"}>
+    <li ref={ref} className={["gleaning", selected && "is-selected", exiting && "is-exiting"].filter(Boolean).join(" ")}>
       <button type="button" className="gleaning-body" aria-pressed={selected} onClick={onSelect}>
         <span className="gleaning-text">{g.text}</span>
         <span className="gleaning-source">
@@ -243,7 +254,9 @@ function GleaningItem({ gleaning: g, selected, audition, onSelect, onPause, onDi
             disabled={audition === null}
             onClick={playing ? onPause : audition?.play}
           >
-            {playing ? <PauseSolidIcon size={15} /> : <PlaySolidIcon size={15} />}
+            <span key={playing ? "pause" : "play"} className="icon-swap">
+              {playing ? <PauseSolidIcon size={15} /> : <PlaySolidIcon size={15} />}
+            </span>
           </button>
         )}
         <button type="button" className="gleaning-dismiss" aria-label="忽略" title="忽略这一句" onClick={onDismiss}>

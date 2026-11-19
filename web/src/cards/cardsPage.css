@@ -88,6 +88,7 @@
 }
 
 .cards-empty {
+  animation: fade-in var(--motion-pop) var(--ease-out);
   margin: 24px 16px 0;
   color: var(--ink-2);
   font-size: 15px;
@@ -114,6 +115,19 @@
   align-items: center;
   gap: 20px;
   cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
+}
+
+.card-item-row {
+  animation: fade-in var(--motion-pop) var(--ease-out);
+}
+
+/* A deleted Card's row fades and the list closes up under it. */
+.card-item-row.is-exiting {
+  overflow: hidden;
+  animation: collapse-out var(--motion-exit) var(--ease-in) forwards;
 }
 
 .card-item:hover {
@@ -201,6 +215,21 @@ body:has(.cards-page.has-detail)::-webkit-scrollbar-track {
   background: var(--surface);
 }
 
+/* Opening, it slides in from the right; another Card's detail fades in in its place; closing, it slides away. */
+.card-panel.is-open {
+  --slide: 24px;
+  animation: slide-in var(--motion-panel) var(--ease-out);
+}
+
+.card-panel.is-swap {
+  animation: fade-in var(--motion-pop) var(--ease-out);
+}
+
+.card-panel.is-exiting {
+  --slide: 24px;
+  animation: slide-out var(--motion-exit-panel) var(--ease-in) forwards;
+}
+
 .card-panel-header {
   display: flex;
   align-items: center;
@@ -240,6 +269,7 @@ body:has(.cards-page.has-detail)::-webkit-scrollbar-track {
   background: transparent;
   color: var(--ink-2);
   cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-out);
 }
 
 .card-panel-close:hover {
@@ -379,6 +409,7 @@ body:has(.cards-page.has-detail)::-webkit-scrollbar-track {
   font-size: 15px;
   font-weight: 500;
   cursor: pointer;
+  transition: opacity var(--motion-fast) var(--ease-out);
 }
 
 .card-panel-action.is-danger {

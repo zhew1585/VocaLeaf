@@ -74,6 +74,8 @@ interface Props {
   /** Share of the whole Book listened to, 0 to 1. */
   listened: number;
   onPick(chapter: ChapterSummary): void;
+  /** Collapsing: it slides away (usePresence). */
+  exiting?: boolean;
 }
 
 /**
@@ -82,10 +84,10 @@ interface Props {
  * still shows them), and at the bottom the Book with how much of it was listened to.
  * Picking a Chapter plays it from its start, or shows it when it cannot be played.
  */
-export function ChapterDirectory({ book, playingChapterId, playing, listened, onPick }: Props) {
+export function ChapterDirectory({ book, playingChapterId, playing, listened, onPick, exiting = false }: Props) {
   const percent = Math.round(listened * 100);
   return (
-    <nav id="chapter-directory" className="directory" aria-label="章节目录">
+    <nav id="chapter-directory" className={exiting ? "directory is-exiting" : "directory"} aria-label="章节目录">
       <BackToShelf />
       <p className="directory-label">章节</p>
       <ol className="directory-list">
