@@ -1,7 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { getMe, logOut, UNAUTHORIZED_EVENT, type User } from "./api";
 import logoUrl from "./assets/logo.webp";
-import { LibraryIcon } from "./icons";
+import { LeafIcon, LibraryIcon } from "./icons";
+import { GleaningsPage } from "./marks/GleaningsPage";
+import { startOutbox } from "./marks/marks";
+import { badgeText, useGleaningCount } from "./marks/useMarks";
 import { BookPage } from "./pages/BookPage";
 import { ListenPage } from "./pages/ListenPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -10,10 +13,13 @@ import { followLink, navigate, usePathname } from "./router";
 import { LibraryPage } from "./shelf/LibraryPage";
 import { ShelfPage } from "./shelf/ShelfPage";
 
-/** /books/:id is the Book's detail, /books/:id/listen its 专注页, /library the 书库, anything else the 书架. */
-function route(path: string): { bookId?: string; listen: boolean; library: boolean } {
+/**
+ * /books/:id is the Book's detail, /books/:id/listen its 专注页, /library the 书库, /gleanings 拾起, anything else
+ * the 书架.
+ */
+function route(path: string): { bookId?: string; listen: boolean; library: boolean; gleanings: boolean } {
   const [, bookId, listen] = /^\/books\/([^/]+)(\/listen)?$/.exec(path) ?? [];
-  return { bookId, listen: listen !== undefined, library: path === "/library" };
+  return { bookId, listen: listen !== undefined, library: path === "/library", gleanings: path === "/gleanings" };
 }
 
 type Session = { state: "loading" } | { state: "failed" } | { state: "ready"; user: User | null };
@@ -43,6 +49,11 @@ export function App() {
   const path = usePathname();
   const { session, setUser } = useSession();
   const [loggingOut, setLoggingOut] = useState(false);
+  const loggedIn = session.state === "ready" && session.user !== null;
+  // Marks made offline on an earlier visit go out once someone is logged in (PRD F8).
+  useEffect(() => {
+    if (loggedIn) startOutbox();
+  }, [loggedIn]);
 
   if (session.state === "loading") return null;
   if (session.state === "failed") {
@@ -67,7 +78,7 @@ export function App() {
     }
   }
 
-  const { bookId, listen, library } = route(path);
+  const { bookId, listen, library, gleanings } = route(path);
   // The listening session outlives the pages (【返回书架】 keeps playing) and ends with logging out.
   return (
     <ListeningProvider>
@@ -75,8 +86,8 @@ export function App() {
         // The 专注页 takes the whole window, without the app's header.
         <ListenPage id={bookId} />
       ) : (
-        <Shell email={session.user.email} loggingOut={loggingOut} onLogOut={onLogOut}>
-          {bookId ? <BookPage id={bookId} /> : library ? <LibraryPage /> : <ShelfPage />}
+        <Shell email={session.user.email} section={gleanings ? "gleanings" : "shelf"} loggingOut={loggingOut} onLogOut={onLogOut}>
+          {bookId ? <BookPage id={bookId} /> : library ? <LibraryPage /> : gleanings ? <GleaningsPage /> : <ShelfPage />}
         </Shell>
       )}
     </ListeningProvider>
@@ -85,19 +96,29 @@ export function App() {
 
 /**
  * The app around a page (design 03-2): the sidebar with the brand, the navigation and the account; on a phone it
- * becomes a bar above the page. 书架 is the only section so far; 拾起, 复习 and 卡片 join it with their tickets.
+ * becomes a bar above the page. 书架 and 拾起 so far; 复习 and 卡片 join them with their tickets. 拾起 shows how many
+ * Sentences wait there (PRD 4.4.4 计数).
  */
 function Shell({
   email,
+  section,
   loggingOut,
   onLogOut,
   children,
 }: {
   email: string;
+  /** The navigation entry of the page shown. */
+  section: "shelf" | "gleanings";
   loggingOut: boolean;
   onLogOut(): void;
   children: ReactNode;
 }) {
+  const badge = badgeText(useGleaningCount());
+  const item = (name: typeof section) => ({
+    className: section === name ? "side-item is-active" : "side-item",
+    "aria-current": section === name ? ("page" as const) : undefined,
+    onClick: followLink,
+  });
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -106,9 +127,14 @@ function Shell({
           拾页
         </a>
         <nav className="sidebar-nav" aria-label="主导航">
-          <a href="/" className="side-item is-active" onClick={followLink}>
+          <a href="/" {...item("shelf")}>
             <LibraryIcon />
             书架
+          </a>
+          <a href="/gleanings" {...item("gleanings")}>
+            <LeafIcon size={20} />
+            拾起
+            {badge && <span className="side-badge">{badge}</span>}
           </a>
         </nav>
         <div className="account">
@@ -121,7 +147,7 @@ function Shell({
           </button>
         </div>
       </aside>
-      <main className="shell-main">{children}</main>
+      <main className={section === "gleanings" ? "shell-main is-flush" : "shell-main"}>{children}</main>
     </div>
   );
 }

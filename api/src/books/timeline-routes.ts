@@ -50,19 +50,21 @@ export function bookTimelineRoutes({ db }: AppDeps) {
     );
     // Stored times count from their Chapter's start; Chapters outside the playlist have none that count.
     const rows = await db
-      .select({ chapterId: sentences.chapterId, startMs: sentences.startMs })
+      .select({ id: sentences.id, chapterId: sentences.chapterId, startMs: sentences.startMs })
       .from(sentences)
       .innerJoin(chapters, eq(chapters.id, sentences.chapterId))
       .where(and(eq(chapters.bookId, id), isNotNull(sentences.startMs)))
       .orderBy(asc(chapters.index), asc(sentences.index));
-    const sentenceStartsMs = rows
+    const placed = rows
       .flatMap((r) => {
         const offset = offsets.get(r.chapterId);
-        return offset === undefined ? [] : [offset + r.startMs!];
+        return offset === undefined ? [] : [{ id: r.id, startMs: offset + r.startMs! }];
       })
-      .sort((a, b) => a - b);
+      .sort((a, b) => a.startMs - b.startMs);
+    const sentenceStartsMs = placed.map((s) => s.startMs);
+    const sentenceIds = placed.map((s) => s.id);
 
-    return c.json({ sentenceStartsMs, chapters: chapterSpans(timeline, statuses), complete: timeline.complete }, 200);
+    return c.json({ sentenceStartsMs, sentenceIds, chapters: chapterSpans(timeline, statuses), complete: timeline.complete }, 200);
   });
 
   return app;

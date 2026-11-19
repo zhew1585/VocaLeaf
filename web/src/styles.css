@@ -10,6 +10,9 @@
   --leaf: #2e5b45;
   --leaf-soft: #dfe9da;
   --danger: #b2452e;
+  --amber: #c17a22;
+  --amber-soft: #f7e6c4;
+  --amber-ink: #8a5514;
   --font-ui: "Noto Sans SC", system-ui, sans-serif;
   --font-title: "Noto Serif SC", serif;
   --font-read: "Newsreader", Georgia, serif;
@@ -109,6 +112,27 @@ button {
 .shell-main {
   min-width: 0;
   padding: 36px 56px 64px;
+}
+
+/* A page that lays out its own edges, such as 拾起 with its full-height 句子精读. */
+.shell-main.is-flush {
+  padding: 0;
+}
+
+/* How many items wait in a section (拾起, PRD 4.4.4 计数). */
+.side-badge {
+  min-width: 26px;
+  height: 20px;
+  margin-left: auto;
+  padding: 0 7px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--amber);
+  color: #fff;
+  font-family: var(--font-num);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .upload-title {
@@ -519,7 +543,7 @@ button.chapter-title:hover {
   text-align: center;
 }
 
-/* Speed and sleep timer | 重听, play / pause, 下一句 | room for 【标记 M】 (#13). */
+/* Speed and sleep timer | 重听, play / pause, 下一句 | 【标记 M】. */
 .player-controls {
   height: 44px;
   display: flex;
@@ -533,6 +557,90 @@ button.chapter-title:hover {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.player-side-end {
+  justify-content: flex-end;
+}
+
+/* Design 01 ④ Mark action: amber pill with the M key hint. */
+.mark-button {
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 14px;
+  border: 0;
+  border-radius: 20px;
+  background: var(--amber-soft);
+  color: var(--amber-ink);
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mark-button svg {
+  color: var(--amber);
+}
+
+.mark-button kbd {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: rgb(255 253 248 / 0.7);
+  font-family: var(--font-num);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.mark-button:hover {
+  filter: brightness(0.97);
+}
+
+.mark-button:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+/* The Mark Toast (master design Toasts): ink pill, amber leaf, sentence start, 撤销. */
+.mark-toast {
+  max-width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 18px 0 16px;
+  border-radius: 24px;
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 14px;
+  box-shadow: 0 8px 20px rgb(28 33 29 / 0.25);
+}
+
+.mark-toast > svg {
+  flex: none;
+  color: #e9b866;
+}
+
+.mark-toast-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mark-toast-undo {
+  flex: none;
+  margin-left: auto;
+  padding: 4px 0 4px 8px;
+  border: 0;
+  background: transparent;
+  color: #9cc3a6;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
 }
 
 .player-transport {

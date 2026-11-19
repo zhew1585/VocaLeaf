@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BookDetail, ChapterSummary } from "../api";
 import { isPlayableChapter, waitMessage } from "../chapters";
+import { useMarkPress } from "../marks/MarkToast";
+import { useBookMarks } from "../marks/useMarks";
 import type { StartRequest } from "../player/playback";
 import { Player } from "../player/Player";
 import { useListening } from "../player/session";
@@ -13,7 +15,10 @@ import "../reading/focus.css";
 import { useBook } from "../useBook";
 import { usePlaylist } from "./usePlaylist";
 
-/** Drops the 专注页's one-off URL parameters (?chapter, ?autoplay) once they did their job, so a reload does not redo it. */
+/**
+ * Drops the 专注页's one-off URL parameters (?chapter, ?autoplay, ?locate) once they did their job, so a reload does
+ * not redo it.
+ */
 function dropEntryParams() {
   if (window.location.search) window.history.replaceState(null, "", window.location.pathname);
 }
@@ -64,6 +69,17 @@ function usePickedChapter() {
   return { picked, pick, settle, find };
 }
 
+/** The Sentence 【定位原文】 opened the page at (`?locate=<Sentence>&in=<Chapter>`, locatePath), if any. */
+function useLocatedSentence() {
+  const [located] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sentenceId = params.get("locate");
+    const chapterId = params.get("in");
+    return sentenceId && chapterId ? { sentenceId, chapterId } : null;
+  });
+  return located;
+}
+
 /** Below this width the side panels lie over the text, so the directory starts collapsed (G8). */
 const WIDE_WINDOW = "(min-width: 901px)";
 
@@ -101,9 +117,27 @@ export function ListenPage({ id }: { id: string }) {
   const [directoryOpen, setDirectoryOpen] = useState(wideWindow);
   const [panelOpen, setPanelOpen] = useState(false);
   const reading = useRef<ReadingViewHandle>(null);
-  useShortcuts(here ? { toggle: listening.toggle, replay: listening.replay, next: listening.next } : null);
+  const located = useLocatedSentence();
+  // Opened at a located Sentence, the text stays there rather than following playback, until a Chapter is picked.
+  const stayAtLocated = useRef(located !== null);
+  const marks = useBookMarks(id);
+  const markPress = useMarkPress({
+    target: listening.markTarget,
+    textOf: (sentenceId) => reading.current?.sentenceText(sentenceId),
+    marks,
+  });
+  useShortcuts(
+    here ? { toggle: listening.toggle, replay: listening.replay, next: listening.next, mark: markPress.press } : null,
+  );
   // Stable, so the reading view's memoized Chapters do not render again on every time update.
   const toggleDirectory = useCallback(() => setDirectoryOpen((o) => !o), []);
+
+  const bookLoaded = book !== null;
+  useEffect(() => {
+    if (!bookLoaded || !located) return;
+    reading.current?.showSentence(located.chapterId, located.sentenceId);
+    dropEntryParams();
+  }, [bookLoaded, located]);
 
   const playable = book?.playable ?? false;
   const { open, reload, requestStart } = listening;
@@ -133,7 +167,7 @@ export function ListenPage({ id }: { id: string }) {
       chapterPick.settle();
       resume.settle();
       playlist.clearResume();
-      reading.current?.followPlayback();
+      if (!stayAtLocated.current) reading.current?.followPlayback();
     });
     // The request's id and position say when it changed; the callbacks only set state.
   }, [playable, startAt?.id, startAt?.seconds, requestStart]);
@@ -153,13 +187,19 @@ export function ListenPage({ id }: { id: string }) {
   const width = columnWidth({ directory: directoryOpen, sentencePanel: panelOpen });
 
   const onPick = (chapter: ChapterSummary) => {
+    stayAtLocated.current = false;
     reading.current?.showChapter(chapter.id);
     if (isPlayableChapter(chapter)) chapterPick.pick(chapter.id);
   };
 
   // The player shows the session, which holds this Book once opened (right after the Book is playable).
   const dock = playable ? (
-    here && <Player totalSeconds={totalSeconds} notice={notice} />
+    here && (
+      <>
+        {markPress.toast}
+        <Player totalSeconds={totalSeconds} notice={notice} onMark={markPress.press} />
+      </>
+    )
   ) : (
     <p className="listen-wait">
       {targetPending
@@ -200,6 +240,7 @@ export function ListenPage({ id }: { id: string }) {
           directoryOpen={directoryOpen}
           onToggleDirectory={toggleDirectory}
           dock={dock}
+          markedIds={marks.pending}
         />
         {!panelOpen && <SentencePanelToggle onOpen={() => setPanelOpen(true)} />}
       </main>

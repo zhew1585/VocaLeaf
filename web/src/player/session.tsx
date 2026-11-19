@@ -46,6 +46,8 @@ export interface Listening {
   replay(): void;
   /** 下一句: to the start of the next Sentence. */
   next(): void;
+  /** The id of the Sentence 【标记】 pressed now marks (PRD 4.4.2 目标句判定), or null without Sentences. */
+  markTarget(): Promise<string | null>;
   /** Moves to a dragged position (PRD 4.4.1 进度拖动), not snapped to a Sentence start, keeping play or pause. */
   seek(seconds: number): void;
   setSpeed(speed: Speed): void;
@@ -245,6 +247,7 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     toggle,
     replay: jumps.replay,
     next: jumps.next,
+    markTarget: jumps.target,
     seek,
     setSpeed,
     setSleep: sleep.set,

@@ -383,6 +383,14 @@
   color: var(--ink);
 }
 
+/* A pending Mark (AC-READ-04): amber dashes of 6 px with 4 px gaps, 1.5 px thick, under every line. */
+.sentence.is-marked {
+  background-image: linear-gradient(to right, var(--amber) 6px, transparent 6px);
+  background-size: 10px 1.5px;
+  background-repeat: repeat-x;
+  background-position: 0 100%;
+}
+
 .reading-placeholder {
   margin: 0 12px;
 }
@@ -409,7 +417,8 @@
   transition: width 0.2s ease;
 }
 
-.reading-dock > .follow-button {
+.reading-dock > .follow-button,
+.reading-dock > .mark-toast {
   width: auto;
 }
 

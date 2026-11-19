@@ -11,6 +11,7 @@ vi.mock("hls.js", async () => ({ default: (await import("../test-media")).FakeHl
 /** Sentences start at 0, 4, 8, 12 and 16 s; Chapter I runs 0 to 8 s, Chapter II 8 to 20 s. */
 const TIMELINE: BookTimeline = {
   sentenceStartsMs: [0, 4000, 8000, 12000, 16000],
+  sentenceIds: ["s1", "s2", "s3", "s4", "s5"],
   chapters: [
     { id: "c1", startMs: 0, endMs: 8000 },
     { id: "c2", startMs: 8000, endMs: 20000 },
@@ -150,7 +151,7 @@ describe("下一句", () => {
   });
 
   it("loads the timeline again when playback is past what it holds (the Book is still generating)", async () => {
-    const growing: BookTimeline = { ...TIMELINE, sentenceStartsMs: [0, 4000], complete: false };
+    const growing: BookTimeline = { ...TIMELINE, sentenceStartsMs: [0, 4000], sentenceIds: ["s1", "s2"], complete: false };
     vi.mocked(fetch)
       .mockImplementationOnce(async () => Response.json(growing))
       .mockImplementationOnce(async () => Response.json(TIMELINE));

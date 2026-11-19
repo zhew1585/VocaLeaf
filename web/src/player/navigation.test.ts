@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chapterEndAt, nextSentenceMs, replayTargetMs } from "./navigation";
+import { chapterEndAt, nextSentenceMs, replayTargetMs, targetIndex } from "./navigation";
 
 // Sentences start at 0, 4 s, 8 s and 12 s.
 const STARTS = [0, 4000, 8000, 12000];
@@ -60,5 +60,15 @@ describe("chapterEndAt", () => {
   it("is null while that Chapter is still generating, or before any Chapter", () => {
     expect(chapterEndAt(chapters, 9000)).toBeNull();
     expect(chapterEndAt([], 0)).toBeNull();
+  });
+});
+
+describe("targetIndex (PRD 4.4.2 目标句判定)", () => {
+  it("picks the Sentence 【标记】 marks by the same rule as 重听", () => {
+    expect(targetIndex(STARTS, 11000, { rate: 1, landedAtMs: null })).toBe(2);
+    expect(targetIndex(STARTS, 8900, { rate: 1, landedAtMs: null })).toBe(1);
+    expect(targetIndex(STARTS, 8500, { rate: 1, landedAtMs: 8200 })).toBe(2);
+    expect(targetIndex(STARTS, 500, { rate: 1, landedAtMs: null })).toBe(0);
+    expect(targetIndex([], 500, { rate: 1, landedAtMs: null })).toBeNull();
   });
 });

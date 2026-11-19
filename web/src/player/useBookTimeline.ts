@@ -4,7 +4,7 @@ import { getBookTimeline, type BookTimeline } from "../api";
 /** While the Book generates, its timeline grows; it is loaded again this often. */
 const GROWING_REFRESH_MS = 10_000;
 /** What a Book holds until its timeline is loaded: nothing, and more to come. */
-const NOT_LOADED: BookTimeline = { sentenceStartsMs: [], chapters: [], complete: false };
+const NOT_LOADED: BookTimeline = { sentenceStartsMs: [], sentenceIds: [], chapters: [], complete: false };
 
 /**
  * The listening session's Book timeline (GET /books/:id/timeline), loaded when the Book or its playlist changes

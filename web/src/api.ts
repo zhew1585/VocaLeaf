@@ -1,6 +1,19 @@
 // Typed calls to the VocaLeaf API. Types come straight from the API's zod contract (ADR 0002).
 // The session is an HttpOnly cookie the browser sends by itself (same origin), so no call handles a token.
-import type { ApiError, Book, BookDetail, BookTimeline, CodeSent, Sentence, UploadPolicy, User } from "@vocaleaf/api/contract";
+import type {
+  ApiError,
+  Book,
+  BookDetail,
+  BookMarks,
+  BookTimeline,
+  CodeSent,
+  Gleaning,
+  GleaningCount,
+  MarkResult,
+  Sentence,
+  UploadPolicy,
+  User,
+} from "@vocaleaf/api/contract";
 
 export type {
   Book,
@@ -8,7 +21,9 @@ export type {
   BookStatus,
   BookTimeline,
   ChapterSummary,
+  Gleaning,
   Listening,
+  MarkResult,
   Sentence,
   UploadPolicy,
   User,
@@ -169,4 +184,34 @@ export async function deleteBook(id: string): Promise<void> {
     if (!(err instanceof ApiRequestError && err.status === 404)) throw err;
   }
   window.dispatchEvent(new CustomEvent(BOOK_DELETED_EVENT, { detail: id }));
+}
+
+/** Marks a Sentence (PRD 4.4.2); says whether that created a Mark, found one pending or put one back to pending. */
+export function putMark(sentenceId: string): Promise<MarkResult> {
+  return request<MarkResult>(`/sentences/${sentenceId}/mark`, { method: "PUT" });
+}
+
+/** Deletes the user's Mark of a Sentence (撤销, 取消标记); a missing Mark is fine. */
+export async function deleteMark(sentenceId: string): Promise<void> {
+  await send(`/sentences/${sentenceId}/mark`, { method: "DELETE" });
+}
+
+/** Dismisses a pending Mark (PRD 4.4.4): it leaves Gleanings. */
+export async function dismissMark(sentenceId: string): Promise<void> {
+  await send(`/sentences/${sentenceId}/mark/dismiss`, { method: "POST" });
+}
+
+/** The Book's Sentences with a pending Mark. */
+export function getBookMarks(bookId: string): Promise<BookMarks> {
+  return request<BookMarks>(`/books/${bookId}/marks`);
+}
+
+/** Gleanings: pending Marks across Books, most recently marked first. */
+export function getGleanings(): Promise<Gleaning[]> {
+  return request<Gleaning[]>("/gleanings");
+}
+
+/** How many Sentences wait in Gleanings. */
+export function getGleaningCount(): Promise<GleaningCount> {
+  return request<GleaningCount>("/gleanings/count");
 }

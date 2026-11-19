@@ -1,0 +1,278 @@
+/* ---- 05 拾起 (design 05-1 with PRD V1.4: one list, no 重听 group) ---- */
+.gleanings {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 440px;
+}
+
+.gleanings-main {
+  min-width: 0;
+  padding: 36px 40px 64px 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.gleanings-title {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-family: var(--font-title);
+  font-size: 32px;
+  font-weight: 600;
+}
+
+.gleanings-count {
+  font-family: var(--font-num);
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+.gleanings-empty {
+  margin: 48px 0 0;
+  color: var(--ink-2);
+  font-size: 15px;
+}
+
+.gleanings-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filter-chip {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.filter-chip.book-chip {
+  font-family: var(--font-read);
+  font-size: 14px;
+}
+
+.filter-chip[aria-pressed="true"] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.gleaning-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 680px;
+}
+
+.gleaning {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 14px 16px;
+  border: 1px solid transparent;
+  border-radius: 16px;
+}
+
+.gleaning.is-selected {
+  border-color: var(--line);
+  background: var(--surface);
+}
+
+.gleaning-body {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.gleaning-text {
+  font-family: var(--font-read);
+  font-size: 19px;
+  line-height: 1.42;
+  color: var(--ink);
+}
+
+.gleaning-source {
+  font-family: var(--font-read);
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.gleaning-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.gleaning-play,
+.gleaning-dismiss {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 17px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.gleaning-play {
+  background: var(--leaf);
+  color: var(--surface);
+}
+
+.gleaning-play:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.gleaning-dismiss {
+  background: transparent;
+  color: var(--ink-3);
+}
+
+.gleaning-dismiss:hover {
+  background: var(--sunken);
+  color: var(--ink-2);
+}
+
+/* The right side: 句子精读's fixed area for the picked Sentence (#14 brings the rest of the panel). */
+.gleaning-panel {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.gleaning-panel-header {
+  height: 96px;
+  display: flex;
+  align-items: flex-end;
+  padding: 0 20px 16px 28px;
+}
+
+.gleaning-panel-header h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+.gleaning-fixed {
+  padding: 0 28px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+  margin: 0 0 0;
+}
+
+.gleaning-fixed-text {
+  margin: 0;
+  font-family: var(--font-read);
+  font-size: 25px;
+  font-weight: 500;
+  line-height: 1.32;
+  color: var(--ink);
+}
+
+.gleaning-fixed-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gleaning-fixed-spacer {
+  flex: 1;
+}
+
+.round-action,
+.pill-action {
+  height: 40px;
+  border: 0;
+  border-radius: 20px;
+  background: var(--paper);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.round-action {
+  width: 40px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.pill-action {
+  padding: 0 12px;
+}
+
+.round-action:hover,
+.pill-action:hover {
+  background: var(--sunken);
+}
+
+.gleaning-panel-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px;
+  color: var(--ink-3);
+  font-size: 13px;
+  text-align: center;
+}
+
+.gleaning-panel-empty p {
+  margin: 0;
+}
+
+.gleaning-panel-empty .gleaning-panel-empty-title {
+  margin-top: 6px;
+  color: var(--ink-2);
+  font-size: 15px;
+}
+
+/* Narrow windows: the list takes the width, the panel follows below it. */
+@media (max-width: 900px) {
+  .gleanings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gleanings-main {
+    padding: 28px 16px 32px;
+  }
+
+  .gleaning-panel {
+    position: static;
+    height: auto;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
