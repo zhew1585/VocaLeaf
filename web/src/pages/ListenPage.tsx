@@ -183,8 +183,11 @@ export function ListenPage({ id }: { id: string }) {
   const popover = useCardPopover<PopoverAnchor>(cards);
   // The side panels slide in and out; the right one keeps what it showed while it slides away.
   const directory = usePresence(directoryOpen, PANEL_EXIT_MS);
-  const side = usePresence(popover.open ? "popover" : panelOpen ? "panel" : null, PANEL_EXIT_MS);
-  const shownPopover = usePresence(popover.open, PANEL_EXIT_MS).value;
+  const side = usePresence(
+    popover.open ? { popover: popover.open } : panelOpen && { popover: null },
+    PANEL_EXIT_MS,
+  );
+  const shownPopover = side.value?.popover ?? null;
   const reading = useRef<ReadingViewHandle>(null);
   const playable = book?.playable ?? false;
   const guide = useFirstPlayGuide(playable);
@@ -379,7 +382,7 @@ export function ListenPage({ id }: { id: string }) {
       </main>
       {side.value && (
         <div className={side.exiting ? "focus-side is-exiting" : "focus-side"}>
-          {side.value === "popover" && shownPopover ? (
+          {shownPopover ? (
             <div className="card-popover-area">
               <CardPopover
                 key={shownPopover.cards.map((c) => c.id).join()}

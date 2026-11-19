@@ -74,6 +74,8 @@ export function CardsPage() {
     ({ item: c }) => (activeFilter === null || sourceKey(c) === activeFilter) && matchesSearch(c, query),
   );
 
+  const detail = panel.value;
+
   /** Another Card, or none: whatever 卡片原声 plays stops. */
   const select = (id: string | null) => {
     if (id !== selectedId) stopAudition();
@@ -82,10 +84,11 @@ export function CardsPage() {
   };
 
   return (
-    <div className={panel.value ? "cards-page has-detail" : "cards-page"}>
+    <div className={detail ? "cards-page has-detail" : "cards-page"}>
       <section className="cards-main">
         <CardsHeader count={items.length} query={query} onQuery={setQuery} />
-        {items.length === 0 ? (
+        {/* Empty once the last row has closed up. */}
+        {listed.length === 0 ? (
           <p className="cards-empty">{EMPTY}</p>
         ) : (
           <>
@@ -99,16 +102,16 @@ export function CardsPage() {
           </>
         )}
       </section>
-      {panel.value && (
+      {detail && (
         <CardDetailPanel
-          key={panel.value.id}
-          card={panel.value}
+          key={detail.id}
+          card={detail}
           motion={panel.exiting ? "exit" : swapped ? "swap" : "open"}
           onClose={() => select(null)}
           onChanged={replace}
           onDeleted={() => {
             select(null);
-            remove(panel.value!.id);
+            remove(detail.id);
           }}
         />
       )}

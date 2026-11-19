@@ -142,7 +142,7 @@
   border: 1px solid var(--line);
   border-radius: 26px;
   cursor: pointer;
-  transition: border-color 0.15s ease;
+  transition: border-color var(--motion-fast) var(--ease-out);
 }
 
 /* Like the sidebar's 当前收听: the whole card is the way into the 专注页. */
@@ -270,7 +270,7 @@
   gap: 8px;
   border-radius: 5px;
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: background-color var(--motion-fast) var(--ease-out);
 }
 
 .continue-cover .cover-actions {
@@ -301,8 +301,8 @@
   opacity: 0;
   transform: translateY(2px);
   transition:
-    opacity 0.15s ease,
-    transform 0.15s ease;
+    opacity var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
 }
 
 /* 【继续收听】's 88 px cover: a compact 详情, well clear of the cover's sides. */
@@ -584,6 +584,11 @@
   font-size: 13px;
   line-height: 1.5;
   color: var(--ink-2);
+}
+
+/* 加入书架并播放 giving way to 继续收听 and 已在书架 fades in. */
+.library-action > * {
+  animation: fade-in var(--motion-pop) var(--ease-out);
 }
 
 .library-action {

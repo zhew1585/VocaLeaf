@@ -154,7 +154,9 @@ function PlayButton({ book }: { book: Book }) {
   const { playing, toggle } = useShelfPlay(book);
   return (
     <button type="button" className="cover-action is-play" aria-label={`${playing ? "暂停" : "播放"} ${book.title}`} onClick={toggle}>
-      {playing ? <PauseSolidIcon size={12} /> : <PlaySolidIcon size={12} />}
+      <span key={playing ? "pause" : "play"} className="icon-swap">
+        {playing ? <PauseSolidIcon size={12} /> : <PlaySolidIcon size={12} />}
+      </span>
       {playing ? "暂停" : "播放"}
     </button>
   );

@@ -146,7 +146,7 @@
   height: 100%;
   border-radius: 2px;
   background: var(--leaf);
-  transition: width 480ms var(--ease-out);
+  transition: width var(--motion-panel) var(--ease-out);
 }
 
 .guide-link {

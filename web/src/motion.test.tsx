@@ -134,5 +134,8 @@ describe("useCollapse", () => {
     expect(el.style.height).toBe("");
     rerender(<Item exiting />);
     expect(el.style.height).toBe("84px");
+    // Back after all: its own height again.
+    rerender(<Item exiting={false} />);
+    expect(el.style.height).toBe("");
   });
 });

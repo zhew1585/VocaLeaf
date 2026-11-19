@@ -102,7 +102,7 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  transition: background 0.2s ease;
+  transition: background-color var(--motion-pop) var(--ease-out);
 }
 
 .review-halo.is-playing {
@@ -321,7 +321,7 @@
 
 /* The four ratings, 记得 filled as the default answer. */
 .review-ratings {
-  animation: rise-in var(--motion-panel) var(--ease-out) 60ms backwards;
+  animation: rise-in var(--motion-panel) var(--ease-out) var(--motion-follow) backwards;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
@@ -472,5 +472,5 @@
 }
 
 .review-done > :not(.review-done-mark) {
-  animation: rise-in var(--motion-panel) var(--ease-out) 80ms backwards;
+  animation: rise-in var(--motion-panel) var(--ease-out) var(--motion-follow) backwards;
 }

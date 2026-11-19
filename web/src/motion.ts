@@ -1,11 +1,11 @@
-// Motion helpers. Entering is plain CSS (an animation on mount, the keyframes and tokens in styles.css); leaving needs
+// Motion helpers. Entering is plain CSS (an animation on mount, the keyframes and tokens in motion.css); leaving needs
 // the element kept on screen while it animates out, which these hooks do. Exits are short and never in the way:
 // an element leaving takes no pointer events (.is-exiting), and coming back mid-exit just keeps it.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-/** How long a popover, toast, dialog or list item takes to leave; --motion-exit in styles.css, plus a frame. */
+/** How long a popover, toast, dialog or list item takes to leave: --motion-exit in motion.css, plus a frame. */
 export const EXIT_MS = 160;
-/** How long a side panel takes to slide away; --motion-exit-panel in styles.css, plus a frame. */
+/** How long a side panel takes to slide away: --motion-exit-panel in motion.css, plus a frame. */
 export const PANEL_EXIT_MS = 220;
 
 /**
@@ -39,14 +39,17 @@ export interface Presence<T> {
  */
 export function usePresence<T>(value: T | Absent, exitMs = EXIT_MS): Presence<T> {
   const present = isPresent(value);
+  // The value last shown on screen (committed), which is what leaves.
   const last = useRef<T | null>(present ? value : null);
-  if (present) last.current = value;
+  useLayoutEffect(() => {
+    if (present) last.current = value;
+  });
   const [wasPresent, setWasPresent] = useState(present);
   const [exiting, setExiting] = useState(false);
   // Adjusted while rendering, so the frame where the value goes already shows it leaving.
   if (present !== wasPresent) {
     setWasPresent(present);
-    setExiting(!present && exitMs > 0 && motionAllowed());
+    setExiting(!present && motionAllowed());
   }
   useEffect(() => {
     if (!exiting) return;
@@ -66,16 +69,17 @@ export interface ListEntry<T> {
 
 /**
  * A list whose removed items stay where they were for their exit animation (collapse, see useCollapse) before
- * they go. Items that come in are new elements, which their CSS fades in.
+ * they go. Items that come in are new elements, which their CSS fades in. `items` must be the same array until
+ * the list changes (state, or a constant while there is none): a new array on every render never settles.
  */
-export function usePresenceList<T>(items: readonly T[], keyOf: (item: T) => string, exitMs = EXIT_MS): ListEntry<T>[] {
+export function usePresenceList<T>(items: readonly T[], keyOf: (item: T) => string): ListEntry<T>[] {
   const [shown, setShown] = useState<{ items: readonly T[]; entries: ListEntry<T>[] }>(() => ({
     items,
     entries: items.map((item) => ({ item, exiting: false })),
   }));
   let entries = shown.entries;
   if (shown.items !== items) {
-    entries = merge(shown.entries, items, keyOf, exitMs > 0 && motionAllowed());
+    entries = merge(shown.entries, items, keyOf, motionAllowed());
     setShown({ items, entries });
   }
   const anyExiting = entries.some((e) => e.exiting);
@@ -83,10 +87,10 @@ export function usePresenceList<T>(items: readonly T[], keyOf: (item: T) => stri
     if (!anyExiting) return;
     const timer = setTimeout(
       () => setShown((s) => ({ items: s.items, entries: s.entries.filter((e) => !e.exiting) })),
-      exitMs,
+      EXIT_MS,
     );
     return () => clearTimeout(timer);
-  }, [anyExiting, exitMs, shown]);
+  }, [anyExiting, shown]);
   return entries;
 }
 
@@ -109,13 +113,14 @@ function merge<T>(before: ListEntry<T>[], items: readonly T[], keyOf: (item: T) 
 
 /**
  * For an element that collapses as it leaves (.is-exiting with the collapse-out animation): fixes its height in
- * pixels when it starts leaving, so the animation can take it to 0 (CSS cannot animate from `auto`).
+ * pixels when it starts leaving, so the animation can take it to 0 (CSS cannot animate from `auto`), and lets it
+ * go back to its own height if it stays after all.
  */
 export function useCollapse<E extends HTMLElement>(exiting: boolean) {
   const ref = useRef<E>(null);
   useLayoutEffect(() => {
     const el = ref.current;
-    if (exiting && el) el.style.height = `${el.offsetHeight}px`;
+    if (el) el.style.height = exiting ? `${el.offsetHeight}px` : "";
   }, [exiting]);
   return ref;
 }

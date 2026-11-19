@@ -51,11 +51,11 @@
   background: var(--surface);
 }
 
-/* Design 01 ①: a 32 px leaf circle with the arrow, then 返回书架. */
 .directory.is-exiting {
   animation: side-out-left var(--motion-exit-panel) var(--ease-in) forwards;
 }
 
+/* Design 01 ①: a 32 px leaf circle with the arrow, then 返回书架. */
 .shelf-back {
   align-self: flex-start;
   display: inline-flex;
@@ -98,13 +98,13 @@
   box-shadow: 0 6px 16px rgb(38 62 45 / 0.16);
 }
 
-/* Comes in as the directory goes. */
+/* The directory collapsed: 返回书架 alone, coming in as the directory goes. */
 .directory-collapsed {
   position: absolute;
   z-index: 3;
   top: 24px;
   left: 24px;
-  animation: scale-in var(--motion-pop) var(--ease-out) 120ms backwards;
+  animation: scale-in var(--motion-pop) var(--ease-out) var(--motion-follow) backwards;
 }
 
 .directory-label {
@@ -563,14 +563,13 @@
   overflow: hidden;
 }
 
-/* 句子精读 (collapsed by default, AC-READ-14) */
-/* Comes in as the panel goes. */
+/* 句子精读's toggle while it is collapsed (by default, AC-READ-14); it comes in as the panel goes. */
 .panel-toggle {
   position: absolute;
   z-index: 3;
   top: 28px;
   right: 24px;
-  animation: scale-in var(--motion-pop) var(--ease-out) 120ms backwards;
+  animation: scale-in var(--motion-pop) var(--ease-out) var(--motion-follow) backwards;
 }
 
 /* Narrow windows: the side panels lie over the reading area. */

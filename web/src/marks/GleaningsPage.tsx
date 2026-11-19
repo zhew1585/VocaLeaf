@@ -99,6 +99,7 @@ export function GleaningsPage() {
   // A Book whose last item left stops filtering.
   const filter = books.some((b) => b.id === bookFilter) ? bookFilter : null;
   const shown = filter === null ? listed : listed.filter(({ item }) => item.bookId === filter);
+  const dismissing = confirm.value;
   const pending = (g: Gleaning | null) => g !== null && items.some((i) => i.sentenceId === g.sentenceId);
 
   /**
@@ -123,7 +124,8 @@ export function GleaningsPage() {
         <h1 className="gleanings-title">
           拾起<span className="gleanings-count">{items.length}</span>
         </h1>
-        {items.length === 0 ? (
+        {/* Empty once the last item has closed up. */}
+        {listed.length === 0 ? (
           <p className="gleanings-empty">{EMPTY}</p>
         ) : (
           <>
@@ -173,13 +175,13 @@ export function GleaningsPage() {
           onCardMade={(made) => popover.made(made, null)}
         />
       )}
-      {confirm.value && (
+      {dismissing && (
         <ConfirmDismiss
-          sentenceId={confirm.value.sentenceId}
+          sentenceId={dismissing.sentenceId}
           exiting={confirm.exiting}
           onCancel={() => setAsking(null)}
           onDismissed={() => {
-            remove(confirm.value!.sentenceId);
+            remove(dismissing.sentenceId);
             setAsking(null);
           }}
         />

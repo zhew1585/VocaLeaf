@@ -1,3 +1,6 @@
+/* Motion tokens, keyframes and shared rules. */
+@import "./motion.css";
+
 /* Design tokens from VocalLeaf V1.0.0.pen (document variables). */
 :root {
   --paper: #f6f2e9;
@@ -22,20 +25,6 @@
   --font-read: "Newsreader", Georgia, serif;
   --font-num: "Inter", system-ui, sans-serif;
 
-  /*
-   * Motion: quiet and short, never bouncing. Fast for hover, press and state changes; pop for popovers, toasts and
-   * dialogs coming in; panel for side panels and pages. Leaving is shorter and eases in. The exits' lengths are
-   * EXIT_MS and PANEL_EXIT_MS in src/motion.ts, which keep a leaving element on screen that long.
-   */
-  --motion-fast: 140ms;
-  --motion-pop: 200ms;
-  --motion-panel: 280ms;
-  --motion-exit: 140ms;
-  --motion-exit-panel: 200ms;
-  /* Coming in: quick start, soft landing. Leaving: gathers pace. A move or resize: both ends soft. */
-  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --ease-in: cubic-bezier(0.4, 0, 1, 1);
-  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 * {
@@ -105,156 +94,6 @@ body:has(.cards-page.has-detail) {
 [data-scrollbar] {
   --scrollbar-thumb: var(--scrollbar-thumb-shown);
   transition: --scrollbar-thumb 0.12s ease-out;
-}
-
-/*
- * Shared motion. An element comes in by an animation on mount; one kept on screen to leave (src/motion.ts) gets
- * .is-exiting, which takes no pointer events, and its own exit animation, with `forwards` so it stays gone.
- */
-.is-exiting {
-  pointer-events: none;
-}
-
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-}
-
-@keyframes fade-out {
-  to {
-    opacity: 0;
-  }
-}
-
-/* Rises into place from --rise below (negative: from above). */
-@keyframes rise-in {
-  from {
-    opacity: 0;
-    transform: translateY(var(--rise, 6px));
-  }
-}
-
-@keyframes rise-out {
-  to {
-    opacity: 0;
-    transform: translateY(var(--rise, 6px));
-  }
-}
-
-/* Grows from its transform-origin, for popovers and dialogs. */
-@keyframes scale-in {
-  from {
-    opacity: 0;
-    transform: translateY(var(--rise, 0)) scale(0.97);
-  }
-}
-
-@keyframes scale-out {
-  to {
-    opacity: 0;
-    transform: translateY(var(--rise, 0)) scale(0.97);
-  }
-}
-
-/* Slides in sideways by --slide (negative: from the left). */
-@keyframes slide-in {
-  from {
-    opacity: 0;
-    transform: translateX(var(--slide, 12px));
-  }
-}
-
-@keyframes slide-out {
-  to {
-    opacity: 0;
-    transform: translateX(var(--slide, 12px));
-  }
-}
-
-/* A list item leaving: fades and closes up (its height fixed in pixels first, useCollapse). */
-@keyframes collapse-out {
-  to {
-    height: 0;
-    margin-block: 0;
-    padding-block: 0;
-    border-block-width: 0;
-    opacity: 0;
-  }
-}
-
-/* A side panel opening or closing: its edge moves, so what is beside it moves along (--side: its width). */
-@keyframes side-in-left {
-  from {
-    margin-left: calc(-1 * var(--side));
-    opacity: 0;
-  }
-}
-
-@keyframes side-out-left {
-  to {
-    margin-left: calc(-1 * var(--side));
-    opacity: 0;
-  }
-}
-
-@keyframes side-in-right {
-  from {
-    margin-right: calc(-1 * var(--side));
-    opacity: 0;
-  }
-}
-
-@keyframes side-out-right {
-  to {
-    margin-right: calc(-1 * var(--side));
-    opacity: 0;
-  }
-}
-
-/* Something working, breathing (AI 正在回复). */
-@keyframes breathe {
-  50% {
-    opacity: 0.35;
-  }
-}
-
-/* An icon taking another's place (play and pause). */
-.icon-swap {
-  display: grid;
-  place-items: center;
-  animation: scale-in var(--motion-fast) var(--ease-out);
-}
-
-/* Pages come in by fading up from the paper; data loading in later fades in with them. */
-.shell,
-.shell-main > *,
-.login,
-.focus {
-  animation: fade-in var(--motion-panel) var(--ease-out);
-}
-
-/* A message that shows up (an error, a note, a hint). */
-.form-error,
-.voice-note,
-.listen-wait {
-  animation: fade-in var(--motion-pop) var(--ease-out);
-}
-
-/*
- * Reduced motion: everything happens at once (exits too, src/motion.ts). Spinners stop; their icon still says that
- * something is working.
- */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 1ms !important;
-    animation-delay: 0s !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 1ms !important;
-    transition-delay: 0s !important;
-  }
 }
 
 /* Shell pages that scroll and those that do not keep the same width; the 专注页 never scrolls the page itself. */
@@ -1004,9 +843,9 @@ button.chapter-title:hover {
   transition: transform var(--motion-pop) var(--ease-in-out);
 }
 
-/* On: the knob slides to the right end (40 - 2 x 2 padding - 20). */
+/* On: the knob slides to the right end (switch less its padding and the knob). */
 .narration-switch[aria-checked="true"] .narration-knob {
-  transform: translateX(16px);
+  transform: translateX(calc(40px - 2 * 2px - 20px));
 }
 
 .chapter-row:has(.chapter-error) {
@@ -1089,6 +928,10 @@ button.chapter-title:hover {
   color: var(--leaf);
   font-size: 13px;
   animation: rise-in var(--motion-pop) var(--ease-out);
+}
+
+.player-notice.is-exiting {
+  animation: fade-out var(--motion-exit) var(--ease-in) forwards;
 }
 
 .player-notice svg {

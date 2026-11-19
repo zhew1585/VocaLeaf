@@ -125,7 +125,9 @@ function FixedSentence({ sentence, cards, onOpenCards, onCardMade }: FixedSenten
       {overflowing && (
         <button type="button" className="panel-sentence-fold" onClick={() => setExpanded((e) => !e)}>
           {expanded ? "收起原句" : "展开原句"}
-          {expanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
+          <span key={expanded ? "up" : "down"} className="icon-swap">
+            {expanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
+          </span>
         </button>
       )}
     </div>

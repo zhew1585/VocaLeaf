@@ -292,13 +292,12 @@
 }
 
 /* Opening a Card from the list, its detail comes in from the right; 【返回列表】, the list from the left. */
-.card-detail.is-moved,
-.card-list.is-moved {
-  --slide: 12px;
+.card-detail.is-switched,
+.card-list.is-switched {
   animation: slide-in var(--motion-pop) var(--ease-out);
 }
 
-.card-list.is-moved {
+.card-list.is-switched {
   --slide: -12px;
 }
 
