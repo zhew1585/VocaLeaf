@@ -71,7 +71,8 @@ function titleFromFileName(name: string): string {
   return name.replace(/\.epub$/i, "").trim() || "Untitled";
 }
 
-async function uploadedBooks(db: Db | Tx, userId: string): Promise<number> {
+/** Uploaded Books the user holds now: what the upload limit counts. Library Books on the Shelf do not count. */
+export async function uploadedBooks(db: Db | Tx, userId: string): Promise<number> {
   const [row] = await db
     .select({ n: count() })
     .from(books)

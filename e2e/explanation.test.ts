@@ -1,7 +1,7 @@
 // End-to-end: 句子精读's AI (#14) on the running compose stack. Without ANTHROPIC_API_KEY the API answers with its
 // deterministic fake (ADR 0003), which this test relies on. Needs `npm run e2e:up`.
 import { beforeEach, describe, expect, it } from "vitest";
-import type { BookDetail, ExplainEvent, Explanation, Sentence } from "../api/src/contract.js";
+import type { BookDetail, ExplainEvent, Explanation, Sentence, Usage } from "../api/src/contract.js";
 import { BASE, endOpenJobs, newUser, sessionCookie, SHORT_WALK, sql } from "./support.js";
 
 beforeEach(() => endOpenJobs());
@@ -54,6 +54,19 @@ describe("Explanations through the stack", () => {
     expect(body.content).toContain("## 句意");
     expect(body.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
     expect(body.aiRemaining).toBe(98);
+  });
+
+  it("shows the day's calls left and the uploads held on the settings page (AC-SET-01, #18)", async () => {
+    const u = await userWithSentence("explain-usage");
+    await events(await post(u.cookie, u.sentence.id, { kind: "explain" }));
+    await events(await post(u.cookie, u.sentence.id, { kind: "ask", question: "这句话是什么意思？" }));
+
+    expect((await u.api<Usage>("/me/usage")).body).toEqual({
+      aiRemaining: 98,
+      aiDailyLimit: 100,
+      uploadedBooks: 1,
+      maxUploadedBooks: 20,
+    });
   });
 
   it("does not count a failed call, and counts a stopped one without keeping it", async () => {

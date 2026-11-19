@@ -1,0 +1,235 @@
+/* 设置 (design 08-1): the account, quotas and 操作说明 on the left, the shortcuts on the right. */
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.settings-title {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: 32px;
+  font-weight: 600;
+}
+
+.settings-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 56px;
+  align-items: start;
+}
+
+.settings-column {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+
+.settings-card {
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--surface);
+}
+
+.settings-account {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.settings-avatar {
+  width: 60px;
+  height: 60px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--leaf-soft);
+  color: var(--leaf);
+  font-family: var(--font-read);
+  font-size: 26px;
+  font-weight: 600;
+}
+
+.settings-account-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-email {
+  font-family: var(--font-num);
+  font-size: 17px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-role {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.sign-out {
+  height: 40px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--danger);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.sign-out:hover:not(:disabled) {
+  border-color: var(--danger);
+}
+
+.sign-out:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.settings-meters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.meter {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px;
+}
+
+.meter-label {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.meter-value {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.meter-number {
+  font-family: var(--font-read);
+  font-size: 40px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.meter-unit {
+  padding-bottom: 5px;
+  font-family: var(--font-num);
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.meter-track {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--sunken);
+}
+
+.meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--leaf);
+}
+
+.guide-link {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 20px;
+  border-radius: 22px;
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+}
+
+.guide-link:hover {
+  border-color: var(--leaf);
+}
+
+.guide-link svg:last-child {
+  color: var(--ink-3);
+}
+
+.guide-link-label {
+  flex: 1;
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.settings-section-title {
+  height: 28px;
+  margin: 0 0 -12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.shortcuts {
+  margin: 0;
+  padding: 4px 20px;
+  list-style: none;
+}
+
+.shortcut {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 15px;
+}
+
+.shortcut + .shortcut {
+  border-top: 1px solid var(--line);
+}
+
+.shortcut-keys {
+  display: flex;
+  gap: 6px;
+}
+
+/* A keycap: 1 px border, 3 px at the bottom. */
+.key {
+  height: 30px;
+  min-width: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-bottom-width: 3px;
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-family: var(--font-num);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+@media (max-width: 760px) {
+  .settings-columns {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+  }
+}

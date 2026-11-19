@@ -293,3 +293,46 @@ export const ChevronUpIcon = ({ size = 14 }) => (
 );
 
 export const SquareSolidIcon = ({ size = 10 }) => <SolidIcon size={size} d="M5 5h14v14H5z" />;
+
+export const SettingsIcon = ({ size = 18 }) => (
+  <Icon size={size}>
+    <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
+    <circle cx="12" cy="12" r="3" />
+  </Icon>
+);
+
+export const LogOutIcon = ({ size = 15 }) => (
+  <Icon size={size}>
+    <path d="m16 17 5-5-5-5" />
+    <path d="M21 12H9" />
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+  </Icon>
+);
+
+export const InfoIcon = ({ size = 20 }) => (
+  <Icon size={size}>
+    <circle cx="12" cy="12" r="10" />
+    <path d="M12 16v-4" />
+    <path d="M12 8h.01" />
+  </Icon>
+);
+
+export const ChevronRightIcon = ({ size = 18 }) => (
+  <Icon size={size}>
+    <path d="m9 18 6-6-6-6" />
+  </Icon>
+);
+
+export const KeyboardIcon = ({ size = 16 }) => (
+  <Icon size={size}>
+    <path d="M10 8h.01" />
+    <path d="M12 12h.01" />
+    <path d="M14 8h.01" />
+    <path d="M16 12h.01" />
+    <path d="M18 8h.01" />
+    <path d="M6 8h.01" />
+    <path d="M7 16h10" />
+    <path d="M8 12h.01" />
+    <rect width="20" height="16" x="2" y="4" rx="2" />
+  </Icon>
+);

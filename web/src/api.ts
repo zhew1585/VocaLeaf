@@ -16,6 +16,7 @@ import type {
   MarkResult,
   Sentence,
   UploadPolicy,
+  Usage,
   User,
   Voice,
 } from "@vocaleaf/api/contract";
@@ -38,6 +39,7 @@ export type {
   MarkResult,
   Sentence,
   UploadPolicy,
+  Usage,
   User,
   Voice,
   VoiceChange,
@@ -107,6 +109,11 @@ export function requestLoginCode(email: string): Promise<CodeSent> {
 
 export function logIn(email: string, code: string): Promise<User> {
   return request<User>("/auth/login", postJson({ email, code }));
+}
+
+/** Today's AI calls left and the uploaded Books held, against their limits (设置页). */
+export function getUsage(): Promise<Usage> {
+  return request<Usage>("/me/usage");
 }
 
 /** Ends this device's session. */

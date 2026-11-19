@@ -142,7 +142,8 @@ describe("the sidebar's 当前收听 entry", () => {
     await listenThenGoBack();
     await entry();
 
-    fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
+    fireEvent.click(screen.getByRole("link", { name: "设置" }));
+    fireEvent.click(await screen.findByRole("button", { name: "退出登录" }));
     await screen.findByRole("button", { name: "发送验证码" });
 
     expect(localStorage.getItem("vocaleaf:listening-book")).toBeNull();
