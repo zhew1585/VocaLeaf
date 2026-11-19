@@ -29,9 +29,8 @@ export function BackToShelf({ compact = false }: { compact?: boolean }) {
   );
 }
 
-/** A Chapter's state next to its title (G5): Skipped, not generated yet, or failed. Generated ones need none. */
+/** A Chapter's state next to its title (G5): not generated yet, or failed. Generated ones need none. */
 function chapterTag(c: ChapterSummary): string | null {
-  if (c.skipped) return "未朗读";
   if (c.audioStatus === "failed") return "生成失败";
   if (c.startMs === null) return "生成中";
   return null;
@@ -78,8 +77,9 @@ interface Props {
 }
 
 /**
- * The 专注页's left column (design 01 ①, ③): 【返回书架】, every Chapter (the playing one marked, Skipped and
- * not generated ones tagged, G5), and at the bottom the Book with how much of it was listened to.
+ * The 专注页's left column (design 01 ①, ③): 【返回书架】, the narrated Chapters (the playing one marked, not
+ * generated ones tagged, G5; Skipped ones, such as an imprint or a table of contents, left out, though the text
+ * still shows them), and at the bottom the Book with how much of it was listened to.
  * Picking a Chapter plays it from its start, or shows it when it cannot be played.
  */
 export function ChapterDirectory({ book, playingChapterId, playing, listened, onPick }: Props) {
@@ -89,7 +89,7 @@ export function ChapterDirectory({ book, playingChapterId, playing, listened, on
       <BackToShelf />
       <p className="directory-label">章节</p>
       <ol className="directory-list">
-        {book.chapters.map((c) => {
+        {book.chapters.filter((c) => !c.skipped).map((c) => {
           const isPlaying = c.id === playingChapterId;
           const tag = chapterTag(c);
           return (

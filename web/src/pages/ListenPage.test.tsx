@@ -551,11 +551,12 @@ describe("ListenPage reading view (F7, F9)", () => {
     await screen.findByText("It is a truth universally acknowledged.");
   }
 
-  it("lists every Chapter, tagging the Skipped and failed ones, and shows the text by Sentence and paragraph", async () => {
+  it("lists the narrated Chapters, leaving out Skipped ones and tagging failed ones, and shows the text by Sentence and paragraph", async () => {
     await openFinished();
 
+    // A Skipped Chapter (an imprint, a table of contents) is not in the directory; it is still in the text.
     const items = within(directory()).getAllByRole("button").map((b) => b.textContent);
-    expect(items).toEqual(["Chapter I", "Imprint未朗读", "Chapter II", "Chapter III生成失败"]);
+    expect(items).toEqual(["Chapter I", "Chapter II", "Chapter III生成失败"]);
     const first = screen.getByRole("region", { name: "Chapter I" });
     expect([...first.querySelectorAll("p")].map((p) => p.textContent)).toEqual([
       "It is a truth universally acknowledged. However little known the feelings may be.",
@@ -608,12 +609,12 @@ describe("ListenPage reading view (F7, F9)", () => {
     expect(media.play).toHaveBeenCalledTimes(1);
   });
 
-  it("shows a Skipped Chapter picked in the directory without playing it", async () => {
+  it("shows a Chapter that cannot be played, picked in the directory, without playing it", async () => {
     await openFinished();
     audioWithGenerated(20);
     scrollTo.mockClear();
 
-    fireEvent.click(within(directory()).getByRole("button", { name: /Imprint/ }));
+    fireEvent.click(within(directory()).getByRole("button", { name: /Chapter III/ }));
 
     expect(scrollTo).toHaveBeenCalled();
     expect(media.play).not.toHaveBeenCalled();
