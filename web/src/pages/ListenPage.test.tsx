@@ -87,8 +87,11 @@ const sentence = (id: string, paragraphIndex: number, text: string, startMs: num
 
 /** The Book timeline the served Sentences make (GET /api/books/b1/timeline). */
 function timelineOf(sentences: Record<string, Sentence[]>) {
-  const starts = Object.values(sentences).flatMap((list) => list.flatMap((s) => (s.startMs === null ? [] : [s.startMs])));
-  return { sentenceStartsMs: starts.sort((a, b) => a - b), chapters: [], complete: true };
+  const timed = Object.values(sentences)
+    .flat()
+    .filter((s) => s.startMs !== null)
+    .sort((a, b) => a.startMs! - b.startMs!);
+  return { sentenceStartsMs: timed.map((s) => s.startMs!), sentenceIds: timed.map((s) => s.id), chapters: [], complete: true };
 }
 
 /**
@@ -101,6 +104,7 @@ function serve(books: BookDetail[], sentences: Record<string, Sentence[]> = {}) 
     const chapterId = /^\/api\/chapters\/([^/]+)\/sentences$/.exec(url)?.[1];
     if (chapterId) return Response.json(sentences[chapterId] ?? []);
     if (url.endsWith("/timeline")) return Response.json(timelineOf(sentences));
+    if (url.endsWith("/marks")) return Response.json({ pending: [] });
     return Response.json(queue.length > 1 ? queue.shift() : queue[0]);
   });
   vi.stubGlobal("fetch", fetchMock);

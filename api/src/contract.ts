@@ -208,6 +208,8 @@ export const BookTimelineSchema = z
   .object({
     /** Start of every Sentence in the playlist, ascending. */
     sentenceStartsMs: z.array(z.int().min(0)),
+    /** The Sentence starting at each of sentenceStartsMs (same order): what 【标记】 marks (PRD 4.4.2). */
+    sentenceIds: z.array(z.uuid()),
     /** The narrated Chapters in the playlist, in order; a Chapter still generating has no end yet. */
     chapters: z.array(z.object({ id: z.uuid(), startMs: z.int().min(0), endMs: z.int().min(0).nullable() })),
     /** No more audio will be appended: every narrated Chapter is in the playlist or failed. */
@@ -243,6 +245,41 @@ export const UploadBookSchema = z.object({
   /** The UPLOAD_DECLARATION version the user just confirmed; needed while they have not confirmed it before. */
   declarationVersion: z.string().optional(),
 });
+
+// ---- Marks and Gleanings (PRD 4.4.2, 4.4.4) ----
+
+/** A Mark's status, PRD 4.4.2: 待处理, 已处理 (a Card was made from it), 已忽略 (Dismissed). Also the database enum. */
+export const MARK_STATUSES = ["pending", "processed", "dismissed"] as const;
+
+/**
+ * What marking a Sentence did: created a Mark, found it pending already (the client says 【已标记】, AC-MARK-03), or
+ * put a processed or dismissed Mark back into Gleanings (AC-MARK-04).
+ */
+export const MarkResultSchema = z
+  .object({ result: z.enum(["created", "already", "reopened"]) })
+  .openapi("MarkResult");
+
+/** The Sentences of one Book with a pending Mark: those the reading view underlines (PRD 4.4.5). */
+export const BookMarksSchema = z.object({ pending: z.array(z.uuid()) }).openapi("BookMarks");
+
+/** One item of Gleanings (PRD 4.4.4): a Sentence with a pending Mark, where it is, and when it was marked. */
+export const GleaningSchema = z
+  .object({
+    sentenceId: z.uuid(),
+    text: z.string(),
+    bookId: z.uuid(),
+    bookTitle: z.string(),
+    chapterId: z.uuid(),
+    chapterTitle: z.string(),
+    /** Where the Sentence starts in its Book's audio (【从这里播放】); null while its Chapter is not in the playlist. */
+    startMs: z.int().min(0).nullable(),
+    /** When the Mark last became pending; Gleanings are ordered by it, newest first. */
+    markedAt: z.iso.datetime(),
+  })
+  .openapi("Gleaning");
+
+/** The navigation's badge: how many Sentences wait in Gleanings. */
+export const GleaningCountSchema = z.object({ count: z.int().min(0) }).openapi("GleaningCount");
 
 // ---- Worker protocol (/internal), bearer-token protected ----
 
@@ -385,3 +422,8 @@ export type UploadPolicy = z.infer<typeof UploadPolicySchema>;
 export type Listening = z.infer<typeof ListeningSchema>;
 export type CodeSent = z.infer<typeof CodeSentSchema>;
 export type ApiError = z.infer<typeof ErrorSchema>;
+export type MarkStatus = (typeof MARK_STATUSES)[number];
+export type MarkResult = z.infer<typeof MarkResultSchema>;
+export type BookMarks = z.infer<typeof BookMarksSchema>;
+export type Gleaning = z.infer<typeof GleaningSchema>;
+export type GleaningCount = z.infer<typeof GleaningCountSchema>;

@@ -8,7 +8,7 @@ export interface ShortcutHandlers {
   replay(): void;
   /** →. */
   next(): void;
-  /** M; marking comes with #13, until then the key does nothing. */
+  /** M: 【标记】 (PRD 4.4.2). */
   mark?(): void;
 }
 

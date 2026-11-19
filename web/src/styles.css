@@ -10,6 +10,9 @@
   --leaf: #2e5b45;
   --leaf-soft: #dfe9da;
   --danger: #b2452e;
+  --amber: #c17a22;
+  --amber-soft: #f7e6c4;
+  --amber-ink: #8a5514;
   --font-ui: "Noto Sans SC", system-ui, sans-serif;
   --font-title: "Noto Serif SC", serif;
   --font-read: "Newsreader", Georgia, serif;
@@ -243,6 +246,27 @@ button {
 .shell-main {
   min-width: 0;
   padding: 36px 56px 64px;
+}
+
+/* A page that lays out its own edges, such as 拾起 with its full-height 句子精读. */
+.shell-main.is-flush {
+  padding: 0;
+}
+
+/* How many items wait in a section (拾起, PRD 4.4.4 计数). */
+.side-badge {
+  min-width: 26px;
+  height: 20px;
+  margin-left: auto;
+  padding: 0 7px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--amber);
+  color: #fff;
+  font-family: var(--font-num);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .upload-title {
@@ -653,7 +677,7 @@ button.chapter-title:hover {
   text-align: center;
 }
 
-/* Speed and sleep timer | 重听, play / pause, 下一句 | room for 【标记 M】 (#13). */
+/* Speed and sleep timer | 重听, play / pause, 下一句 | 【标记 M】. */
 .player-controls {
   height: 44px;
   display: flex;
@@ -667,6 +691,10 @@ button.chapter-title:hover {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.player-side-end {
+  justify-content: flex-end;
 }
 
 .player-transport {

@@ -1,4 +1,5 @@
-import { LoaderIcon, NextSentenceIcon, PauseSolidIcon, PlaySolidIcon, ReplayIcon } from "../icons";
+import { LeafIcon, LoaderIcon, NextSentenceIcon, PauseSolidIcon, PlaySolidIcon, ReplayIcon } from "../icons";
+import "../marks/marks.css";
 import { SleepMenu, SpeedMenu } from "./PlayerMenus";
 import { Progress } from "./Progress";
 import { useListening } from "./session";
@@ -13,6 +14,8 @@ export interface PlayerProps {
   totalSeconds?: number | null;
   /** Shown above the controls, such as how long the audio being waited for still takes. */
   notice?: string | null;
+  /** 【标记】 (PRD 4.4.2): marks the target Sentence; the button shows only with it. */
+  onMark?(): void;
 }
 
 /**
@@ -20,9 +23,9 @@ export interface PlayerProps {
  * sleep timer, 重听, play / pause, 下一句, then the whole Book's progress bar to drag. Playback runs through the
  * Book's one continuous HLS stream, so it moves from Chapter to Chapter on its own, never meets a Skipped
  * Chapter and pauses at the Book's end (PRD 4.4.1 章节衔接); while the Book generates, playback that catches up
- * with the generated audio waits and goes on by itself. The right side keeps room for 【标记 M】 (#13).
+ * with the generated audio waits and goes on by itself. On the right, 【标记 M】 marks the Sentence being heard.
  */
-export function Player({ totalSeconds = null, notice = null }: PlayerProps) {
+export function Player({ totalSeconds = null, notice = null, onMark }: PlayerProps) {
   const { playing, position, playable, error, needsTap, offline, toggle, replay, next, seek } = useListening();
   const shownNotice = offline ? OFFLINE_NOTICE : needsTap ? TAP_TO_PLAY : notice;
   const waitingNotice = !offline && !needsTap;
@@ -51,7 +54,15 @@ export function Player({ totalSeconds = null, notice = null }: PlayerProps) {
             <NextSentenceIcon />
           </button>
         </div>
-        <div className="player-side" />
+        <div className="player-side player-side-end">
+          {onMark && (
+            <button type="button" className="mark-button" aria-label="标记" aria-keyshortcuts="M" onClick={onMark}>
+              <LeafIcon />
+              标记
+              <kbd aria-hidden="true">M</kbd>
+            </button>
+          )}
+        </div>
       </div>
       <Progress position={position} length={Math.max(playable, totalSeconds ?? 0)} onSeek={seek} />
       {error && (

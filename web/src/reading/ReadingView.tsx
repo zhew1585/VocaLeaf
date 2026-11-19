@@ -28,12 +28,16 @@ const WINDOW_RADIUS = 1;
 /** Keys that scroll the reading area; pressing one is a manual scroll. */
 const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
-/** Steers the reading view from outside (the Chapter directory). */
+/** Steers the reading view from outside (the Chapter directory, 【定位原文】, the Mark Toast). */
 export interface ReadingViewHandle {
   /** Follows playback again and scrolls to the current Sentence (【回到播放处】, 点章节). */
   followPlayback(): void;
   /** Scrolls to a Chapter's start without playing it (a Skipped Chapter), leaving playback unfollowed. */
   showChapter(chapterId: string): void;
+  /** Scrolls to a Sentence of the Chapter once it is shown (【定位原文】), leaving playback unfollowed. */
+  showSentence(chapterId: string, sentenceId: string): void;
+  /** The text of a Sentence of a Chapter loaded so far (the Toast of a Mark), or undefined. */
+  sentenceText(sentenceId: string): string | undefined;
 }
 
 interface Props {
@@ -46,6 +50,8 @@ interface Props {
   onToggleDirectory(): void;
   /** The floating player and its notices, at the bottom of the reading area. */
   dock: ReactNode;
+  /** Sentences with a pending Mark, underlined in amber dashes (PRD 4.4.5, AC-READ-04). */
+  markedIds: ReadonlySet<string>;
   ref?: Ref<ReadingViewHandle>;
 }
 
@@ -98,13 +104,25 @@ function keepInView(container: HTMLElement, target: Element, isSection: boolean)
  * while it is being read. Only Chapters near the reading position (and the playing one) are rendered; the rest
  * keep their height as placeholders, and the reading position is kept when heights change above it.
  */
-export function ReadingView({ book, positionMs, playingChapterId, columnWidth, directoryOpen, onToggleDirectory, dock, ref }: Props) {
+export function ReadingView({
+  book,
+  positionMs,
+  playingChapterId,
+  columnWidth,
+  directoryOpen,
+  onToggleDirectory,
+  dock,
+  markedIds,
+  ref,
+}: Props) {
   const container = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const [readingIndex, setReadingIndex] = useState(0);
   const [intoChapter, setIntoChapter] = useState(false);
   const [following, setFollowing] = useState(true);
   const heights = useRef(new Map<string, number>());
+  // The Sentence 【定位原文】 asked for, until it is shown and scrolled to.
+  const [locating, setLocating] = useState<string | null>(null);
   const anchor = useRef<{ el: Element; top: number } | null>(null);
 
   const { chapters } = book;
@@ -171,17 +189,47 @@ export function ReadingView({ book, positionMs, playingChapterId, columnWidth, d
     else if (section) keepInView(el, section, true);
   }, [followed, current, playingChapterId, sentences]);
 
+  // Scroll to the Sentence 【定位原文】 asked for once its Chapter is rendered.
+  useEffect(() => {
+    if (locating === null) return;
+    const el = container.current!.querySelector(`[data-sentence-id="${locating}"]`);
+    if (!el) return;
+    keepInView(container.current!, el, false);
+    setLocating(null);
+  }, [locating, sentences]);
+
+  const latestSentences = useRef(sentences);
+  latestSentences.current = sentences;
+  const showChapter = (chapterId: string) => {
+    setFollowing(false);
+    const section = container.current!.querySelector<HTMLElement>(`[data-chapter-id="${chapterId}"]`);
+    if (section) container.current!.scrollTo({ top: section.offsetTop, behavior: "auto" });
+  };
+
   useImperativeHandle(
     ref,
     () => ({
-      followPlayback: () => setFollowing(true),
-      showChapter: (chapterId) => {
-        setFollowing(false);
-        const section = container.current!.querySelector<HTMLElement>(`[data-chapter-id="${chapterId}"]`);
-        if (section) container.current!.scrollTo({ top: section.offsetTop, behavior: "auto" });
+      followPlayback: () => {
+        setLocating(null);
+        setFollowing(true);
+      },
+      showChapter,
+      showSentence: (chapterId, sentenceId) => {
+        showChapter(chapterId);
+        // Render the Chapter now rather than after the scroll settles.
+        const index = chapters.findIndex((c) => c.id === chapterId);
+        if (index >= 0) setReadingIndex(index);
+        setLocating(sentenceId);
+      },
+      sentenceText: (sentenceId) => {
+        for (const list of latestSentences.current.values()) {
+          const found = list.find((s) => s.id === sentenceId);
+          if (found) return found.text;
+        }
+        return undefined;
       },
     }),
-    [],
+    [chapters],
   );
 
   const stopFollowing = () => setFollowing(false);
@@ -212,6 +260,7 @@ export function ReadingView({ book, positionMs, playingChapterId, columnWidth, d
               sentences={inWindow.has(c.id) ? sentences.get(c.id) : undefined}
               placeholderHeight={placeholderHeight(c)}
               currentSentenceId={c.id === playingChapterId ? current : null}
+              markedIds={markedIds}
               faded={i === readingIndex && intoChapter}
               directoryOpen={directoryOpen}
               onToggleDirectory={onToggleDirectory}
@@ -237,6 +286,7 @@ interface SectionProps {
   sentences: ReadingSentence[] | undefined;
   placeholderHeight: number;
   currentSentenceId: string | null;
+  markedIds: ReadonlySet<string>;
   /** The text under the sticky title fades out once the Chapter is scrolled into (not at its start). */
   faded: boolean;
   directoryOpen: boolean;
@@ -249,6 +299,7 @@ const ChapterSection = memo(function ChapterSection({
   sentences,
   placeholderHeight,
   currentSentenceId,
+  markedIds,
   faded,
   directoryOpen,
   onToggleDirectory,
@@ -284,7 +335,7 @@ const ChapterSection = memo(function ChapterSection({
                 {i > 0 && " "}
                 <span
                   data-sentence-id={s.id}
-                  className={s.id === currentSentenceId ? "sentence is-playing" : "sentence"}
+                  className={sentenceClass(s.id === currentSentenceId, markedIds.has(s.id))}
                   aria-current={s.id === currentSentenceId ? "true" : undefined}
                 >
                   {s.text}
@@ -299,3 +350,8 @@ const ChapterSection = memo(function ChapterSection({
     </section>
   );
 });
+
+/** A Sentence's styles stack (PRD 4.4.5 叠加规则): playing is a light green fill, a pending Mark an amber underline. */
+function sentenceClass(playing: boolean, marked: boolean): string {
+  return ["sentence", playing && "is-playing", marked && "is-marked"].filter(Boolean).join(" ");
+}

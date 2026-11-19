@@ -100,7 +100,7 @@ function PlayGuideDialog({ onStart }: { onStart(): void }) {
           没听懂？按一下
         </h2>
         <ul className="guide-gestures">
-          <Gesture icon={<LeafIcon />} title="标记" text="没听懂就按，句子会留到拾起" keyLabel="M" highlighted />
+          <Gesture icon={<LeafIcon size={26} />} title="标记" text="没听懂就按，句子会留到拾起" keyLabel="M" highlighted />
           <Gesture icon={<ReplayIcon size={26} />} title="重听" text="回到这句开头再听一遍" keyLabel="←" />
           <Gesture icon={<NextSentenceIcon size={26} />} title="下一句" keyLabel="→" />
           <Gesture icon={<HeadphonesIcon size={26} />} title="耳机" text="按两下 下一句 · 按三下 重听（因设备而异）" />

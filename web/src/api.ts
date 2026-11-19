@@ -4,9 +4,13 @@ import type {
   ApiError,
   Book,
   BookDetail,
+  BookMarks,
   BookTimeline,
   CodeSent,
+  Gleaning,
+  GleaningCount,
   LibraryBook,
+  MarkResult,
   Sentence,
   UploadPolicy,
   User,
@@ -20,8 +24,10 @@ export type {
   BookTimeline,
   ChapterSummary,
   Difficulty,
+  Gleaning,
   LibraryBook,
   Listening,
+  MarkResult,
   Sentence,
   UploadPolicy,
   User,
@@ -213,4 +219,34 @@ export async function removeFromShelf(id: string): Promise<void> {
 /** Records that the user saw the first-play guide, so it does not show on their next play (AC-GUIDE-02). */
 export async function markPlayGuideSeen(): Promise<void> {
   await send("/me/play-guide", { method: "PUT" });
+}
+
+/** Marks a Sentence (PRD 4.4.2); says whether that created a Mark, found one pending or put one back to pending. */
+export function putMark(sentenceId: string): Promise<MarkResult> {
+  return request<MarkResult>(`/sentences/${sentenceId}/mark`, { method: "PUT" });
+}
+
+/** Deletes the user's Mark of a Sentence (撤销, 取消标记); a missing Mark is fine. */
+export async function deleteMark(sentenceId: string): Promise<void> {
+  await send(`/sentences/${sentenceId}/mark`, { method: "DELETE" });
+}
+
+/** Dismisses a pending Mark (PRD 4.4.4): it leaves Gleanings. */
+export async function dismissMark(sentenceId: string): Promise<void> {
+  await send(`/sentences/${sentenceId}/mark/dismiss`, { method: "POST" });
+}
+
+/** The Book's Sentences with a pending Mark. */
+export function getBookMarks(bookId: string): Promise<BookMarks> {
+  return request<BookMarks>(`/books/${bookId}/marks`);
+}
+
+/** Gleanings: pending Marks across Books, most recently marked first. */
+export function getGleanings(): Promise<Gleaning[]> {
+  return request<Gleaning[]>("/gleanings");
+}
+
+/** How many Sentences wait in Gleanings. */
+export function getGleaningCount(): Promise<GleaningCount> {
+  return request<GleaningCount>("/gleanings/count");
 }
