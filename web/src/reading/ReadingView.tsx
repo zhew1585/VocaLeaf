@@ -12,6 +12,7 @@ import {
   type Ref,
 } from "react";
 import type { BookDetail, ChapterSummary } from "../api";
+import { PlaySolidIcon } from "../icons";
 import { currentSentenceId, paragraphs, type ReadingSentence } from "./timeline";
 import { useChapterSentences } from "./useChapterSentences";
 
@@ -34,10 +35,19 @@ export interface ReadingViewHandle {
   followPlayback(): void;
   /** Scrolls to a Chapter's start without playing it (a Skipped Chapter), leaving playback unfollowed. */
   showChapter(chapterId: string): void;
-  /** Scrolls to a Sentence of the Chapter once it is shown (【定位原文】), leaving playback unfollowed. */
-  showSentence(chapterId: string, sentenceId: string): void;
+  /**
+   * 【定位原文】: scrolls to a Sentence of the Chapter once it is shown, leaving playback unfollowed; with `select`
+   * also selects it for 句子精读 (onSelect), as entering from 拾起 does (F10).
+   */
+  showSentence(chapterId: string, sentenceId: string, select?: boolean): void;
   /** The text of a Sentence of a Chapter loaded so far (the Toast of a Mark), or undefined. */
   sentenceText(sentenceId: string): string | undefined;
+}
+
+/** The Sentence selected for 句子精读 and the Chapter it is in. */
+export interface SelectedSentence {
+  id: string;
+  chapterId: string;
 }
 
 interface Props {
@@ -52,6 +62,13 @@ interface Props {
   dock: ReactNode;
   /** Sentences with a pending Mark, underlined in amber dashes (PRD 4.4.5, AC-READ-04). */
   markedIds: ReadonlySet<string>;
+  selected: SelectedSentence | null;
+  /** A click on a Sentence (PRD 4.4.5 点击规则). */
+  onSelect(sentence: ReadingSentence, chapterId: string): void;
+  /** A click on the text's blank space. */
+  onDeselect(): void;
+  /** 【从这里播放】 beside the selected Sentence; null when it cannot play from here. */
+  onPlayFrom: ((sentence: ReadingSentence) => void) | null;
   ref?: Ref<ReadingViewHandle>;
 }
 
@@ -113,6 +130,10 @@ export function ReadingView({
   onToggleDirectory,
   dock,
   markedIds,
+  selected,
+  onSelect,
+  onDeselect,
+  onPlayFrom,
   ref,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
@@ -122,7 +143,9 @@ export function ReadingView({
   const [following, setFollowing] = useState(true);
   const heights = useRef(new Map<string, number>());
   // The Sentence 【定位原文】 asked for, until it is shown and scrolled to.
-  const [locating, setLocating] = useState<string | null>(null);
+  const [locating, setLocating] = useState<{ sentenceId: string; chapterId: string; select: boolean } | null>(null);
+  const latestOnSelect = useRef(onSelect);
+  latestOnSelect.current = onSelect;
   const anchor = useRef<{ el: Element; top: number } | null>(null);
 
   const { chapters } = book;
@@ -192,14 +215,19 @@ export function ReadingView({
   // Scroll to the Sentence 【定位原文】 asked for once its Chapter is rendered.
   useEffect(() => {
     if (locating === null) return;
-    const el = container.current!.querySelector(`[data-sentence-id="${locating}"]`);
+    const el = container.current!.querySelector(`[data-sentence-id="${locating.sentenceId}"]`);
     if (!el) return;
     keepInView(container.current!, el, false);
+    if (locating.select) selectLoaded(locating.chapterId, locating.sentenceId);
     setLocating(null);
   }, [locating, sentences]);
 
   const latestSentences = useRef(sentences);
   latestSentences.current = sentences;
+  const selectLoaded = (chapterId: string, sentenceId: string) => {
+    const sentence = latestSentences.current.get(chapterId)?.find((s) => s.id === sentenceId);
+    if (sentence) latestOnSelect.current(sentence, chapterId);
+  };
   const showChapter = (chapterId: string) => {
     setFollowing(false);
     const section = container.current!.querySelector<HTMLElement>(`[data-chapter-id="${chapterId}"]`);
@@ -214,12 +242,19 @@ export function ReadingView({
         setFollowing(true);
       },
       showChapter,
-      showSentence: (chapterId, sentenceId) => {
+      showSentence: (chapterId, sentenceId, select = false) => {
+        const target = container.current!.querySelector(`[data-sentence-id="${sentenceId}"]`);
+        if (target) {
+          setFollowing(false);
+          keepInView(container.current!, target, false);
+          if (select) selectLoaded(chapterId, sentenceId);
+          return;
+        }
         showChapter(chapterId);
         // Render the Chapter now rather than after the scroll settles.
         const index = chapters.findIndex((c) => c.id === chapterId);
         if (index >= 0) setReadingIndex(index);
-        setLocating(sentenceId);
+        setLocating({ sentenceId, chapterId, select });
       },
       sentenceText: (sentenceId) => {
         for (const list of latestSentences.current.values()) {
@@ -237,12 +272,24 @@ export function ReadingView({
     heights.current.get(`${columnWidth}:${c.id}`) ?? c.sentenceCount * SENTENCE_ESTIMATE_PX;
   const inWindow = new Set(wanted.map((c) => c.id));
 
+  /** A click on a Sentence selects it; one on blank text deselects. Selecting text or pressing a button is neither. */
+  const onClick = (e: React.MouseEvent) => {
+    const target = e.target as Element;
+    if (target.closest("button") || window.getSelection()?.toString()) return;
+    const span = target.closest<HTMLElement>("[data-sentence-id]");
+    if (!span) return onDeselect();
+    const chapterId = span.closest<HTMLElement>("[data-chapter-id]")!.dataset.chapterId!;
+    const sentence = sentences.get(chapterId)?.find((s) => s.id === span.dataset.sentenceId);
+    if (sentence) onSelect(sentence, chapterId);
+  };
+
   return (
     <div className="reading" style={{ "--column": `${columnWidth}px` } as React.CSSProperties}>
       <div
         ref={container}
         className="reading-scroll"
         onScroll={onScroll}
+        onClick={onClick}
         onWheel={stopFollowing}
         onTouchMove={stopFollowing}
         // A key the player shortcuts took (Space plays or pauses) does not scroll.
@@ -261,6 +308,8 @@ export function ReadingView({
               placeholderHeight={placeholderHeight(c)}
               currentSentenceId={c.id === playingChapterId ? current : null}
               markedIds={markedIds}
+              selectedSentenceId={c.id === selected?.chapterId ? selected.id : null}
+              onPlayFrom={c.id === selected?.chapterId ? onPlayFrom : null}
               faded={i === readingIndex && intoChapter}
               directoryOpen={directoryOpen}
               onToggleDirectory={onToggleDirectory}
@@ -287,6 +336,8 @@ interface SectionProps {
   placeholderHeight: number;
   currentSentenceId: string | null;
   markedIds: ReadonlySet<string>;
+  selectedSentenceId: string | null;
+  onPlayFrom: ((sentence: ReadingSentence) => void) | null;
   /** The text under the sticky title fades out once the Chapter is scrolled into (not at its start). */
   faded: boolean;
   directoryOpen: boolean;
@@ -300,6 +351,8 @@ const ChapterSection = memo(function ChapterSection({
   placeholderHeight,
   currentSentenceId,
   markedIds,
+  selectedSentenceId,
+  onPlayFrom,
   faded,
   directoryOpen,
   onToggleDirectory,
@@ -335,13 +388,23 @@ const ChapterSection = memo(function ChapterSection({
                 {i > 0 && " "}
                 <span
                   data-sentence-id={s.id}
-                  className={sentenceClass(s.id === currentSentenceId, markedIds.has(s.id))}
+                  className={sentenceClass(
+                    s.id === currentSentenceId,
+                    s.id === selectedSentenceId,
+                    markedIds.has(s.id),
+                  )}
                   aria-current={s.id === currentSentenceId ? "true" : undefined}
                 >
                   {s.text}
                 </span>
               </Fragment>
             ))}
+            {onPlayFrom &&
+              para.map(
+                (s) =>
+                  s.id === selectedSentenceId &&
+                  s.startMs !== null && <PlayFromHere key="play-from" sentenceId={s.id} onPlay={() => onPlayFrom(s)} />,
+              )}
           </p>
         ))
       ) : (
@@ -351,7 +414,41 @@ const ChapterSection = memo(function ChapterSection({
   );
 });
 
-/** A Sentence's styles stack (PRD 4.4.5 叠加规则): playing is a light green fill, a pending Mark an amber underline. */
-function sentenceClass(playing: boolean, marked: boolean): string {
-  return ["sentence", playing && "is-playing", marked && "is-marked"].filter(Boolean).join(" ");
+/**
+ * A Sentence's styles stack (PRD 4.4.5 叠加规则): playing is a light green fill, selected a green frame, a pending
+ * Mark an amber underline.
+ */
+function sentenceClass(playing: boolean, selected: boolean, marked: boolean): string {
+  return ["sentence", playing && "is-playing", selected && "is-selected", marked && "is-marked"].filter(Boolean).join(" ");
+}
+
+/**
+ * 【从这里播放】 outside the selected Sentence's frame on the right, centred on the Sentence's lines (design 01,
+ * 原文选中框). Placed by measuring the Sentence within its paragraph, again whenever the paragraph reflows.
+ */
+function PlayFromHere({ sentenceId, onPlay }: { sentenceId: string; onPlay(): void }) {
+  const button = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    const el = button.current!;
+    const paragraph = el.parentElement!;
+    const place = () => {
+      const span = paragraph.querySelector(`[data-sentence-id="${sentenceId}"]`);
+      if (!span) return;
+      const box = paragraph.getBoundingClientRect();
+      const rect = span.getBoundingClientRect();
+      el.style.top = `${(rect.top + rect.bottom) / 2 - box.top}px`;
+    };
+    place();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(place);
+    observer.observe(paragraph);
+    return () => observer.disconnect();
+  }, [sentenceId]);
+  return (
+    <button ref={button} type="button" className="play-from-here" aria-label="从这里播放" title="从这里播放" onClick={onPlay}>
+      <span className="play-from-here-dot">
+        <PlaySolidIcon size={16} />
+      </span>
+    </button>
+  );
 }

@@ -19,6 +19,7 @@ const sentence = (id: string, paragraphIndex: number, startMs: number | null): R
   paragraphIndex,
   text: id,
   startMs,
+  endMs: null,
 });
 
 describe("playingChapterId", () => {
