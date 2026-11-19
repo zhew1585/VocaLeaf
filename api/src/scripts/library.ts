@@ -2,15 +2,16 @@
 // object storage settings and can reach standardebooks.org:
 //   docker compose exec api node dist/scripts/library.js ingest [<key>...]
 //   docker compose exec api node dist/scripts/library.js list
-// ingest downloads every Book of library/catalog.ts (or only the given keys) and queues it for parsing; the worker
+// ingest downloads every Book of library/book-list.ts (or only the given keys) and queues it for parsing; the worker
 // then parses it and generates its audio with the default Voice, as for an upload. A Book already in the Library is
-// not downloaded again, only its difficulty and blurb follow the catalog. list shows each Library Book's progress.
-import { eq } from "drizzle-orm";
+// not downloaded again (unless its parse failed); its failed Chapters are queued again and its difficulty and blurb
+// follow the book list. list shows each Library Book's progress.
+import { eq, sql } from "drizzle-orm";
 import { connectDb } from "../db/client.js";
 import { books } from "../db/schema.js";
 import { loadEnv, s3Config } from "../env.js";
 import { loadProgress } from "../books/view.js";
-import { LIBRARY_CATALOG } from "../library/catalog.js";
+import { LIBRARY_BOOKS } from "../library/book-list.js";
 import { ingestLibrary } from "../library/ingest.js";
 import { ensureBucket, s3Storage } from "../storage.js";
 
@@ -25,12 +26,13 @@ const [command, ...keys] = process.argv.slice(2);
 const env = loadEnv();
 
 if (command === "ingest") {
-  const unknown = keys.filter((k) => !LIBRARY_CATALOG.some((e) => e.key === k));
-  if (unknown.length > 0) fail(`not in library/catalog.ts: ${unknown.join(", ")}`);
-  const entries = keys.length > 0 ? LIBRARY_CATALOG.filter((e) => keys.includes(e.key)) : LIBRARY_CATALOG;
-  await ensureBucket(s3Config(env));
+  const unknown = keys.filter((k) => !LIBRARY_BOOKS.some((e) => e.key === k));
+  if (unknown.length > 0) fail(`not in library/book-list.ts: ${unknown.join(", ")}`);
+  const entries = keys.length > 0 ? LIBRARY_BOOKS.filter((e) => keys.includes(e.key)) : LIBRARY_BOOKS;
+  const s3 = s3Config(env);
+  await ensureBucket(s3);
   const db = await connectDb(env.DATABASE_URL);
-  const results = await ingestLibrary({ db, storage: s3Storage(s3Config(env)) }, entries, (r) =>
+  const results = await ingestLibrary({ db, storage: s3Storage(s3) }, entries, (r) =>
     console.log(`${r.key}\t${r.outcome}\t${r.outcome === "failed" ? r.error : r.bookId}`),
   );
   if (results.some((r) => r.outcome === "failed")) process.exit(1);
@@ -40,7 +42,7 @@ if (command === "ingest") {
     .select({ id: books.id, key: books.libraryKey, title: books.title, difficulty: books.difficulty, status: books.status })
     .from(books)
     .where(eq(books.source, "library"))
-    .orderBy(books.difficulty, books.title);
+    .orderBy(books.difficulty, sql`lower(${books.title})`);
   const progress = await loadProgress(db, rows.map((r) => r.id));
   for (const r of rows) {
     const p = progress.get(r.id);

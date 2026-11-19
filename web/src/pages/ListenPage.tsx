@@ -72,13 +72,22 @@ function usePickedChapter() {
  * play, and holds playback back until 【开始听】, which starts it. `passed` is true when there is nothing to hold.
  */
 function useFirstPlayGuide(playable: boolean) {
-  const { seen, show, showing } = usePlayGuide();
+  const { seen, show, hide, showing } = usePlayGuide();
   // Whether this page holds playback for the guide; its 【开始听】 then starts playback.
   const [held] = useState(!seen);
   const [passed, setPassed] = useState(!held);
+  const waiting = useRef(false);
+  waiting.current = held && !passed;
   useEffect(() => {
     if (playable && !passed && !showing) show(() => setPassed(true));
   }, [playable, passed, showing, show]);
+  // Leaving the page before 【开始听】 takes the guide along; it shows again on the next first play.
+  useEffect(
+    () => () => {
+      if (waiting.current) hide();
+    },
+    [hide],
+  );
   return { passed, startedFromGuide: held && passed, showing };
 }
 

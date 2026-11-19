@@ -6,7 +6,7 @@ import { BookDetailSchema, ErrorSchema, SentenceSchema } from "../contract.js";
 import { books, chapters, sentences } from "../db/schema.js";
 import { retryFailedChapter } from "../jobs/lifecycle.js";
 import { validationHook } from "../validation.js";
-import { notFound, readableBook, readableBy } from "./own-book.js";
+import { notFound, readableBook, readableBy } from "./readable-book.js";
 import { loadListening } from "./shelf.js";
 import { chapterStartMs, estimateDurationMs, loadTimeline } from "./timeline.js";
 import { progressOf, toBook } from "./view.js";

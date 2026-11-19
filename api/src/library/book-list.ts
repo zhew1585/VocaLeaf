@@ -3,7 +3,7 @@
 // add Books or change a group or blurb.
 import type { Difficulty } from "../contract.js";
 
-export interface CatalogEntry {
+export interface LibraryEntry {
   /** The Book's Standard Ebooks identifier: the path after /ebooks/ in its URL, e.g. jane-austen/pride-and-prejudice. */
   key: string;
   /** Shown until the EPUB is parsed; the parse then takes the title from its metadata. */
@@ -12,7 +12,7 @@ export interface CatalogEntry {
   blurb: string;
 }
 
-export const LIBRARY_CATALOG: readonly CatalogEntry[] = [
+export const LIBRARY_BOOKS: readonly LibraryEntry[] = [
   {
     key: "lewis-carroll/alices-adventures-in-wonderland/john-tenniel",
     title: "Alice’s Adventures in Wonderland",
@@ -24,6 +24,18 @@ export const LIBRARY_CATALOG: readonly CatalogEntry[] = [
     title: "The Wonderful Wizard of Oz",
     difficulty: "beginner",
     blurb: "一场龙卷风，一条黄砖路，语言平实。",
+  },
+  {
+    key: "jack-london/the-call-of-the-wild",
+    title: "The Call of the Wild",
+    difficulty: "beginner",
+    blurb: "一条狗回到荒野，情节紧凑，篇幅短。",
+  },
+  {
+    key: "robert-louis-stevenson/treasure-island",
+    title: "Treasure Island",
+    difficulty: "beginner",
+    blurb: "少年、海盗与藏宝图，冒险故事的原型。",
   },
   {
     key: "jane-austen/pride-and-prejudice",
@@ -42,6 +54,18 @@ export const LIBRARY_CATALOG: readonly CatalogEntry[] = [
     title: "The Adventures of Sherlock Holmes",
     difficulty: "intermediate",
     blurb: "十二个短篇探案，一篇一个通勤。",
+  },
+  {
+    key: "h-g-wells/the-time-machine",
+    title: "The Time Machine",
+    difficulty: "intermediate",
+    blurb: "坐上机器去八十万年后，科幻的开山之作。",
+  },
+  {
+    key: "oscar-wilde/the-picture-of-dorian-gray",
+    title: "The Picture of Dorian Gray",
+    difficulty: "advanced",
+    blurb: "一幅替人变老的画像，警句与长对话。",
   },
   {
     key: "mary-shelley/frankenstein",

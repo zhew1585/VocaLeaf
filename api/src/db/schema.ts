@@ -102,14 +102,14 @@ export const books = pgTable(
     failureReason: text("failure_reason"),
     // Content type of the cover image at coverKey(id) (storage.ts); null when the EPUB has none.
     coverType: text("cover_type"),
-    // Library Books only (PRD 4.2.2): the Standard Ebooks identifier it was ingested from (library/catalog.ts),
+    // Library Books only (PRD 4.2.2): the Standard Ebooks identifier it was ingested from (library/book-list.ts),
     // its difficulty group and the one-line blurb the 书库 shows.
     libraryKey: text("library_key").unique(),
     difficulty: difficulty("difficulty"),
     blurb: text("blurb"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  // An uploaded Book always has its uploader; a Library Book belongs to no one and always has its catalog entry.
+  // An uploaded Book always has its uploader; a Library Book belongs to no one and always has its book list entry.
   (t) => [
     check(
       "books_owner_matches_source",

@@ -6,7 +6,7 @@ import type { UserEnv } from "../auth/session.js";
 import { ErrorSchema } from "../contract.js";
 import { audioSegments, chapters } from "../db/schema.js";
 import { validationHook } from "../validation.js";
-import { notFound, readableBook } from "./own-book.js";
+import { notFound, readableBook } from "./readable-book.js";
 import { loadTimeline, toM3u8 } from "./timeline.js";
 
 const playlistRoute = createRoute({
@@ -34,7 +34,7 @@ const segmentRoute = createRoute({
   },
 });
 
-/** Playlist and segment routes, behind the session like every user route; both check that the user may listen to the Book (own-book.ts). */
+/** Playlist and segment routes, behind the session like every user route; both check that the user may listen to the Book (readable-book.ts). */
 export function audioRoutes({ db, storage }: AppDeps) {
   const app = new OpenAPIHono<UserEnv>({ defaultHook: validationHook });
 

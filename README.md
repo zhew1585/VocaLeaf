@@ -128,22 +128,23 @@ docker compose run --rm --no-deps -v "$PWD/worker/scripts:/scripts:ro" -v "$PWD/
 ### Library
 
 The 书库 (Library) lists public-domain Books from [Standard Ebooks](https://standardebooks.org) whose audio is generated once with the default Voice and shared by every user (PRD 4.2.2).
-It groups them as 入门, 中级 and 进阶 (beginner, intermediate, advanced), each group by title, and lists a Book only once its audio is fully generated, so 加入书架并播放 (add to Shelf and play) plays at once.
+It groups them as 入门, 中级 and 进阶 (beginner, intermediate, advanced), each group by title, and lists a Book only once every narrated Chapter is generated, so 加入书架并播放 (add to Shelf and play) plays at once and to the end.
 A Library Book belongs to no user: progress and everything else a user does with it stay theirs, and 移出书架 (remove from Shelf) on its detail page drops only that user's progress (`DELETE /api/books/{id}/shelf`).
 Library Books carry `source: "library"`, so the detail page shows no retry, Voice or Skipped controls for them, and they do not count against the upload quota.
 
-The book list, with each Book's difficulty and blurb, is `api/src/library/catalog.ts`.
+The book list, with each Book's difficulty and blurb, is `api/src/library/book-list.ts`.
 Operators ingest it with a script inside the `api` container, which downloads each EPUB from Standard Ebooks into object storage and queues it for parsing; the worker then parses and narrates it like an upload:
 
 ```sh
-docker compose exec api node dist/scripts/library.js ingest                                   # every catalog Book
+docker compose exec api node dist/scripts/library.js ingest                                   # every Book of the list
 docker compose exec api node dist/scripts/library.js ingest jane-austen/pride-and-prejudice   # only these keys
 docker compose exec api node dist/scripts/library.js list                                     # status and n/N per Book
 ```
 
-Running `ingest` again is safe: a Book already in the Library is not downloaded again, only its difficulty and blurb follow the catalog.
+Running `ingest` again is safe: a Book already in the Library is not downloaded again, only its difficulty and blurb follow the book list.
+It also recovers what failed: a Book whose parse failed is dropped and ingested afresh, and Chapters whose generation failed are queued again.
 A failed download is reported and the other Books go on; the script then exits with status 1.
-Narration runs at about 3.5 times real time on a CPU-only Kokoro, so a whole novel takes hours; `list` shows how far each Book is, and it appears in the 书库 once it is 已就绪 (ready).
+Narration runs at about 3.5 times real time on a CPU-only Kokoro, so a whole novel takes hours; `list` shows how far each Book is, and it appears in the 书库 once all its narrated Chapters are generated.
 
 ### First-play guide
 

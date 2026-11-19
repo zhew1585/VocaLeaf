@@ -7,13 +7,14 @@ import { describe, expect, it } from "vitest";
 import type { Book, BookDetail, LibraryBook, ParseResult, User } from "../src/contract.js";
 import { DEFAULT_VOICE } from "../src/contract.js";
 import { allowlist, books, jobs } from "../src/db/schema.js";
-import { LIBRARY_CATALOG, standardEbooksEpubUrl, type CatalogEntry } from "../src/library/catalog.js";
+import { LIBRARY_BOOKS, standardEbooksEpubUrl, type LibraryEntry } from "../src/library/book-list.js";
 import { ingestLibrary, type Fetcher } from "../src/library/ingest.js";
 import { sourceKey } from "../src/storage.js";
 import {
   claimJob,
   logIn,
   renderAll,
+  reportFailure,
   reportParse,
   reportRenderResult,
   testApp,
@@ -32,7 +33,7 @@ const CHAPTERS: ParseResult["chapters"] = [
   { title: "II", sentences: [sentence("Night came.")] },
 ];
 
-const entry = (key: string, title: string, difficulty: CatalogEntry["difficulty"], blurb = `${title} 简介`) => ({
+const entry = (key: string, title: string, difficulty: LibraryEntry["difficulty"], blurb = `${title} 简介`) => ({
   key,
   title,
   difficulty,
@@ -92,8 +93,8 @@ async function otherUser(t: T, email = "other@example.com") {
   return withCookie(t.anon, await logIn(t, email));
 }
 
-/** Ingests `entries` and generates them all; returns the Library Book ids by catalog key. */
-async function readyLibrary(t: T, entries: CatalogEntry[]) {
+/** Ingests `entries` and generates them all; returns the Library Book ids by book list key. */
+async function readyLibrary(t: T, entries: LibraryEntry[]) {
   const results = await ingestLibrary({ db: t.db, storage: t.storage, fetcher: fakeFetcher().fetcher }, entries);
   const ids = Object.fromEntries(results.map((r) => [r.key, r.outcome === "failed" ? "" : r.bookId]));
   await runWorker(t, Object.fromEntries(entries.map((e) => [ids[e.key]!, e.title])));
@@ -142,7 +143,7 @@ describe("ingesting Library Books (PRD 4.2.2, 6.2)", () => {
     expect(await shelf(t.app)).toEqual([]);
   });
 
-  it("does not download a Book again when run twice, but follows the catalog's difficulty and blurb", async () => {
+  it("does not download a Book again when run twice, but follows the book list's difficulty and blurb", async () => {
     const t = await testApp();
     const { urls, fetcher } = fakeFetcher();
     const first = await ingestLibrary({ db: t.db, storage: t.storage, fetcher }, [entry("a/b", "B", "beginner", "旧")]);
@@ -154,6 +155,34 @@ describe("ingesting Library Books (PRD 4.2.2, 6.2)", () => {
       { difficulty: "advanced", blurb: "新" },
     ]);
     expect(await t.db.select().from(jobs)).toHaveLength(1);
+  });
+
+  it("ingests a Book again whose parse failed, and generates failed Chapters again, when run again", async () => {
+    const t = await testApp();
+    const { urls, fetcher } = fakeFetcher();
+    const list = [entry("k/drm", "Drm", "beginner"), entry("k/flaky", "Flaky", "beginner")];
+    const [drm, flaky] = (await ingestLibrary({ db: t.db, storage: t.storage, fetcher }, list)) as { bookId: string }[];
+    // The worker refuses the first file and fails every attempt at Chapter II of the second.
+    for (let job = await claimJob(t.app); job; job = await claimJob(t.app)) {
+      if (job.type === "parse" && job.bookId === drm!.bookId) await reportFailure(t.app, job, "encrypted", "drm");
+      else if (job.type === "parse") await reportParse(t.app, job, { parserVersion: "t", title: "Flaky", author: null, chapters: CHAPTERS });
+      else if (job.sentences.length === 1) await reportFailure(t.app, job, "tts down");
+      else await reportRenderResult(t.app, job, await renderAll(t.storage, job));
+    }
+    // Ready with a failed Chapter: not listed, and not to be added, since it would stop halfway.
+    expect(await library(t.app)).toEqual([]);
+    expect((await addToShelf(t.app, flaky!.bookId)).status).toBe(404);
+
+    const again = await ingestLibrary({ db: t.db, storage: t.storage, fetcher }, list);
+
+    expect(again).toEqual([
+      { key: "k/drm", outcome: "queued", bookId: expect.not.stringMatching(drm!.bookId) },
+      { key: "k/flaky", outcome: "retried", bookId: flaky!.bookId, chapters: 1 },
+    ]);
+    expect(urls).toHaveLength(3);
+    expect(t.storage.objects.has(sourceKey(drm!.bookId))).toBe(false);
+    await runWorker(t, { [(again[0] as { bookId: string }).bookId]: "Drm" });
+    expect((await library(t.app)).map((b) => b.title)).toEqual(["Drm", "Flaky"]);
   });
 
   it("reports a failed download or a file that is not an EPUB, creates nothing for it and goes on", async () => {
@@ -179,10 +208,10 @@ describe("ingesting Library Books (PRD 4.2.2, 6.2)", () => {
     expect(await t.db.select({ key: books.libraryKey }).from(books)).toEqual([{ key: "x/fine" }]);
   });
 
-  it("has a catalog of Standard Ebooks Books in every difficulty group, each with a blurb", () => {
-    expect(new Set(LIBRARY_CATALOG.map((e) => e.difficulty))).toEqual(new Set(["beginner", "intermediate", "advanced"]));
-    expect(new Set(LIBRARY_CATALOG.map((e) => e.key)).size).toBe(LIBRARY_CATALOG.length);
-    for (const e of LIBRARY_CATALOG) expect(e.blurb.length).toBeGreaterThan(0);
+  it("has a book list of Standard Ebooks Books in every difficulty group, each with a blurb", () => {
+    expect(new Set(LIBRARY_BOOKS.map((e) => e.difficulty))).toEqual(new Set(["beginner", "intermediate", "advanced"]));
+    expect(new Set(LIBRARY_BOOKS.map((e) => e.key)).size).toBe(LIBRARY_BOOKS.length);
+    for (const e of LIBRARY_BOOKS) expect(e.blurb.length).toBeGreaterThan(0);
     expect(standardEbooksEpubUrl("lewis-carroll/alices-adventures-in-wonderland/john-tenniel")).toBe(
       "https://standardebooks.org/ebooks/lewis-carroll/alices-adventures-in-wonderland/john-tenniel/downloads/lewis-carroll_alices-adventures-in-wonderland_john-tenniel.epub?source=download",
     );

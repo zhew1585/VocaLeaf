@@ -14,6 +14,8 @@ export interface PlayGuide {
   showing: boolean;
   /** Shows the guide. 【开始听】 closes it, records it seen (the first time) and calls `onStart`. */
   show(onStart?: () => void): void;
+  /** Closes the guide without recording anything (the page that showed it went away). */
+  hide(): void;
 }
 
 const PlayGuideContext = createContext<PlayGuide | null>(null);
@@ -29,6 +31,7 @@ export function PlayGuideProvider({ seen: seenAtStart, children }: { seen: boole
   const [seen, setSeen] = useState(seenAtStart);
   const [open, setOpen] = useState<{ onStart?: () => void } | null>(null);
   const show = useCallback((onStart?: () => void) => setOpen({ onStart }), []);
+  const hide = useCallback(() => setOpen(null), []);
 
   const start = () => {
     setOpen(null);
@@ -42,7 +45,7 @@ export function PlayGuideProvider({ seen: seenAtStart, children }: { seen: boole
     open?.onStart?.();
   };
 
-  const value = useMemo(() => ({ seen, showing: open !== null, show }), [seen, open, show]);
+  const value = useMemo(() => ({ seen, showing: open !== null, show, hide }), [seen, open, show, hide]);
   return (
     <PlayGuideContext.Provider value={value}>
       {children}

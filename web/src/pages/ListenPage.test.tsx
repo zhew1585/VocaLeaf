@@ -246,6 +246,22 @@ describe("ListenPage (专注页)", () => {
       expect(media.play).toHaveBeenCalledTimes(1);
     });
 
+    it("takes the guide along when the user leaves the page before 【开始听】", async () => {
+      serve([listened]);
+      const view = renderPage({ guideSeen: false });
+      await screen.findByRole("dialog", { name: "没听懂？按一下" });
+
+      view.rerender(
+        <PlayGuideProvider seen={false}>
+          <ListeningProvider>
+            <p>书架</p>
+          </ListeningProvider>
+        </PlayGuideProvider>,
+      );
+
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
     it("does not show the guide again once seen", async () => {
       window.history.pushState(null, "", "/books/b1/listen?autoplay");
       serve([listened]);

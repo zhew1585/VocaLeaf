@@ -5,7 +5,7 @@ import type { UserEnv } from "../auth/session.js";
 import { BookTimelineSchema, ErrorSchema, type AudioStatus, type BookTimeline } from "../contract.js";
 import { chapters, sentences } from "../db/schema.js";
 import { validationHook } from "../validation.js";
-import { notFound, readableBook } from "./own-book.js";
+import { notFound, readableBook } from "./readable-book.js";
 import { entryEndMs, loadTimeline, type Timeline } from "./timeline.js";
 
 const timelineRoute = createRoute({
