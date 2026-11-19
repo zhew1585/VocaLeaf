@@ -1,12 +1,32 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BOOK_DELETED_EVENT, type BookDetail } from "../api";
+import { ListeningProvider, useListening, type Listening } from "../player/session";
+import { audioWithGenerated, hlsInstances, stubMediaPlayback } from "../test-media";
 import { BookPage } from "./BookPage";
+
+vi.mock("hls.js", async () => ({ default: (await import("../test-media")).FakeHls }));
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
+
+/** The page inside the listening session, as the app has it; `session` gets the live session. */
+function renderPage(session?: { current: Listening | null }) {
+  function Probe() {
+    const listening = useListening();
+    if (session) session.current = listening;
+    return null;
+  }
+  return render(
+    <ListeningProvider>
+      <Probe />
+      <BookPage id="b1" />
+    </ListeningProvider>,
+  );
+}
 
 type Chapter = BookDetail["chapters"][number];
 const chapter = (id: string, index: number, title: string, rest: Partial<Chapter> = {}): Chapter => ({
@@ -24,6 +44,7 @@ const chapter = (id: string, index: number, title: string, rest: Partial<Chapter
 
 const book: BookDetail = {
   id: "b1",
+  source: "upload",
   title: "Pride and Prejudice",
   author: "Jane Austen",
   status: "generating",
@@ -62,10 +83,11 @@ function rows() {
  */
 function stubApi(books: BookDetail[], onPost: (url: string) => Response = () => new Response(null, { status: 204 })) {
   const queue = [...books];
-  const calls: { url: string; method: string }[] = [];
+  const calls: { url: string; method: string; body?: unknown }[] = [];
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
-    calls.push({ url, method });
+    calls.push({ url, method, body: init?.body });
+    if (url.endsWith("/timeline")) return Response.json({ sentenceStartsMs: [], chapters: [], complete: true });
     if (method !== "GET") return onPost(url);
     return Response.json(queue.length > 1 ? queue.shift() : queue[0]);
   });
@@ -76,7 +98,7 @@ function stubApi(books: BookDetail[], onPost: (url: string) => Response = () => 
 describe("BookPage", () => {
   it("shows the Book and every Chapter with its state (design 04-2)", async () => {
     stubApi([generating]);
-    render(<BookPage id="b1" />);
+    renderPage();
 
     expect(await screen.findByRole("heading", { name: "Pride and Prejudice" })).toBeTruthy();
     expect(screen.getByText("Jane Austen")).toBeTruthy();
@@ -93,7 +115,7 @@ describe("BookPage", () => {
     // Not playable yet, so the page checks every 1.5 seconds.
     const waiting = { ...generating, playable: false };
     stubApi([waiting, { ...waiting, progress: { generated: 4, narrated: 6 } }]);
-    render(<BookPage id="b1" />);
+    renderPage();
 
     expect((await screen.findByLabelText("生成进度")).textContent).toBe("3 / 6");
     expect(screen.getByText("生成中", { selector: ".status" })).toBeTruthy();
@@ -106,7 +128,7 @@ describe("BookPage", () => {
       chapters: generating.chapters.map((c) => (c.id === "c5" ? { ...c, audioStatus: "pending" as const } : c)),
     };
     const calls = stubApi([generating, retried]);
-    render(<BookPage id="b1" />);
+    renderPage();
 
     fireEvent.click(await screen.findByRole("button", { name: "重试 Chapter Five" }));
 
@@ -117,7 +139,7 @@ describe("BookPage", () => {
 
   it("says so when a retry is refused, and keeps the button", async () => {
     stubApi([generating], () => Response.json({ error: { code: "internal", message: "服务器出错了，请稍后再试" } }, { status: 500 }));
-    render(<BookPage id="b1" />);
+    renderPage();
 
     fireEvent.click(await screen.findByRole("button", { name: "重试 Chapter Five" }));
 
@@ -125,9 +147,105 @@ describe("BookPage", () => {
     expect(screen.getByRole("button", { name: "重试 Chapter Five" })).toBeEnabled();
   });
 
+  describe("turning a Chapter's narration on and off (PRD 4.2.5, design 04-2)", () => {
+    const switchOf = (title: string) => screen.getByRole("switch", { name: `朗读 ${title}` });
+
+    it("shows a switch on every Chapter, on for narrated ones and off for Skipped ones", async () => {
+      stubApi([generating]);
+      renderPage();
+      await screen.findByRole("heading", { name: "Pride and Prejudice" });
+
+      expect(screen.getAllByRole("switch").map((s) => [s.getAttribute("aria-label"), s.getAttribute("aria-checked")])).toEqual([
+        ["朗读 Titlepage", "false"],
+        ["朗读 Chapter One", "true"],
+        ["朗读 Chapter Four", "true"],
+        ["朗读 Chapter Five", "true"],
+        ["朗读 Chapter Six", "true"],
+      ]);
+    });
+
+    it("hides the switches for a Library Book (AC-LIB-03)", async () => {
+      stubApi([{ ...generating, source: "library" as never }]);
+      renderPage();
+      await screen.findByRole("heading", { name: "Pride and Prejudice" });
+      expect(screen.queryByRole("switch")).toBeNull();
+    });
+
+    it("narrates a Skipped Chapter: it waits to be generated (AC-BOOK-01)", async () => {
+      const narrated = {
+        ...generating,
+        chapters: generating.chapters.map((c) => (c.id === "t" ? { ...c, skipped: false } : c)),
+      };
+      const calls = stubApi([generating, narrated]);
+      renderPage();
+      await screen.findByRole("heading", { name: "Pride and Prejudice" });
+
+      fireEvent.click(switchOf("Titlepage"));
+
+      await vi.waitFor(() => expect(rows()[0]).toBe("Titlepage等待生成"));
+      expect(switchOf("Titlepage").getAttribute("aria-checked")).toBe("true");
+      expect(calls.filter((c) => c.method === "PUT").map((c) => [c.url, c.body])).toEqual([
+        ["/api/chapters/t/skipped", JSON.stringify({ skipped: false })],
+      ]);
+    });
+
+    it("says so when the change is refused, and leaves the switch as it was", async () => {
+      stubApi([generating], () => Response.json({ error: { code: "internal", message: "服务器出错了，请稍后再试" } }, { status: 500 }));
+      renderPage();
+      await screen.findByRole("heading", { name: "Pride and Prejudice" });
+
+      fireEvent.click(switchOf("Chapter One"));
+
+      expect((await screen.findByRole("alert")).textContent).toBe("服务器出错了，请稍后再试");
+      expect(switchOf("Chapter One").getAttribute("aria-checked")).toBe("true");
+      expect(switchOf("Chapter One")).toBeEnabled();
+    });
+
+    it("moves playback to the start of the next narrated Chapter when the playing one is set Skipped (AC-BOOK-02)", async () => {
+      const media = stubMediaPlayback();
+      hlsInstances.length = 0;
+      // Chapter One (58 minutes) and Chapter Four play; Chapter Four is set Skipped while it plays.
+      const ready: BookDetail = {
+        ...generating,
+        status: "ready",
+        chapters: [
+          generating.chapters[0]!,
+          generating.chapters[1]!,
+          { ...generating.chapters[2]!, audioStatus: "generated", durationMs: 600_000 },
+          { ...generating.chapters[4]!, audioStatus: "generated", durationMs: 600_000, startMs: 4_080_000, waitSeconds: null },
+        ],
+      };
+      const fourSkipped: BookDetail = {
+        ...ready,
+        chapters: [
+          ready.chapters[0]!,
+          ready.chapters[1]!,
+          { ...ready.chapters[2]!, skipped: true, startMs: null },
+          { ...ready.chapters[3]!, startMs: 3_480_000 },
+        ],
+      };
+      stubApi([ready, fourSkipped]);
+      const session: { current: Listening | null } = { current: null };
+      renderPage(session);
+      await screen.findByRole("heading", { name: "Pride and Prejudice" });
+      // The session holds the Book, playing 2 minutes into Chapter Four.
+      act(() => session.current!.open("b1"));
+      act(() => session.current!.follow(ready));
+      audioWithGenerated(4_680).seeks.push(3_600);
+      act(() => session.current!.toggle());
+
+      fireEvent.click(switchOf("Chapter Four"));
+
+      await vi.waitFor(() => expect(hlsInstances).toHaveLength(2));
+      expect(audioWithGenerated(4_080).seeks).toEqual([3_480]);
+      expect(media.play).toHaveBeenCalledTimes(2);
+      expect(rows()[2]).toBe("Chapter Four未朗读");
+    });
+  });
+
   it("opens the 专注页 at a Chapter when its title is clicked, generated or not; Skipped and failed ones are not links", async () => {
     stubApi([generating]);
-    render(<BookPage id="b1" />);
+    renderPage();
 
     fireEvent.click(await screen.findByRole("button", { name: "Chapter Six" }));
     expect(window.location.pathname + window.location.search).toBe("/books/b1/listen?chapter=c6");
@@ -140,7 +258,7 @@ describe("BookPage", () => {
 
   it("shows 解析中 while the worker is still parsing", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({ ...book, status: "parsing", chapters: [] })));
-    render(<BookPage id="b1" />);
+    renderPage();
     expect(await screen.findByText("解析中")).toBeTruthy();
   });
 
@@ -151,7 +269,7 @@ describe("BookPage", () => {
         Response.json({ ...book, status: "parse_failed", failureReason: "解析超时，请删除后重新上传", chapters: [] }),
       ),
     );
-    render(<BookPage id="b1" />);
+    renderPage();
     expect(await screen.findByText("解析失败")).toBeTruthy();
     expect(screen.getByText("解析超时，请删除后重新上传")).toBeTruthy();
   });
@@ -159,7 +277,7 @@ describe("BookPage", () => {
   it("offers 开始收听 only once the Book is playable, and it opens the 专注页", async () => {
     const responses = [book, { ...book, playable: true }];
     vi.stubGlobal("fetch", vi.fn(async () => Response.json(responses.shift() ?? { ...book, playable: true })));
-    render(<BookPage id="b1" />);
+    renderPage();
 
     expect(await screen.findByRole("button", { name: "开始收听" })).toBeDisabled();
     await vi.waitFor(() => expect(screen.getByRole("button", { name: "开始收听" })).toBeEnabled(), { timeout: 5000 });
@@ -171,7 +289,7 @@ describe("BookPage", () => {
 
   it("shows 已就绪 once every narrated Chapter is generated", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({ ...book, status: "ready", playable: true })));
-    render(<BookPage id="b1" />);
+    renderPage();
     expect(await screen.findByText("已就绪")).toBeTruthy();
     expect(screen.getByRole("button", { name: "开始收听" })).toBeEnabled();
   });
@@ -186,13 +304,13 @@ describe("BookPage", () => {
       ["已就绪", { ...book, status: "ready" as const, playable: true }],
     ])("is offered for a %s Book", async (_, detail) => {
       stubApi([detail]);
-      render(<BookPage id="b1" />);
+      renderPage();
       expect(await screen.findByRole("button", { name: "删除这本书" })).toBeEnabled();
     });
 
     it("asks first, and 取消 keeps the Book", async () => {
       const calls = stubApi([generating]);
-      render(<BookPage id="b1" />);
+      renderPage();
 
       fireEvent.click(await screen.findByRole("button", { name: "删除这本书" }));
       const dialog = screen.getByRole("alertdialog", { name: "删除这本书？" });
@@ -205,7 +323,7 @@ describe("BookPage", () => {
 
     it("closes the question with Escape", async () => {
       stubApi([generating]);
-      render(<BookPage id="b1" />);
+      renderPage();
       fireEvent.click(await screen.findByRole("button", { name: "删除这本书" }));
 
       fireEvent.keyDown(screen.getByRole("alertdialog"), { key: "Escape" });
@@ -218,7 +336,7 @@ describe("BookPage", () => {
       const deleted: unknown[] = [];
       const onDeleted = (e: Event) => deleted.push((e as CustomEvent).detail);
       window.addEventListener(BOOK_DELETED_EVENT, onDeleted);
-      render(<BookPage id="b1" />);
+      renderPage();
 
       fireEvent.click(await screen.findByRole("button", { name: "删除这本书" }));
       fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "删除" }));
@@ -235,7 +353,7 @@ describe("BookPage", () => {
       const deleted: unknown[] = [];
       const onDeleted = (e: Event) => deleted.push((e as CustomEvent).detail);
       window.addEventListener(BOOK_DELETED_EVENT, onDeleted);
-      render(<BookPage id="b1" />);
+      renderPage();
 
       fireEvent.click(await screen.findByRole("button", { name: "删除这本书" }));
       fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "删除" }));
@@ -248,7 +366,7 @@ describe("BookPage", () => {
     it("says so when the deletion fails, and keeps the question open to try again", async () => {
       window.history.pushState(null, "", "/books/b1");
       stubApi([generating], () => Response.json({ error: { code: "internal", message: "服务器出错了，请稍后再试" } }, { status: 500 }));
-      render(<BookPage id="b1" />);
+      renderPage();
 
       fireEvent.click(await screen.findByRole("button", { name: "删除这本书" }));
       const dialog = screen.getByRole("alertdialog");

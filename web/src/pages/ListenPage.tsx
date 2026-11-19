@@ -11,7 +11,6 @@ import { SentencePanel, SentencePanelToggle } from "../reading/SentencePanel";
 import { columnWidth, playingChapterId } from "../reading/timeline";
 import "../reading/focus.css";
 import { useBook } from "../useBook";
-import { usePlaylist } from "./usePlaylist";
 
 /** Drops the 专注页's one-off URL parameters (?chapter, ?autoplay) once they did their job, so a reload does not redo it. */
 function dropEntryParams() {
@@ -97,7 +96,6 @@ export function ListenPage({ id }: { id: string }) {
   // Playback waits for audio still to generate: it caught up with it, or the bar was dragged past it.
   const waitingForAudio = here && (listening.waitingForAudio || listening.seekPending);
   const { book, error } = useBook(id, { eager: chapterPick.picked !== null || waitingForAudio });
-  const playlist = usePlaylist(book, here ? { seconds: listening.position, playing: listening.playing } : { seconds: 0, playing: false });
   const [directoryOpen, setDirectoryOpen] = useState(wideWindow);
   const [panelOpen, setPanelOpen] = useState(false);
   const reading = useRef<ReadingViewHandle>(null);
@@ -106,14 +104,15 @@ export function ListenPage({ id }: { id: string }) {
   const toggleDirectory = useCallback(() => setDirectoryOpen((o) => !o), []);
 
   const playable = book?.playable ?? false;
-  const { open, reload, requestStart } = listening;
+  const { open, follow, requestStart } = listening;
   useEffect(() => {
     if (playable) open(id);
   }, [playable, id, open]);
-  // A retried Chapter came in before the playlist's end: load it again (it resumes at playlist.resume).
+  // A retried Chapter came into the playlist before its end: the session loads it again and resumes. Before the
+  // request below, so a Chapter picked meanwhile wins over that resume.
   useEffect(() => {
-    if (playlist.revision > 0) reload();
-  }, [playlist.revision, reload]);
+    if (book) follow(book);
+  }, [book, follow]);
 
   const found = chapterPick.find(book);
   const target = found?.chapter;
@@ -124,7 +123,7 @@ export function ListenPage({ id }: { id: string }) {
         seconds: found.chapter.startMs === null ? null : found.chapter.startMs / 1000,
         autoplay: true,
       }
-    : (resume.request(book) ?? playlist.resume);
+    : resume.request(book);
   // Asked in the same commit as open (above), which drops any request of the Book opened before.
   useEffect(() => {
     if (!playable) return;
@@ -132,7 +131,6 @@ export function ListenPage({ id }: { id: string }) {
       // A Chapter picked to listen to replaces any resume still waiting.
       chapterPick.settle();
       resume.settle();
-      playlist.clearResume();
       reading.current?.followPlayback();
     });
     // The request's id and position say when it changed; the callbacks only set state.

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { retryChapter, type ChapterSummary } from "../api";
+import { retryChapter, setChapterSkipped, type ChapterSummary } from "../api";
 import { chapterListenPath, formatChapterLength, isPlayableChapter } from "../chapters";
 import { CircleAlertIcon, LoaderIcon, RotateCwIcon } from "../icons";
 import { navigate } from "../router";
@@ -29,51 +29,96 @@ function ChapterState({ chapter }: { chapter: ChapterSummary }) {
   }
 }
 
-/** The 重试 of a 生成失败 Chapter (PRD 4.3.5 #9); `onRetried` reloads the Book to show it 待生成. */
-function RetryButton({ chapter, onRetried }: { chapter: ChapterSummary; onRetried: () => void }) {
+/**
+ * Runs a change to a Chapter, then `onChanged` (which reloads the Book). `busy` while it runs; `error` holds why
+ * the last one failed, or `fallback`.
+ */
+function useChapterAction(onChanged: () => void, fallback: string) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function retry() {
+  async function run(action: () => Promise<void>) {
     setBusy(true);
     setError(null);
     try {
-      await retryChapter(chapter.id);
-      onRetried();
+      await action();
+      onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "重试失败，请稍后再试");
+      setError(err instanceof Error ? err.message : fallback);
     } finally {
       setBusy(false);
     }
   }
+  return { busy, error, run };
+}
 
+function ChapterError({ error }: { error: string | null }) {
+  return error ? (
+    <p className="form-error chapter-error" role="alert">
+      {error}
+    </p>
+  ) : null;
+}
+
+/** The 重试 of a 生成失败 Chapter (PRD 4.3.5 #9); `onChanged` reloads the Book to show it 待生成. */
+function RetryButton({ chapter, onChanged }: { chapter: ChapterSummary; onChanged: () => void }) {
+  const { busy, error, run } = useChapterAction(onChanged, "重试失败，请稍后再试");
   return (
     <>
-      <button type="button" className="retry-button" disabled={busy} onClick={retry} aria-label={`重试 ${chapter.title}`}>
+      <button
+        type="button"
+        className="retry-button"
+        disabled={busy}
+        onClick={() => run(() => retryChapter(chapter.id))}
+        aria-label={`重试 ${chapter.title}`}
+      >
         <RotateCwIcon />
         重试
       </button>
-      {error && (
-        <p className="form-error chapter-error" role="alert">
-          {error}
-        </p>
-      )}
+      <ChapterError error={error} />
+    </>
+  );
+}
+
+/**
+ * Whether the Chapter is narrated (on) or Skipped (off), design 04-2 and PRD 4.2.5. `onChanged` reloads the Book,
+ * which shows the Chapter's new state and lets the listening session follow its playlist.
+ */
+function NarrationSwitch({ chapter, onChanged }: { chapter: ChapterSummary; onChanged: () => void }) {
+  const { busy, error, run } = useChapterAction(onChanged, "修改失败，请稍后再试");
+  return (
+    <>
+      <button
+        type="button"
+        role="switch"
+        className="narration-switch"
+        aria-checked={!chapter.skipped}
+        aria-label={`朗读 ${chapter.title}`}
+        disabled={busy}
+        onClick={() => run(() => setChapterSkipped(chapter.id, !chapter.skipped))}
+      >
+        <span className="narration-knob" />
+      </button>
+      <ChapterError error={error} />
     </>
   );
 }
 
 /**
  * The Book's Chapters with their state (design 04-2). A narrated Chapter's title plays the Book from its start
- * on the 专注页, which waits for it if it is not generated yet (PRD 4.3.4).
+ * on the 专注页, which waits for it if it is not generated yet (PRD 4.3.4). With `narrationSwitches` (an uploaded
+ * Book, not a Library one) each Chapter can be set Skipped or narrated. `onChanged` reloads the Book after a change.
  */
 export function ChapterList({
   bookId,
   chapters,
-  onRetried,
+  narrationSwitches,
+  onChanged,
 }: {
   bookId: string;
   chapters: ChapterSummary[];
-  onRetried: () => void;
+  narrationSwitches: boolean;
+  onChanged: () => void;
 }) {
   return (
     <ol className="chapters" aria-label="章节">
@@ -87,7 +132,8 @@ export function ChapterList({
             <span className="chapter-title">{c.title}</span>
           )}
           <ChapterState chapter={c} />
-          {c.audioStatus === "failed" && !c.skipped && <RetryButton chapter={c} onRetried={onRetried} />}
+          {c.audioStatus === "failed" && !c.skipped && <RetryButton chapter={c} onChanged={onChanged} />}
+          {narrationSwitches && <NarrationSwitch chapter={c} onChanged={onChanged} />}
         </li>
       ))}
     </ol>

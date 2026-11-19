@@ -50,6 +50,13 @@
       "when": 1795060837937,
       "tag": "0006_shelf",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795074360556,
+      "tag": "0007_chapter_narrated_by_user",
+      "breakpoints": true
     }
   ]
 }

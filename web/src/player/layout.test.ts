@@ -1,22 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { mapPosition, onlyAppends, type Layout } from "./usePlaylist";
+import { mapPosition, onlyAppends, type Layout } from "./layout";
 
 // Chapters I and III are in the playlist; II failed and is out of it.
 const before: Layout = [
-  { id: "I", startMs: 0 },
-  { id: "III", startMs: 600_000 },
+  { id: "I", startMs: 0, endMs: 600_000 },
+  { id: "III", startMs: 600_000, endMs: 700_000 },
 ];
 // II was retried and is now generated: 5 minutes inserted before III.
 const after: Layout = [
-  { id: "I", startMs: 0 },
-  { id: "II", startMs: 600_000 },
-  { id: "III", startMs: 900_000 },
+  { id: "I", startMs: 0, endMs: 600_000 },
+  { id: "II", startMs: 600_000, endMs: 900_000 },
+  { id: "III", startMs: 900_000, endMs: 1_000_000 },
 ];
 
 describe("onlyAppends", () => {
   it("accepts the same layout and Chapters added at the end", () => {
     expect(onlyAppends(before, before)).toBe(true);
-    expect(onlyAppends(before, [...before, { id: "IV", startMs: 700_000 }])).toBe(true);
+    expect(onlyAppends(before, [...before, { id: "IV", startMs: 700_000, endMs: null }])).toBe(true);
     expect(onlyAppends([], before)).toBe(true);
   });
 
@@ -32,7 +32,12 @@ describe("mapPosition", () => {
     expect(mapPosition(30, before, after)).toBe(30);
   });
 
-  it("resumes at the next Chapter still in the playlist when the Chapter left it", () => {
+  it("resumes at the next Chapter still in the playlist when the Chapter left it (AC-BOOK-02)", () => {
     expect(mapPosition(700, after, before)).toBe(600);
+  });
+
+  it("waits at the end of the playlist when no Chapter after the one that left is in it yet", () => {
+    expect(mapPosition(950, after, after.slice(0, 2))).toBe(900);
+    expect(mapPosition(5, before, [])).toBe(0);
   });
 });

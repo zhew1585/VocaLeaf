@@ -10,10 +10,11 @@ export interface TimelineChapterInput {
   skipped: boolean;
   audioStatus: AudioStatus;
   /**
-   * The Chapter failed for good once (its job used up every attempt) and the user asked to generate it again.
-   * It is then generated out of Chapter order, after the Chapters behind it already played on.
+   * The Chapter is generated out of Chapter order, after the Chapters behind it may already have played on: it
+   * failed for good once (its job used up every attempt) and the user retried it, or the user turned its
+   * narration on after parsing (PRD 4.2.5).
    */
-  retried: boolean;
+  outOfOrder: boolean;
   /** The Chapter's segments in order. */
   segments: { id: string; durationMs: number }[];
 }
@@ -29,22 +30,23 @@ export interface Timeline {
   entries: TimelineEntry[];
   /**
    * True once no more audio will be appended at the end: every narrated Chapter is generated, failed, or
-   * retried (whose audio goes in its own place, not at the end).
+   * out of order (whose audio goes in its own place, not at the end).
    */
   complete: boolean;
 }
 
 /**
- * Lays the narrated Chapters (given in Chapter order) end to end. Skipped Chapters are left out.
+ * Lays the narrated Chapters (given in Chapter order) end to end. Skipped Chapters are left out, whatever audio
+ * they have, so setting a Chapter Skipped takes it out at once and turning it back on puts its audio back.
  * The timeline stops at the first narrated Chapter still to generate, after the segments it has so far (a
  * Chapter waiting for another attempt may have some): later Chapters cannot be placed before it. Since
  * published segments are never taken back, a player only ever sees segments appended at the end, as an HLS
  * EVENT playlist requires.
  * A failed Chapter keeps only what it published before failing (usually nothing) and holds nothing back.
- * Neither does one the user retried: it is generated out of order, so it is left out until it is generated
- * and then inserted in its place whole. That is the one case where the playlist changes before its end, at
- * most twice per retry (a failed Chapter's earlier audio drops out, then all of it comes in); the 专注页
- * notices and reloads the playlist (web/src/pages/usePlaylist.ts).
+ * Neither does one generated out of order (retried, or narrated by the user): it is left out until it is
+ * generated and then inserted in its place whole. The playlist changes before its end only then, and when the
+ * user sets a Chapter Skipped or narrated again (its audio leaves or comes back); the player notices and loads
+ * the playlist again (web/src/player/session.tsx).
  */
 export function buildTimeline(chaptersInOrder: TimelineChapterInput[]): Timeline {
   const entries: TimelineEntry[] = [];
@@ -57,7 +59,7 @@ export function buildTimeline(chaptersInOrder: TimelineChapterInput[]): Timeline
   for (const ch of chaptersInOrder) {
     if (ch.skipped) continue;
     const hasAudio = ch.segments.length > 0;
-    if (ch.retried && ch.audioStatus !== "generated") continue;
+    if (ch.outOfOrder && ch.audioStatus !== "generated") continue;
     if (ch.audioStatus === "failed") {
       if (hasAudio) place(ch);
       continue;
@@ -113,7 +115,13 @@ export function hasAudio(timeline: Timeline): boolean {
 export async function loadTimelines(db: Db, bookIds: string[]): Promise<Map<string, Timeline>> {
   if (bookIds.length === 0) return new Map();
   const chapterRows = await db
-    .select({ id: chapters.id, bookId: chapters.bookId, skipped: chapters.skipped, audioStatus: chapters.audioStatus })
+    .select({
+      id: chapters.id,
+      bookId: chapters.bookId,
+      skipped: chapters.skipped,
+      narratedByUser: chapters.narratedByUser,
+      audioStatus: chapters.audioStatus,
+    })
     .from(chapters)
     .where(inArray(chapters.bookId, bookIds))
     .orderBy(asc(chapters.bookId), asc(chapters.index));
@@ -137,9 +145,9 @@ export async function loadTimelines(db: Db, bookIds: string[]): Promise<Map<stri
     bookIds.map((id) => [
       id,
       buildTimeline(
-        (chaptersByBook.get(id) ?? []).map((c) => ({
+        (chaptersByBook.get(id) ?? []).map(({ narratedByUser, ...c }) => ({
           ...c,
-          retried: failedOnce.has(c.id) && c.audioStatus !== "failed",
+          outOfOrder: narratedByUser || (failedOnce.has(c.id) && c.audioStatus !== "failed"),
           segments: segmentsByChapter.get(c.id) ?? [],
         })),
       ),

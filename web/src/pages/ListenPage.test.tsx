@@ -28,6 +28,7 @@ afterEach(() => {
 
 const book: BookDetail = {
   id: "b1",
+  source: "upload",
   title: "Pride and Prejudice",
   author: "Jane Austen",
   status: "generating",

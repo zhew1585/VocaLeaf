@@ -7,8 +7,8 @@ const ch = (
   audioStatus: TimelineChapterInput["audioStatus"],
   segments = [seg(`${id}-0`)],
   skipped = false,
-  retried = false,
-): TimelineChapterInput => ({ id, audioStatus, segments, skipped, retried });
+  outOfOrder = false,
+): TimelineChapterInput => ({ id, audioStatus, segments, skipped, outOfOrder });
 
 describe("buildTimeline", () => {
   it("lays generated Chapters end to end, leaving out Skipped ones and failed ones that published nothing", () => {
@@ -23,6 +23,15 @@ describe("buildTimeline", () => {
       ["a", 0],
       ["partly", 14_000],
       ["b", 19_000],
+    ]);
+    expect(t.complete).toBe(true);
+  });
+
+  it("leaves out a Skipped Chapter's audio and moves the Chapters after it up", () => {
+    const t = buildTimeline([ch("a", "generated"), ch("b", "generated", [seg("b0", 4_000)], true), ch("c", "generated")]);
+    expect(t.entries.map((e) => [e.chapterId, e.offsetMs])).toEqual([
+      ["a", 0],
+      ["c", 10_000],
     ]);
     expect(t.complete).toBe(true);
   });

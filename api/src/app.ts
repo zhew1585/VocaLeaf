@@ -8,6 +8,7 @@ import { deleteBookRoutes } from "./books/delete.js";
 import { bookRoutes } from "./books/routes.js";
 import { bookTimelineRoutes } from "./books/timeline-routes.js";
 import { shelfRoutes } from "./books/shelf-routes.js";
+import { skipRoutes } from "./books/skip.js";
 import { uploadRoutes } from "./books/upload-routes.js";
 import type { Db } from "./db/client.js";
 import { jobRoutes } from "./jobs/routes.js";
@@ -41,6 +42,7 @@ export function createApp(deps: AppDeps) {
   app.route("/", uploadRoutes(deps));
   app.route("/", shelfRoutes(deps));
   app.route("/", bookRoutes(deps));
+  app.route("/", skipRoutes(deps));
   app.route("/", bookTimelineRoutes(deps));
   app.route("/", deleteBookRoutes(deps));
   app.route("/", audioRoutes(deps));

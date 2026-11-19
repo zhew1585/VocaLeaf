@@ -133,6 +133,13 @@ export const BookSchema = z
   })
   .openapi("Book");
 
+/**
+ * Where a Book comes from (CONTEXT.md): uploaded by its user, or (with #12) the Library. Also the database column.
+ * Only an uploaded Book's Chapters can be set Skipped or narrated (PRD 4.2.5, F5).
+ */
+export const BOOK_SOURCES = ["upload"] as const;
+export const BookSourceSchema = z.enum(BOOK_SOURCES);
+
 export const ChapterSummarySchema = z
   .object({
     id: z.uuid(),
@@ -157,6 +164,7 @@ export const ChapterSummarySchema = z
   .openapi("ChapterSummary");
 
 export const BookDetailSchema = BookSchema.extend({
+  source: BookSourceSchema,
   chapters: z.array(ChapterSummarySchema),
   /**
    * Length of the Book's whole audio. Exact once ready; while generating, the Chapters not generated yet are
@@ -164,6 +172,9 @@ export const BookDetailSchema = BookSchema.extend({
    */
   durationMs: z.int().nullable(),
 }).openapi("BookDetail");
+
+/** Sets a Chapter Skipped (true) or narrated (false), PRD 4.2.5 用户调整. */
+export const ChapterSkippedUpdateSchema = z.object({ skipped: z.boolean() }).openapi("ChapterSkippedUpdate");
 
 /**
  * Where a Book's Sentences and narrated Chapters sit in its continuous audio, in milliseconds from the playlist's

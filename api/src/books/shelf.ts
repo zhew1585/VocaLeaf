@@ -38,9 +38,35 @@ export async function onShelf(db: Db, userId: string, bookId: string): Promise<b
 }
 
 /**
+ * Where a Chapter set Skipped resumes (PRD 4.2.5): the start of the next narrated Chapter in the playlist, or null
+ * while there is none yet.
+ */
+async function nextChapterStarts(
+  db: Db,
+  skippedAt: { bookId: string; chapterIndex: number }[],
+  timelines: Map<string, Timeline>,
+): Promise<Map<string, number | null>> {
+  if (skippedAt.length === 0) return new Map();
+  const rows = await db
+    .select({ id: chapters.id, index: chapters.index })
+    .from(chapters)
+    .where(inArray(chapters.bookId, skippedAt.map((s) => s.bookId)));
+  const indexOf = new Map(rows.map((r) => [r.id, r.index]));
+  return new Map(
+    skippedAt.map(({ bookId, chapterIndex }) => {
+      const next = timelines
+        .get(bookId)
+        ?.entries.find((e) => e.segments.length > 0 && indexOf.get(e.chapterId)! > chapterIndex);
+      return [bookId, next?.offsetMs ?? null];
+    }),
+  );
+}
+
+/**
  * Where the user is in each of the Books they listened to. `timelines` (of the same Books) place the Sentence in
- * the Book's audio. The share is of the Book's audio up to that Sentence, as the 专注页 shows how much was listened
- * to; while the Sentence has no audio in the playlist, it is the share of the narrated text before it.
+ * the Book's audio; a Sentence of a Chapter set Skipped since resumes at the next narrated Chapter's start. The
+ * share is of the Book's audio up to there, as the 专注页 shows how much was listened to; while that has no audio
+ * in the playlist, it is the share of the narrated text before the Sentence.
  */
 export async function loadListening(
   db: Db,
@@ -60,6 +86,8 @@ export async function loadListening(
       sentenceId: at.id,
       sentenceStartMs: at.startMs,
       chapterId: atChapter.id,
+      chapterIndex: atChapter.index,
+      chapterSkipped: atChapter.skipped,
       chapterTitle: atChapter.title,
       totalChars: sql<number>`coalesce(sum(${chars}), 0)`.mapWith(Number),
       charsBefore: sql<number>`coalesce(sum(${chars}) filter (where ${before}), 0)`.mapWith(Number),
@@ -75,10 +103,15 @@ export async function loadListening(
     .groupBy(shelfEntries.bookId, shelfEntries.lastListenedAt, at.id, atChapter.id);
 
   const durations = await loadDurations(db, rows.map((r) => r.bookId));
+  const skippedStarts = await nextChapterStarts(db, rows.filter((r) => r.chapterSkipped), timelines);
   return new Map(
     rows.map((r) => {
       const entry = timelines.get(r.bookId)?.entries.find((e) => e.chapterId === r.chapterId && e.segments.length > 0);
-      const startMs = entry && r.sentenceStartMs !== null ? entry.offsetMs + r.sentenceStartMs : null;
+      const startMs = r.chapterSkipped
+        ? (skippedStarts.get(r.bookId) ?? null)
+        : entry && r.sentenceStartMs !== null
+          ? entry.offsetMs + r.sentenceStartMs
+          : null;
       const durationMs = durations.get(r.bookId) ?? null;
       const share =
         startMs !== null && durationMs ? startMs / durationMs : r.totalChars > 0 ? r.charsBefore / r.totalChars : 0;

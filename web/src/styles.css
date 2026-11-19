@@ -423,6 +423,42 @@ button.chapter-title:hover {
   cursor: default;
 }
 
+/* Narrated (on) or Skipped (off), design 04-2: 40x24, knob 20. */
+.narration-switch {
+  flex: none;
+  width: 40px;
+  height: 24px;
+  padding: 2px;
+  display: inline-flex;
+  border: 0;
+  border-radius: 12px;
+  background: var(--line);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.narration-switch[aria-checked="true"] {
+  justify-content: flex-end;
+  background: var(--leaf);
+}
+
+.narration-switch:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.narration-switch:focus-visible {
+  outline: 2px solid var(--leaf);
+  outline-offset: 2px;
+}
+
+.narration-knob {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface);
+}
+
 .chapter-row:has(.chapter-error) {
   flex-wrap: wrap;
 }

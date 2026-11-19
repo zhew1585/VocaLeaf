@@ -61,6 +61,7 @@ describe("App", () => {
     hlsInstances.length = 0;
     const book: BookDetail = {
       id: "b1",
+      source: "upload",
       title: "Pride and Prejudice",
       author: "Jane Austen",
       status: "ready",

@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { BOOK_DELETED_EVENT, saveListening } from "../api";
+import { BOOK_DELETED_EVENT, saveListening, type BookDetail } from "../api";
 import { useHls } from "./hls";
+import { layoutOf, mapPosition, onlyAppends, type Layout } from "./layout";
 import { playableLength, useStartRequest, useWaitingForAudio, type StartRequest } from "./playback";
 import { useSleepTimer, type SleepChoice, type SleepTimer } from "./sleep";
 import { useSpeed, type Speed } from "./speed";
@@ -39,8 +40,15 @@ export interface Listening {
   sleepRemaining(): number | null;
   /** Loads the Book's audio, paused at its start; does nothing when it is already the session's Book. */
   open(bookId: string): void;
-  /** Loads the playlist again on a fresh audio element (a retried Chapter came in before its end). */
+  /** Loads the playlist again on a fresh audio element. */
   reload(): void;
+  /**
+   * Tells the session the Book as just loaded. When it is the session's Book and a Chapter came into its playlist
+   * before the end or left it (retried, narrated or set Skipped, PRD 4.2.5), the playlist is loaded again and
+   * playback resumes at the same place in the same Chapter, or at the start of the next narrated one when the
+   * playing Chapter left (AC-BOOK-02), playing on if it was. Every page that loads a Book calls it.
+   */
+  follow(book: BookDetail): void;
   toggle(): void;
   /** 重听 (PRD 4.4.3): back to the start of the Sentence the user wants to hear again. */
   replay(): void;
@@ -156,6 +164,7 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     if (openBookId.current === id) return;
     switching.current = openBookId.current !== null;
     openBookId.current = id;
+    followed.current = null;
     setBookId(id);
     setStart({ request: null });
     setPosition(0);
@@ -182,6 +191,28 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     setReloads((n) => n + 1);
     fresh();
   }, []);
+
+  // The layout of the playlist the audio element holds, as the pages last saw it; reset when a Book is opened.
+  const followed = useRef<Layout | null>(null);
+  const relayouts = useRef(0);
+  const follow = useCallback(
+    (book: BookDetail) => {
+      if (book.id !== openBookId.current) return;
+      const next = layoutOf(book);
+      const prev = followed.current;
+      followed.current = next;
+      if (prev === null || onlyAppends(prev, next)) return;
+      const el = audio.current!;
+      const request = {
+        id: `relayout#${++relayouts.current}`,
+        seconds: mapPosition(el.currentTime, prev, next),
+        autoplay: !el.paused,
+      };
+      reload();
+      setStart({ request });
+    },
+    [reload],
+  );
 
   const requestStart = useCallback((request: StartRequest | null, onSettled?: () => void) => {
     setStart({ request, onSettled });
@@ -242,6 +273,7 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     sleepRemaining: sleep.remaining,
     open,
     reload,
+    follow,
     toggle,
     replay: jumps.replay,
     next: jumps.next,
