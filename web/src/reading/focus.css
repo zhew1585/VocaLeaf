@@ -93,10 +93,12 @@
 .directory-list {
   flex: 1;
   min-height: 0;
-  margin: 0;
-  padding: 0;
+  /* The scrollbar rides the directory's right edge, in its padding, 7 px clear of the current Chapter's highlight. */
+  margin: 0 -12px 0 0;
+  padding: 0 calc(14px - var(--scrollbar-size)) 0 0;
   list-style: none;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .directory-item {
@@ -300,10 +302,13 @@
   overflow-y: auto;
   /* The reading view keeps its own anchor when Chapters render above the view. */
   overflow-anchor: none;
+  /* A matching empty gutter on the left keeps the column centred under the floating player. */
+  scrollbar-gutter: stable both-edges;
 }
 
 .reading-content {
-  width: min(var(--column), 100% - 64px);
+  /* 48 px kept on each side: room for 【从这里播放】 outside a Sentence's right edge (4 + 40 px), never clipped. */
+  width: min(var(--column), 100% - 96px);
   margin: 0 auto;
   /* room for the floating player under the last Sentence */
   padding-bottom: 50vh;

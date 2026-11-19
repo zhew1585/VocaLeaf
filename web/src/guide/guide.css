@@ -24,6 +24,11 @@
   box-shadow: 0 24px 60px rgb(28 33 29 / 0.3);
 }
 
+/* The scrollbar stops short of the rounded corners. */
+.guide-dialog::-webkit-scrollbar-track:vertical {
+  margin-block: 24px;
+}
+
 .guide-heading {
   margin: 0;
   font-family: var(--font-title);

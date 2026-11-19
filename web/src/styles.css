@@ -37,6 +37,120 @@ button {
   font: inherit;
 }
 
+/*
+ * Scrollbars, overlay style (src/scrollbars.ts): a narrow pale pill that shows only while its area is scrolled or
+ * the pointer is on it, then fades out. It stays a classic scrollbar with its gutter kept, so nothing shifts when it
+ * shows, and ReadingView still tells a press on it by offsetX >= clientWidth while it is invisible.
+ * Chrome and Safari draw it from ::-webkit-scrollbar (setting scrollbar-color would make Chrome ignore these rules);
+ * Firefox gets the standard thin scrollbar in the same colours.
+ */
+@property --scrollbar-thumb {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+:root {
+  /* The room the custom scrollbar takes, for areas that make up for it; 0 where the browser draws its own. */
+  --scrollbar-size: 0px;
+  /* ink-3 mixed into paper, faint when shown, a little firmer under the pointer and while dragged. Opaque, so a
+     bar on the white surface (directory, panels) is the same warm grey as one on the paper. */
+  --scrollbar-thumb-shown: color-mix(in srgb, var(--ink-3) 40%, var(--paper));
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--ink-3) 58%, var(--paper));
+  --scrollbar-thumb-active: color-mix(in srgb, var(--ink-3) 74%, var(--paper));
+}
+
+/*
+ * The same grey reads darker against the white surface than against the paper, so bars over the surface (the
+ * directory, the sentence panel's chat, the card popover, the first-play guide, the cards detail panel behind the
+ * page bar) are lifted a quarter towards it and look like the ones on paper.
+ */
+.directory-list,
+.chat-scroll,
+.card-popover,
+.guide-dialog,
+body:has(.cards-page.has-detail) {
+  --scrollbar-thumb-shown: color-mix(in srgb, color-mix(in srgb, var(--ink-3) 40%, var(--paper)) 75%, var(--surface));
+  --scrollbar-thumb-hover: color-mix(in srgb, color-mix(in srgb, var(--ink-3) 58%, var(--paper)) 75%, var(--surface));
+  --scrollbar-thumb-active: color-mix(in srgb, color-mix(in srgb, var(--ink-3) 74%, var(--paper)) 75%, var(--surface));
+}
+
+/*
+ * A scrollbar takes its colour from its scroll area; every element sets its own, so a shown bar does not show the
+ * bars inside its area. Shown, it fades in quickly; idle, it fades out over 0.4 s. A scroll area that declares its
+ * own transition must list --scrollbar-thumb in it to keep the fade.
+ */
+* {
+  --scrollbar-thumb: transparent;
+  transition: --scrollbar-thumb 0.4s ease-out;
+}
+
+[data-scrollbar] {
+  --scrollbar-thumb: var(--scrollbar-thumb-shown);
+  transition: --scrollbar-thumb 0.12s ease-out;
+}
+
+/* Shell pages that scroll and those that do not keep the same width; the 专注页 never scrolls the page itself. */
+html:has(.shell) {
+  scrollbar-gutter: stable;
+}
+
+@supports selector(::-webkit-scrollbar) {
+  :root {
+    --scrollbar-size: 10px;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* The ends of every bar stay clear of its area's edges. */
+::-webkit-scrollbar-track:vertical {
+  margin-block: 6px;
+}
+
+::-webkit-scrollbar-track:horizontal {
+  margin-inline: 6px;
+}
+
+/* A 4 px pill centred in the 10 px gutter; 6 px under the pointer. */
+::-webkit-scrollbar-thumb {
+  min-height: 40px;
+  min-width: 40px;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: var(--scrollbar-thumb) padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  border-width: 2px;
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-thumb:active {
+  border-width: 2px;
+  background-color: var(--scrollbar-thumb-active);
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  /* Firefox styles the page's scrollbar from the root, not the body that scrollbars.ts marks. */
+  html:has(> body[data-scrollbar]) {
+    --scrollbar-thumb: var(--scrollbar-thumb-shown);
+  }
+}
+
 /* App shell (design 03-2): a 240 px sidebar beside the page; on a phone, a bar above it. */
 .shell {
   min-height: 100vh;
