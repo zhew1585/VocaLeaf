@@ -90,6 +90,10 @@ export interface Listening {
   startAudition(source: AuditionSource): void;
   /** Stops a 试听 without letting an interrupted main playback go on (another Sentence selected, panel closed). */
   stopAudition(): void;
+  /** Pauses a 试听 where it is (拾起's 暂停); an interrupted main playback keeps waiting. */
+  pauseAudition(): void;
+  /** Plays a paused 试听 on from where it paused, stopping at its end as before. */
+  resumeAudition(): void;
   setSpeed(speed: Speed): void;
   setSleep(choice: SleepChoice | null): void;
   /**
@@ -346,8 +350,10 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const toggle = () => {
-    // Space or 暂停 during a 试听 stops it; the main playback stays paused (AC-PLAY-14).
-    if (audition.active) return audition.stop();
+    // Space or 暂停 during a 试听 stops it; the main playback stays paused (AC-PLAY-14). A paused 试听 is silent
+    // already: it is dropped and the main playback plays.
+    if (audition.active && !audition.paused) return audition.stop();
+    audition.stop();
     const el = audio.current!;
     starter.drop();
     offline.forget();
@@ -428,6 +434,8 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     audition: audition.state,
     startAudition: audition.start,
     stopAudition: audition.stop,
+    pauseAudition: audition.pause,
+    resumeAudition: audition.resume,
     setSpeed,
     setSleep: sleep.set,
     requestStart,
