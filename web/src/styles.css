@@ -53,10 +53,11 @@ button {
 :root {
   /* The room the custom scrollbar takes, for areas that make up for it; 0 where the browser draws its own. */
   --scrollbar-size: 0px;
-  /* ink-3, faint when shown, a little firmer under the pointer and while dragged. */
-  --scrollbar-thumb-shown: color-mix(in srgb, var(--ink-3) 40%, transparent);
-  --scrollbar-thumb-hover: color-mix(in srgb, var(--ink-3) 58%, transparent);
-  --scrollbar-thumb-active: color-mix(in srgb, var(--ink-3) 74%, transparent);
+  /* ink-3 mixed into paper, faint when shown, a little firmer under the pointer and while dragged. Opaque, so a
+     bar on the white surface (directory, panels) is the same warm grey as one on the paper. */
+  --scrollbar-thumb-shown: color-mix(in srgb, var(--ink-3) 40%, var(--paper));
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--ink-3) 58%, var(--paper));
+  --scrollbar-thumb-active: color-mix(in srgb, var(--ink-3) 74%, var(--paper));
 }
 
 /*
