@@ -38,6 +38,10 @@ _Avoid_: Segment, line, chunk
 
 An HLS segment (about ten seconds of a Chapter's audio, cut without regard to Sentences) is a storage and playback detail, not a domain term; never call a Sentence a segment.
 
+**Listening session**:
+The one Book being listened to on a device, with its playback position; it goes on while the user leaves the 专注页 and ends with opening another Book or logging out.
+_Avoid_: Player (the controls), playback queue
+
 ## Capture
 
 **Mark**:

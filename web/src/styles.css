@@ -346,23 +346,6 @@ button.chapter-title:hover {
   gap: 8px;
 }
 
-/* 01 专注页, minimal: the reading column (620) with the floating player at its bottom. */
-.listen-layout {
-  max-width: 620px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  /* room for the floating player */
-  padding-bottom: 160px;
-}
-
-.listen-column {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
 .listen-wait {
   margin: 0;
   font-size: 14px;
@@ -387,21 +370,9 @@ button.chapter-title:hover {
   animation: spin 1.2s linear infinite;
 }
 
-/* The paper fades out under the player, as in the design. */
-.player-dock {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 56px 16px 24px;
-  background: linear-gradient(to bottom, rgb(246 242 233 / 0), var(--paper) 60%);
-  pointer-events: none;
-}
-
 /* Design 01 ④: floating player, same width as the reading column. */
 .player {
-  max-width: 620px;
-  margin: 0 auto;
+  width: 100%;
   padding: 14px 20px;
   display: flex;
   flex-direction: column;

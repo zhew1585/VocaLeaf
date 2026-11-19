@@ -1,28 +1,49 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { BookDetail, ChapterSummary } from "../api";
 import { isPlayableChapter, waitMessage } from "../chapters";
-import { ChevronLeftIcon } from "../icons";
-import { Player, type StartRequest } from "../player/Player";
-import { navigate } from "../router";
+import type { StartRequest } from "../player/playback";
+import { Player } from "../player/Player";
+import { useListening } from "../player/session";
+import { BackToShelf, ChapterDirectory } from "../reading/ChapterDirectory";
+import { ReadingView, type ReadingViewHandle } from "../reading/ReadingView";
+import { SentencePanel, SentencePanelToggle } from "../reading/SentencePanel";
+import { columnWidth, playingChapterId } from "../reading/timeline";
+import "../reading/focus.css";
 import { useBook } from "../useBook";
 import { usePlaylist } from "./usePlaylist";
 
 /**
- * The Chapter the 专注页 was opened to play (`?chapter=`), until it has started or the user took over;
- * `settle` then forgets it, in the URL too, so a reload does not jump there again.
+ * The Chapter picked to play from its start: from the URL (`?chapter=`, opened from the Chapter list) or the
+ * directory, until it has started or the user took over; `settle` then forgets it, in the URL too, so a reload
+ * does not jump there again. Each pick counts, so picking the same Chapter again starts it again.
  */
-function useRequestedChapter() {
-  const [id, setId] = useState(() => new URLSearchParams(window.location.search).get("chapter"));
+function usePickedChapter() {
+  const count = useRef(0);
+  const [picked, setPicked] = useState(() => {
+    const id = new URLSearchParams(window.location.search).get("chapter");
+    return id === null ? null : { id, n: 0 };
+  });
+  const pick = (id: string) => setPicked({ id, n: ++count.current });
   const settle = () => {
-    setId(null);
-    window.history.replaceState(null, "", window.location.pathname);
+    setPicked(null);
+    // Settling can come after the user left the page; only this page's URL has the parameter.
+    if (new URLSearchParams(window.location.search).has("chapter")) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
   };
-  /** The Chapter if the Book has it and it can be played. */
+  /** The picked Chapter and its pick count, if the Book has it and it can be played. */
   const find = (book: BookDetail | null) => {
-    const chapter = book?.chapters.find((c) => c.id === id);
-    return chapter && isPlayableChapter(chapter) ? chapter : undefined;
+    const chapter = book?.chapters.find((c) => c.id === picked?.id);
+    return picked && chapter && isPlayableChapter(chapter) ? { chapter, n: picked.n } : undefined;
   };
-  return { requested: id !== null, find, settle };
+  return { picked, pick, settle, find };
+}
+
+/** Below this width the side panels lie over the text, so the directory starts collapsed (G8). */
+const WIDE_WINDOW = "(min-width: 901px)";
+
+function wideWindow(): boolean {
+  return window.matchMedia?.(WIDE_WINDOW).matches ?? true;
 }
 
 /**
@@ -36,83 +57,123 @@ function nextToGenerate(book: BookDetail): Pick<ChapterSummary, "waitSeconds"> {
 }
 
 /**
- * 专注页 (design 01), minimal: the Book and its floating player. The Chapter directory, reading view and
- * 句子精读 come with #4 and #14. Until the first segment exists the page waits and checks again; the Book's
- * length is refreshed while it generates.
- * Opened for one Chapter (from the Chapter list), it plays from that Chapter's start; if the Chapter is not
- * generated yet it says how long that takes and starts by itself once it is (PRD 4.3.4, AC-BOOK-03). Playback
- * that catches up with the generated audio waits the same way and goes on by itself.
+ * 专注页 (design 01, PRD 4.4.5): the Chapter directory, the Book's text following the audio, the floating
+ * player, and the collapsed 句子精读. The page opens its Book in the listening session once it has audio;
+ * until then it waits and checks again. Picking a Chapter (here or in the Chapter list) plays it from its
+ * start; one not generated yet says how long that takes and starts by itself once it is (PRD 4.3.4,
+ * AC-BOOK-03). Playback that catches up with the generated audio waits the same way and goes on by itself.
  */
 export function ListenPage({ id }: { id: string }) {
-  const request = useRequestedChapter();
-  const [waitingForAudio, setWaitingForAudio] = useState(false);
-  const { book, error } = useBook(id, { eager: request.requested || waitingForAudio });
-  const playlist = usePlaylist(book);
-  const detailPath = `/books/${id}`;
+  const listening = useListening();
+  const here = listening.bookId === id;
+  const chapterPick = usePickedChapter();
+  const waitingForAudio = here && listening.waitingForAudio;
+  const { book, error } = useBook(id, { eager: chapterPick.picked !== null || waitingForAudio });
+  const playlist = usePlaylist(book, here ? { seconds: listening.position, playing: listening.playing } : { seconds: 0, playing: false });
+  const [directoryOpen, setDirectoryOpen] = useState(wideWindow);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const reading = useRef<ReadingViewHandle>(null);
+  // Stable, so the reading view's memoized Chapters do not render again on every time update.
+  const toggleDirectory = useCallback(() => setDirectoryOpen((o) => !o), []);
 
-  const target = request.find(book);
+  const playable = book?.playable ?? false;
+  const { open, reload, requestStart } = listening;
+  useEffect(() => {
+    if (playable) open(id);
+  }, [playable, id, open]);
+  // A retried Chapter came in before the playlist's end: load it again (it resumes at playlist.resume).
+  useEffect(() => {
+    if (playlist.revision > 0) reload();
+  }, [playlist.revision, reload]);
+
+  const found = chapterPick.find(book);
+  const target = found?.chapter;
   const targetPending = target !== undefined && target.startMs === null;
-  const startAt: StartRequest | null = target
-    ? { id: target.id, seconds: target.startMs === null ? null : target.startMs / 1000, autoplay: true }
+  const startAt: StartRequest | null = found
+    ? {
+        id: `${found.chapter.id}#${found.n}`,
+        seconds: found.chapter.startMs === null ? null : found.chapter.startMs / 1000,
+        autoplay: true,
+      }
     : playlist.resume;
-  const notice = targetPending
-    ? waitMessage(target)
-    : book && waitingForAudio
-      ? waitMessage(nextToGenerate(book))
-      : null;
+  // Asked in the same commit as open (above), which drops any request of the Book opened before.
+  useEffect(() => {
+    if (!playable) return;
+    requestStart(startAt, () => {
+      // A Chapter picked to listen to replaces any resume still waiting.
+      chapterPick.settle();
+      playlist.clearResume();
+      reading.current?.followPlayback();
+    });
+    // The request's id and position say when it changed; the callbacks only set state.
+  }, [playable, startAt?.id, startAt?.seconds, requestStart]);
+
+  if (!book) {
+    return error ? (
+      <p className="form-error focus-error" role="alert">
+        {error}
+      </p>
+    ) : null;
+  }
+
+  const positionMs = here ? listening.position * 1000 : null;
+  const playingId = positionMs === null ? null : playingChapterId(book.chapters, positionMs);
+  const totalSeconds = book.durationMs === null ? null : book.durationMs / 1000;
+  const notice = targetPending ? waitMessage(target) : waitingForAudio ? waitMessage(nextToGenerate(book)) : null;
+  const width = columnWidth({ directory: directoryOpen, sentencePanel: panelOpen });
+
+  const onPick = (chapter: ChapterSummary) => {
+    reading.current?.showChapter(chapter.id);
+    if (isPlayableChapter(chapter)) chapterPick.pick(chapter.id);
+  };
+
+  // The player shows the session, which holds this Book once opened (right after the Book is playable).
+  const dock = playable ? (
+    here && <Player totalSeconds={totalSeconds} notice={notice} />
+  ) : (
+    <p className="listen-wait">
+      {targetPending
+        ? notice
+        : book.status === "generating" || book.status === "parsing"
+          ? "正在生成第一段音频，稍候即可收听"
+          : "这本书没有可播放的音频"}
+    </p>
+  );
 
   return (
-    <div className="listen-layout">
-      <a
-        href={detailPath}
-        className="back-link"
-        onClick={(e) => {
-          e.preventDefault();
-          navigate(detailPath);
-        }}
-      >
-        <ChevronLeftIcon />
-        书籍详情
-      </a>
-      {error && (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      )}
-      {book && (
-        <div className="listen-column">
-          <div className="book-titles">
-            <h1 className="book-title">{book.title}</h1>
-            {book.author && <p className="book-author">{book.author}</p>}
-          </div>
-          {book.playable ? (
-            <div className="player-dock">
-              <Player
-                key={playlist.revision}
-                src={`/api/books/${id}/audio.m3u8`}
-                totalSeconds={book.durationMs === null ? null : book.durationMs / 1000}
-                startAt={startAt}
-                onStartSettled={() => {
-                  // A Chapter picked to listen to replaces any resume still waiting.
-                  if (target) request.settle();
-                  playlist.clearResume();
-                }}
-                onWaitingForAudio={setWaitingForAudio}
-                onPosition={playlist.onPosition}
-                notice={notice}
-              />
-            </div>
-          ) : (
-            <p className="listen-wait">
-              {targetPending
-                ? notice
-                : book.status === "generating" || book.status === "parsing"
-                  ? "正在生成第一段音频，稍候即可收听"
-                  : "这本书没有可播放的音频"}
-            </p>
-          )}
+    <div className="focus">
+      {directoryOpen ? (
+        <ChapterDirectory
+          book={book}
+          playingChapterId={playingId}
+          playing={here && listening.playing}
+          listened={here && totalSeconds ? Math.min(listening.position / totalSeconds, 1) : 0}
+          onPick={onPick}
+        />
+      ) : (
+        <div className="directory-collapsed">
+          <BackToShelf compact />
         </div>
       )}
+      <main className="focus-main">
+        {error && (
+          <p className="form-error focus-error" role="alert">
+            {error}
+          </p>
+        )}
+        <ReadingView
+          ref={reading}
+          book={book}
+          positionMs={positionMs}
+          playingChapterId={playingId}
+          columnWidth={width}
+          directoryOpen={directoryOpen}
+          onToggleDirectory={toggleDirectory}
+          dock={dock}
+        />
+        {!panelOpen && <SentencePanelToggle onOpen={() => setPanelOpen(true)} />}
+      </main>
+      {panelOpen && <SentencePanel onClose={() => setPanelOpen(false)} />}
     </div>
   );
 }

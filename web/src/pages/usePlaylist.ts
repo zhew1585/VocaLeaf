@@ -1,9 +1,9 @@
 // Keeps the 专注页's player on the Book's playlist as it is now. The playlist normally only grows at its end,
 // which the player follows by itself; when a retried Chapter is inserted before its end (api/src/books/
 // timeline.ts), the player must load it again and resume at the same place.
-import { useRef, useState } from "react";
+import { useState } from "react";
 import type { BookDetail } from "../api";
-import type { StartRequest } from "../player/Player";
+import type { StartRequest } from "../player/playback";
 
 /** Where each Chapter with audio starts in the playlist, in playlist order. */
 export type Layout = { id: string; startMs: number }[];
@@ -34,26 +34,31 @@ export function mapPosition(seconds: number, from: Layout, to: Layout): number {
 interface State {
   /** The layout the current player has. */
   layout: Layout;
-  /** Counts reloads; the player is keyed by it. */
+  /** Counts reloads. */
   revision: number;
   /** Where the reloaded player resumes, until it has. */
   resume: StartRequest | null;
 }
 
+/** Where playback of the Book is now. */
+export interface PlaybackAt {
+  seconds: number;
+  playing: boolean;
+}
+
 /**
- * Follows the Book's playlist layout. Returns the `revision` to key the player by (a new one means a reload),
- * where a reloaded player resumes, `onPosition` to give the player, and `clearResume` for once it has resumed.
+ * Follows the Book's playlist layout. Returns the `revision` (a new one means the playlist must be loaded
+ * again), where the reloaded playlist resumes, and `clearResume` for once it has resumed.
  */
-export function usePlaylist(book: BookDetail | null) {
+export function usePlaylist(book: BookDetail | null, at: PlaybackAt) {
   const [state, setState] = useState<State>({ layout: [], revision: 0, resume: null });
-  const position = useRef({ seconds: 0, playing: false });
 
   // Adjusted while rendering, so the old player never acts on positions of the new layout.
   const next = book ? layoutOf(book) : state.layout;
   if (!onlyAppends(state.layout, next)) {
     const revision = state.revision + 1;
-    const seconds = mapPosition(position.current.seconds, state.layout, next);
-    setState({ layout: next, revision, resume: { id: `resume-${revision}`, seconds, autoplay: position.current.playing } });
+    const seconds = mapPosition(at.seconds, state.layout, next);
+    setState({ layout: next, revision, resume: { id: `resume-${revision}`, seconds, autoplay: at.playing } });
   } else if (next.length !== state.layout.length) {
     setState({ ...state, layout: next });
   }
@@ -61,9 +66,6 @@ export function usePlaylist(book: BookDetail | null) {
   return {
     revision: state.revision,
     resume: state.resume,
-    onPosition: (seconds: number, playing: boolean) => {
-      position.current = { seconds, playing };
-    },
     clearResume: () => setState((s) => (s.resume ? { ...s, resume: null } : s)),
   };
 }

@@ -1,8 +1,8 @@
 // Typed calls to the VocaLeaf API. Types come straight from the API's zod contract (ADR 0002).
 // The session is an HttpOnly cookie the browser sends by itself (same origin), so no call handles a token.
-import type { ApiError, Book, BookDetail, CodeSent, User } from "@vocaleaf/api/contract";
+import type { ApiError, Book, BookDetail, CodeSent, Sentence, User } from "@vocaleaf/api/contract";
 
-export type { Book, BookDetail, BookStatus, ChapterSummary, User } from "@vocaleaf/api/contract";
+export type { Book, BookDetail, BookStatus, ChapterSummary, Sentence, User } from "@vocaleaf/api/contract";
 
 /** Fired on window whenever the API answers 401: the session ended, so the app shows the login page. */
 export const UNAUTHORIZED_EVENT = "vocaleaf:unauthorized";
@@ -76,6 +76,11 @@ export function uploadBook(file: File): Promise<Book> {
 
 export function getBook(id: string): Promise<BookDetail> {
   return request<BookDetail>(`/books/${id}`);
+}
+
+/** A Chapter's Sentences in reading order, with their times in the Book's audio once the Chapter is placed. */
+export function getChapterSentences(chapterId: string): Promise<Sentence[]> {
+  return request<Sentence[]>(`/chapters/${chapterId}/sentences`);
 }
 
 /** Generates a 生成失败 Chapter again; it goes back to 待生成. */
