@@ -466,13 +466,19 @@ html:has(.shell) {
  */
 .shell-main:has(> .book-layout) {
   padding: 0;
+  container-type: inline-size;
+}
+
+/* The Chapter list's scrollbar is the window's right edge, so no page gutter is kept beside it. */
+html:has(.book-layout) {
+  scrollbar-gutter: auto;
 }
 
 .book-layout {
+  /* The content's sides: 56 px, or more to centre it at 1200 px in a wide window. */
+  --book-side: max(56px, calc((100cqw - 1200px) / 2));
   height: 100vh;
-  max-width: calc(1200px + 2 * 56px);
-  margin: 0 auto;
-  padding: 36px 56px 0;
+  padding: 36px 0 0 var(--book-side);
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
@@ -664,9 +670,9 @@ html:has(.shell) {
   min-height: 0;
   overflow-y: auto;
   list-style: none;
-  /* The scrollbar sits 14 px right of the rows' switches; the rows keep their width. */
-  margin: 0 -24px 0 0;
-  padding: 44px calc(24px - var(--scrollbar-size)) 64px 0;
+  /* It reaches the window's right edge, where its scrollbar is; the rows keep the content's right side. */
+  margin: 0;
+  padding: 44px calc(var(--book-side) - var(--scrollbar-size)) 64px 0;
   scrollbar-gutter: stable;
   /* Rows fade out under the top edge rather than being cut there. */
   -webkit-mask-image: linear-gradient(to bottom, transparent, #000 24px);
