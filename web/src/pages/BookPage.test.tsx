@@ -229,6 +229,22 @@ describe("BookPage", () => {
       window.removeEventListener(BOOK_DELETED_EVENT, onDeleted);
     });
 
+    it("takes a Book already deleted elsewhere (404) as deleted", async () => {
+      window.history.pushState(null, "", "/books/b1");
+      stubApi([generating], () => Response.json({ error: { code: "not_found", message: "书不存在" } }, { status: 404 }));
+      const deleted: unknown[] = [];
+      const onDeleted = (e: Event) => deleted.push((e as CustomEvent).detail);
+      window.addEventListener(BOOK_DELETED_EVENT, onDeleted);
+      render(<BookPage id="b1" />);
+
+      fireEvent.click(await screen.findByRole("button", { name: "删除这本书" }));
+      fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "删除" }));
+
+      await vi.waitFor(() => expect(window.location.pathname).toBe("/"));
+      expect(deleted).toEqual(["b1"]);
+      window.removeEventListener(BOOK_DELETED_EVENT, onDeleted);
+    });
+
     it("says so when the deletion fails, and keeps the question open to try again", async () => {
       window.history.pushState(null, "", "/books/b1");
       stubApi([generating], () => Response.json({ error: { code: "internal", message: "服务器出错了，请稍后再试" } }, { status: 500 }));

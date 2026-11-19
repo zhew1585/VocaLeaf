@@ -152,8 +152,15 @@ export async function retryChapter(chapterId: string): Promise<void> {
   await send(`/chapters/${chapterId}/retry`, { method: "POST" });
 }
 
-/** Deletes an uploaded Book in any state (PRD 4.3.6), then fires BOOK_DELETED_EVENT. */
+/**
+ * Deletes an uploaded Book in any state (PRD 4.3.6), then fires BOOK_DELETED_EVENT. A Book that is already gone
+ * (404, deleted on another device) counts as deleted.
+ */
 export async function deleteBook(id: string): Promise<void> {
-  await send(`/books/${id}`, { method: "DELETE" });
+  try {
+    await send(`/books/${id}`, { method: "DELETE" });
+  } catch (err) {
+    if (!(err instanceof ApiRequestError && err.status === 404)) throw err;
+  }
   window.dispatchEvent(new CustomEvent(BOOK_DELETED_EVENT, { detail: id }));
 }
