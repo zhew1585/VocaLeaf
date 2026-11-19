@@ -2,11 +2,13 @@
 // worker side is driven only through the /internal HTTP protocol, as the real worker does.
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import type { Book, ClaimedRenderJob, ParseResult } from "../src/contract.js";
-import { allowlist, auditLog, audioSegments, books, chapters, jobs, sentences } from "../src/db/schema.js";
+import { MAX_UPLOADED_BOOKS, type Book, type ClaimedRenderJob, type ParseResult, type UploadPolicy } from "../src/contract.js";
+import { allowlist, auditLog, audioSegments, books, chapters, jobs, sentences, shelfEntries } from "../src/db/schema.js";
 import {
   bookDetail,
   claimJob,
+  epubForm,
+  generatedBook,
   heartbeat,
   logIn,
   READER_EMAIL,
@@ -35,6 +37,11 @@ const parsed: Omit<ParseResult, "attempt"> = {
   ],
 };
 
+/** Audit entries of deletions; the first upload also writes one, for the rights declaration (#7). */
+async function deletionLog(t: T) {
+  return (await t.db.select().from(auditLog)).filter((e) => e.action === "book_delete");
+}
+
 function deleteBook(app: TestApp, id: string) {
   return app.request(`/api/books/${id}`, { method: "DELETE" });
 }
@@ -56,13 +63,14 @@ async function leftovers(t: T, bookId: string) {
     books: (await t.db.select().from(books).where(eq(books.id, bookId))).length,
     chapters: chapterIds.length,
     jobs: (await t.db.select().from(jobs).where(eq(jobs.bookId, bookId))).length,
+    shelfEntries: (await t.db.select().from(shelfEntries).where(eq(shelfEntries.bookId, bookId))).length,
     sentences: (await t.db.select().from(sentences).innerJoin(chapters, eq(chapters.id, sentences.chapterId)).where(eq(chapters.bookId, bookId))).length,
     segments: (await t.db.select().from(audioSegments).innerJoin(chapters, eq(chapters.id, audioSegments.chapterId)).where(eq(chapters.bookId, bookId))).length,
     objects: [...t.storage.objects.keys()].filter((k) => k.startsWith(`books/${bookId}/`)),
   };
 }
 
-const NOTHING_LEFT = { books: 0, chapters: 0, jobs: 0, sentences: 0, segments: 0, objects: [] };
+const NOTHING_LEFT = { books: 0, chapters: 0, jobs: 0, shelfEntries: 0, sentences: 0, segments: 0, objects: [] };
 
 describe("DELETE /api/books/:id", () => {
   it("deletes a 解析中 Book: its file and its parse job go, and the worker gets nothing to do", async () => {
@@ -143,7 +151,7 @@ describe("DELETE /api/books/:id", () => {
 
     expect((await deleteBook(t.app, book.id)).status).toBe(204);
 
-    const log = await t.db.select().from(auditLog);
+    const log = await deletionLog(t);
     expect(log).toMatchObject([
       { actor: READER_EMAIL, action: "book_delete", target: `${book.id} 《Emma》`, result: "deleted" },
     ]);
@@ -174,7 +182,7 @@ describe("DELETE /api/books/:id", () => {
     expect((await deleteBook(t.app, "not-a-uuid")).status).toBe(400);
 
     expect((await bookDetail(t.app, theirs.id)).id).toBe(theirs.id);
-    expect(await t.db.select().from(auditLog)).toEqual([]);
+    expect(await deletionLog(t)).toEqual([]);
   });
 
   it("needs a session", async () => {
@@ -189,6 +197,48 @@ describe("DELETE /api/books/:id", () => {
     const book = await uploadBook(t.app);
     expect((await deleteBook(t.app, book.id)).status).toBe(204);
     expect((await deleteBook(t.app, book.id)).status).toBe(404);
-    expect(await t.db.select().from(auditLog)).toHaveLength(1);
+    expect(await deletionLog(t)).toHaveLength(1);
+  });
+
+  it("takes the Book off the Shelf with where the user was in it, and deletes its cover", async () => {
+    const t = await testApp();
+    const kept = await generatedBook(t, "Emma", parsed.chapters);
+    const book = await generatedBook(t, "Persuasion", parsed.chapters);
+    // The worker wrote a cover while parsing; the user listened into the second Chapter.
+    await t.storage.putObject(`books/${book.id}/cover`, new Uint8Array([1, 2, 3]), "image/png");
+    await t.db.update(books).set({ coverType: "image/png" }).where(eq(books.id, book.id));
+    const listened = await t.app.request(`/api/books/${book.id}/listening`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ positionMs: 9000 }),
+    });
+    expect(listened.status).toBe(204);
+    const [entry] = await t.db.select().from(shelfEntries).where(eq(shelfEntries.bookId, book.id));
+    expect(entry).toMatchObject({ sentenceId: expect.any(String), lastListenedAt: expect.any(Date) });
+    expect((await t.app.request(`/api/books/${book.id}/cover`)).status).toBe(200);
+
+    expect((await deleteBook(t.app, book.id)).status).toBe(204);
+
+    expect(await leftovers(t, book.id)).toEqual(NOTHING_LEFT);
+    expect((await t.app.request(`/api/books/${book.id}/cover`)).status).toBe(404);
+    expect(((await (await t.app.request("/api/books")).json()) as Book[]).map((b) => b.id)).toEqual([kept.id]);
+    expect(await t.db.select().from(shelfEntries).where(eq(shelfEntries.bookId, kept.id))).toHaveLength(1);
+  });
+
+  it("AC-BOOK-08: frees an upload at once: with 20 uploaded, deleting one lets the user upload again", async () => {
+    const t = await testApp();
+    const uploaded = [];
+    for (let i = 0; i < MAX_UPLOADED_BOOKS; i++) uploaded.push(await uploadBook(t.app, `book-${i}.epub`));
+    const refused = await t.app.request("/api/books", { method: "POST", body: epubForm("one-more.epub") });
+    expect(refused.status).toBe(409);
+
+    expect((await deleteBook(t.app, uploaded[3]!.id)).status).toBe(204);
+
+    const policy = (await (await t.app.request("/api/upload-policy")).json()) as UploadPolicy;
+    expect(policy.uploadedBooks).toBe(MAX_UPLOADED_BOOKS - 1);
+    const again = await t.app.request("/api/books", { method: "POST", body: epubForm("one-more.epub") });
+    expect(again.status).toBe(201);
+    const refusedAgain = await t.app.request("/api/books", { method: "POST", body: epubForm("two-more.epub") });
+    expect(refusedAgain.status).toBe(409);
   });
 });

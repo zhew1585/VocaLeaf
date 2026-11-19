@@ -25,14 +25,16 @@ const deleteRoute = createRoute({
 /**
  * Deletes the user's Book, or returns false when they have no such Book.
  *
- * The rows go in one transaction with the audit entry: Chapters, Sentences, segments and jobs cascade with the
- * Book, which cancels every unfinished job. A worker still holding one learns it at its next heartbeat or report
+ * The rows go in one transaction with the audit entry: Chapters, Sentences, segments, jobs and Shelf entries (with
+ * the user's listening progress) cascade with the Book. That frees the upload at once (the quota counts the user's
+ * Books) and cancels every unfinished job: a worker still holding one learns it at its next heartbeat or report
  * (409) and drops it; the deletion waits for a report already in flight, which locks the job row.
- * The Book's objects go after the commit, so a failure there never leaves a Book whose audio is half gone; any
- * object a worker writes afterwards is removed when its report is refused (discardDeletedJobSegments).
+ * The Book's objects (original, cover, audio) go after the commit, so a failure there never leaves a Book whose
+ * audio is half gone; any object a worker writes afterwards is removed when its report is refused
+ * (discardDeletedJobSegments).
  *
- * Future data hanging off a Book follows the same rule (PRD 4.3.6): Marks, Explanations and listening progress
- * cascade with it, while Cards keep their own copy of the Sentence and the Book's title and only lose the link.
+ * Future data hanging off a Book follows the same rule (PRD 4.3.6): Marks and Explanations cascade with it, while
+ * Cards keep their own copy of the Sentence and the Book's title and only lose the link.
  */
 export async function deleteBook(db: Db, storage: ObjectStorage, bookId: string, userId: string): Promise<boolean> {
   const deleted = await db.transaction(async (tx) => {

@@ -8,7 +8,7 @@ const CONFIRM_TEXT = "删除后音频、标记和解析将被清除，已做的�
 
 /**
  * 删除这本书 on the Book detail (design 04-2), for an uploaded Book in any state. Asks first; once deleted, the
- * app goes back to its start page.
+ * app goes back to the Shelf, which loads without it.
  */
 export function DeleteBookButton({ bookId }: { bookId: string }) {
   const [asking, setAsking] = useState(false);

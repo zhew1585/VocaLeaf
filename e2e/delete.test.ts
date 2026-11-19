@@ -2,8 +2,8 @@
 // generates it. The user deletes through the web origin; the worker learns of it only through the API.
 // Needs `npm run e2e:up` (5 s job lease).
 import { afterEach, describe, expect, it } from "vitest";
-import type { Book } from "../api/src/contract.js";
-import { anonApi, api, compose, endOpenJobs, PRIDE_AND_PREJUDICE, sql, upload, waitForBook } from "./support.js";
+import type { Book, UploadPolicy } from "../api/src/contract.js";
+import { anonApi, api, compose, endOpenJobs, newUser, PRIDE_AND_PREJUDICE, sql, upload, waitForBook } from "./support.js";
 
 /** How long the worker may take to notice: its next report after a segment, or its next heartbeat. */
 const NOTICE_MS = 60_000;
@@ -29,7 +29,8 @@ function rowsOf(bookId: string) {
   return sql(
     `select (select count(*) from books where id = '${bookId}'), ` +
       `(select count(*) from chapters where book_id = '${bookId}'), ` +
-      `(select count(*) from jobs where book_id = '${bookId}')`,
+      `(select count(*) from jobs where book_id = '${bookId}'), ` +
+      `(select count(*) from shelf_entries where book_id = '${bookId}')`,
   );
 }
 
@@ -50,7 +51,18 @@ describe("deleting a Book", () => {
     const { body: created } = await upload("pride-and-prejudice.epub", PRIDE_AND_PREJUDICE);
     const id = created.id;
     // Long Chapters: the worker is mid-Chapter when the user deletes.
-    await waitForBook(id, (b) => b.playable, 90_000);
+    const playable = await waitForBook(id, (b) => b.playable, 90_000);
+    // The user listened a little: the Shelf entry holds where they are.
+    const listened = await api(`/books/${id}/listening`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ positionMs: 1000 }),
+    });
+    expect(listened.status).toBe(204);
+    expect(sql(`select sentence_id is not null from shelf_entries where book_id = '${id}'`)).toEqual(["t"]);
+    // Standard Ebooks EPUBs carry a cover, which the worker stored while parsing.
+    expect(playable.coverUrl).not.toBeNull();
+    expect(storedKeys(id)).toContain(`books/${id}/cover`);
     expect(storedKeys(id).some((k) => k.endsWith(".ts"))).toBe(true);
     expect(storedKeys(id)).toContain(`books/${id}/source.epub`);
     const [running] = sql(`select id, attempt from jobs where book_id = '${id}' and status = 'running'`);
@@ -62,7 +74,7 @@ describe("deleting a Book", () => {
     expect((await api(`/books/${id}`)).status).toBe(404);
     expect((await api(`/books/${id}/audio.m3u8`)).status).toBe(404);
     expect((await api<Book[]>("/books")).body.map((b) => b.id)).not.toContain(id);
-    expect(rowsOf(id)).toEqual(["0|0|0"]);
+    expect(rowsOf(id)).toEqual(["0|0|0|0"]);
 
     // The worker learns from a refused report or heartbeat and drops the job; whatever it wrote meanwhile goes too.
     const dropped = `job ${jobId} attempt ${attempt} was superseded; dropped`;
@@ -82,7 +94,7 @@ describe("deleting a Book", () => {
     expect((await deleteBook(id)).status).toBe(204);
 
     expect((await api(`/books/${id}`)).status).toBe(404);
-    expect(rowsOf(id)).toEqual(["0|0|0"]);
+    expect(rowsOf(id)).toEqual(["0|0|0|0"]);
     // Should parsing have just finished, the worker may still write a segment before its report is refused.
     await waitUntil(() => storedKeys(id).length === 0, NOTICE_MS, "the Book's objects to go");
   });
@@ -92,5 +104,24 @@ describe("deleting a Book", () => {
     expect((await anonApi(`/books/${created.id}`, { method: "DELETE" })).status).toBe(401);
     expect((await api(`/books/${created.id}`)).status).toBe(200);
     expect((await deleteBook(created.id)).status).toBe(204);
+  });
+
+  it("AC-BOOK-08: with 20 uploaded Books, deleting one lets the user upload again", async () => {
+    const user = await newUser("quota");
+    // Not real EPUBs: each fails parsing at once, so the worker spends nothing on them.
+    const tiny = new Uint8Array([80, 75, 3, 4]);
+    const ids: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      const res = await user.upload(`book-${i}.epub`, tiny);
+      expect(res.status).toBe(201);
+      ids.push(res.body.id);
+    }
+    expect((await user.upload("one-more.epub", tiny)).body).toMatchObject({ error: { code: "upload_limit_reached" } });
+
+    expect((await user.api(`/books/${ids[0]}`, { method: "DELETE" })).status).toBe(204);
+
+    expect((await user.api<UploadPolicy>("/upload-policy")).body.uploadedBooks).toBe(19);
+    expect((await user.upload("one-more.epub", tiny)).status).toBe(201);
+    expect((await user.api<Book[]>("/books")).body).toHaveLength(20);
   });
 });

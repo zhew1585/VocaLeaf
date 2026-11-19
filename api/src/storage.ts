@@ -100,7 +100,7 @@ export function sourceKey(bookId: string): string {
 
 /** Where the worker puts a Book's cover image, when its EPUB has one. */
 export function coverKey(bookId: string): string {
-  return `books/${bookId}/cover`;
+  return `${bookPrefix(bookId)}cover`;
 }
 
 /**
