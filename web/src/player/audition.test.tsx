@@ -81,10 +81,47 @@ describe("试听本句", () => {
     expect(hls.source).toBe("/api/books/b1/audio.m3u8");
     expect(hls.config).toMatchObject({ startPosition: 12 });
     expect(playedOn(auditionAudio())).toBe(1);
-    expect(s().audition).toEqual({ id: "s4", loading: true, failed: false });
+    expect(s().audition).toEqual({ id: "s4", loading: true, failed: false, paused: false });
 
     act(() => auditionAudio().dispatchEvent(new Event("playing")));
-    expect(s().audition).toEqual({ id: "s4", loading: false, failed: false });
+    expect(s().audition).toEqual({ id: "s4", loading: false, failed: false, paused: false });
+  });
+
+  it("pauses where it is and plays on from there, still stopping at the Sentence's end", async () => {
+    const s = await openedSession();
+    act(() => s().startAudition(FOURTH));
+    act(() => auditionAudio().dispatchEvent(new Event("playing")));
+    auditionAt(13.5);
+    const loads = hlsInstances.length;
+
+    act(() => s().pauseAudition());
+    expect(media.pause.mock.contexts).toContain(auditionAudio());
+    expect(s().audition).toEqual({ id: "s4", loading: false, failed: false, paused: true });
+
+    act(() => s().resumeAudition());
+    // The same audio on, from 13.5 s: nothing loads again and nothing seeks.
+    expect(playedOn(auditionAudio())).toBe(2);
+    expect(hlsInstances).toHaveLength(loads);
+    expect(auditionAudio().currentTime).toBe(13.5);
+    expect(s().audition).toEqual({ id: "s4", loading: false, failed: false, paused: false });
+
+    auditionAt(15.7);
+    expect(s().audition).toBeNull();
+  });
+
+  it("keeps an interrupted main playback paused while the 试听 is paused, and goes on once it is read", async () => {
+    const s = await openedSession();
+    const { el, seeks } = mainPlayingAt(s, 9);
+    act(() => s().startAudition(FOURTH));
+
+    act(() => s().pauseAudition());
+    expect(el.paused).toBe(true);
+    expect(s().playing).toBe(false);
+
+    act(() => s().resumeAudition());
+    auditionAt(15.7);
+    expect(seeks.at(-1)).toBe(8);
+    expect(s().playing).toBe(true);
   });
 
   it("interrupts the main playback, then goes on from the start of the interrupted Sentence (AC-PLAY-12)", async () => {

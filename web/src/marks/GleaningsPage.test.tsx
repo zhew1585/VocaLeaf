@@ -175,17 +175,27 @@ describe("拾起 (F10)", () => {
     expect(within(list()).getByRole("button", { name: "播放这一句" })).toBeTruthy();
   });
 
-  it("pauses the Sentence at any time from the same button", async () => {
+  it("pauses the Sentence at any time from the same button, and plays on from there", async () => {
     await openPage();
     fireEvent.click(screen.getByText("I went to the woods because I wished to live deliberately."));
     fireEvent.click(within(list()).getByRole("button", { name: "播放这一句" }));
     const el = hlsInstances.at(-1)!.media as HTMLAudioElement;
     act(() => el.dispatchEvent(new Event("playing")));
 
-    fireEvent.click(within(list()).getByRole("button", { name: "暂停" }));
+    Object.defineProperty(el, "currentTime", { value: 65.2, configurable: true, writable: true });
+    act(() => el.dispatchEvent(new Event("timeupdate")));
 
+    fireEvent.click(within(list()).getByRole("button", { name: "暂停" }));
     expect(media.pause.mock.contexts).toContain(el);
     expect(within(list()).getByRole("button", { name: "播放这一句" })).toBeTruthy();
+
+    // Played again: on from where it paused, not from the Sentence's start.
+    const loads = hlsInstances.length;
+    fireEvent.click(within(list()).getByRole("button", { name: "播放这一句" }));
+    expect(hlsInstances).toHaveLength(loads);
+    expect(el.currentTime).toBe(65.2);
+    expect(media.play.mock.contexts.filter((c) => c === el)).toHaveLength(2);
+    expect(within(list()).getByRole("button", { name: "暂停" })).toBeTruthy();
   });
 
   it("offers 播放这一句 only once the Sentence has audio", async () => {

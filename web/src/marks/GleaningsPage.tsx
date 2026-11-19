@@ -56,7 +56,7 @@ function booksOf(items: Gleaning[]): { id: string; title: string }[] {
 /**
  * 拾起 (design 05, F10, PRD 4.4.4): one list of the user's pending Marks across Books, newest first, filtered by
  * Book; × Dismisses after a confirmation. Picking an item shows its Sentence on the right and offers 播放这一句,
- * which plays that Sentence alone (试听) and stops at its end, pausable from the same button. The right side is
+ * which plays that Sentence alone (试听) and stops at its end, pausable and resumable from the same button. The right side is
  * 句子精读 of the picked Sentence with 【忽略这一句】 (F11), where words can be made into a Card (F12), and the 卡片浮窗 in its place
  * once one is made or its green underline clicked (F16). Once an item is Dismissed or made into a Card it leaves the
  * list while the right side keeps showing it (PRD 4.4.4).
@@ -99,10 +99,15 @@ export function GleaningsPage() {
   const audition = (g: Gleaning): AuditionControl | null => {
     const { startMs, endMs } = g;
     if (startMs === null || endMs === null) return null;
-    const state = listening.audition?.id !== g.sentenceId ? "idle" : listening.audition.loading ? "loading" : "playing";
+    const own = listening.audition?.id === g.sentenceId ? listening.audition : null;
+    // Paused, it shows as not playing, and playing goes on from where it paused.
+    const state = !own || own.paused ? "idle" : own.loading ? "loading" : "playing";
     return {
       state,
-      play: () => listening.startAudition({ id: g.sentenceId, startMs, endMs, playlist: playlistUrl(g.bookId) }),
+      play: () =>
+        own?.paused
+          ? listening.resumeAudition()
+          : listening.startAudition({ id: g.sentenceId, startMs, endMs, playlist: playlistUrl(g.bookId) }),
     };
   };
 
@@ -129,7 +134,7 @@ export function GleaningsPage() {
                     setSelected(g);
                   }}
                   audition={audition(g)}
-                  onStop={listening.stopAudition}
+                  onPause={listening.pauseAudition}
                   onDismiss={() => setAsking(g)}
                 />
               ))}
@@ -210,15 +215,15 @@ interface ItemProps {
   /** 试听 of the Sentence, or null while it has no audio. */
   audition: AuditionControl | null;
   onSelect(): void;
-  onStop(): void;
+  onPause(): void;
   onDismiss(): void;
 }
 
 /**
  * One item: the Sentence and where it is from. Picked, it also offers 播放这一句: the Sentence alone (试听, PRD
- * 4.4.1), stopping at its end; while it plays the same button pauses it.
+ * 4.4.1), stopping at its end; while it plays the same button pauses it, and playing again goes on from there.
  */
-function GleaningItem({ gleaning: g, selected, audition, onSelect, onStop, onDismiss }: ItemProps) {
+function GleaningItem({ gleaning: g, selected, audition, onSelect, onPause, onDismiss }: ItemProps) {
   const playing = audition !== null && audition.state !== "idle";
   return (
     <li className={selected ? "gleaning is-selected" : "gleaning"}>
@@ -236,7 +241,7 @@ function GleaningItem({ gleaning: g, selected, audition, onSelect, onStop, onDis
             aria-label={playing ? "暂停" : "播放这一句"}
             title={audition === null ? "这一句的音频还没生成" : playing ? "暂停" : "播放这一句"}
             disabled={audition === null}
-            onClick={playing ? onStop : audition?.play}
+            onClick={playing ? onPause : audition?.play}
           >
             {playing ? <PauseSolidIcon size={15} /> : <PlaySolidIcon size={15} />}
           </button>

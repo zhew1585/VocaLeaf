@@ -2,6 +2,7 @@
 // sound at a time: a 试听 that starts while the main playback plays interrupts it, and once the Sentence is read
 // the main playback goes on from the start of the Sentence it was interrupted in (AC-PLAY-12). Started while paused,
 // it stays paused (AC-PLAY-13); stopped by hand (Space, 暂停, another Sentence), nothing goes on (AC-PLAY-14).
+// 拾起 can also pause it where it is and play it on from there; the main playback waits meanwhile.
 // A Card's 卡片原声 (F16, AC-POP-05) plays the same way, from the Card's own audio file instead of the Book's audio.
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { useHls } from "./hls";
@@ -38,6 +39,8 @@ export interface AuditionState {
   loading: boolean;
   /** Its audio could not be loaded (【音频加载失败】); kept until the next 试听 starts or one is stopped. */
   failed: boolean;
+  /** Paused where it was by `pause`; `resume` plays it on from there. */
+  paused: boolean;
 }
 
 interface Options {
@@ -58,7 +61,7 @@ function sentenceStartAt(starts: number[], positionMs: number): number {
 
 export function useAudition({ main, src, sentenceStartsMs, resumeMain }: Options) {
   const element = useRef<HTMLAudioElement>(null);
-  const [current, setCurrent] = useState<(AuditionSource & { n: number; loading: boolean }) | null>(null);
+  const [current, setCurrent] = useState<(AuditionSource & { n: number; loading: boolean; paused: boolean }) | null>(null);
   const [failedId, setFailedId] = useState<string | null>(null);
   const count = useRef(0);
   // Where the main playback goes on from once the 试听 is read, when it interrupted the main playback.
@@ -68,16 +71,19 @@ export function useAudition({ main, src, sentenceStartsMs, resumeMain }: Options
   // A fresh hls.js per 试听 of a Sentence, loading from it; a Card's clip is a plain file.
   useHls(element, sentence && (sentence.playlist ?? src), current?.n ?? 0, () => end(true), (sentence?.startMs ?? 0) / 1000);
 
-  useEffect(() => {
-    const el = element.current;
-    if (!current || !el) return;
-    if (isClip(current)) el.src = current.src;
+  const play = (el: HTMLAudioElement) =>
     el.play().catch((err: unknown) => {
       if (!(err instanceof DOMException)) return console.warn("试听 failed to play", err);
       // Started without a tap (复习's autoplay) and refused by the browser: it waits for one on its button (PRD G12).
       if (err.name === "NotAllowedError") end(false);
       else if (err.name !== "AbortError") console.warn("试听 failed to play", err);
     });
+
+  useEffect(() => {
+    const el = element.current;
+    if (!current || !el) return;
+    if (isClip(current)) el.src = current.src;
+    void play(el);
   }, [current?.n]);
 
   /** Ends the 试听; `resume` lets an interrupted main playback go on. */
@@ -101,7 +107,22 @@ export function useAudition({ main, src, sentenceStartsMs, resumeMain }: Options
       el.pause();
     }
     setFailedId(null);
-    setCurrent({ ...source, n: ++count.current, loading: true });
+    setCurrent({ ...source, n: ++count.current, loading: true, paused: false });
+  };
+
+  /** Pauses where it is; what it interrupted keeps waiting. */
+  const pause = () => {
+    if (!current || current.paused) return;
+    element.current?.pause();
+    setCurrent({ ...current, paused: true });
+  };
+
+  /** Plays a paused 试听 on from where it paused, to its end as before. */
+  const resume = () => {
+    const el = element.current;
+    if (!current?.paused || !el) return;
+    setCurrent({ ...current, paused: false });
+    void play(el);
   };
 
   const onTimeUpdate = () => {
@@ -110,15 +131,18 @@ export function useAudition({ main, src, sentenceStartsMs, resumeMain }: Options
   };
 
   const state = (): AuditionState | null => {
-    if (current) return { id: current.id, loading: current.loading, failed: false };
-    return failedId === null ? null : { id: failedId, loading: false, failed: true };
+    if (current) return { id: current.id, loading: current.loading, failed: false, paused: current.paused };
+    return failedId === null ? null : { id: failedId, loading: false, failed: true, paused: false };
   };
 
   return {
     element,
     state: state(),
     active: current !== null,
+    paused: current?.paused ?? false,
     start,
+    pause,
+    resume,
     /** Stops by hand: the main playback stays paused. */
     stop: () => {
       setFailedId(null);
