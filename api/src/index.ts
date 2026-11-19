@@ -1,4 +1,5 @@
 import { serve } from "@hono/node-server";
+import { aiProviderFromEnv } from "./ai/from-env.js";
 import { createApp } from "./app.js";
 import { loggingMailer, smtpMailer } from "./auth/mailer.js";
 import { connectDb } from "./db/client.js";
@@ -19,6 +20,7 @@ const app = createApp({
   secureCookie: !dev,
   workerToken: env.WORKER_TOKEN,
   jobLeaseMs: env.JOB_LEASE_SECONDS * 1000,
+  ai: aiProviderFromEnv(env),
 });
 
 serve({ fetch: app.fetch, port: env.PORT }, ({ port }) => console.log(`api listening on :${port}`));

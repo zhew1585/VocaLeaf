@@ -92,6 +92,7 @@ beforeEach(() => {
       const chapterId = /^\/api\/chapters\/([^/]+)\/sentences$/.exec(url)?.[1];
       if (chapterId) return Response.json(SENTENCES[chapterId] ?? []);
       if (url.endsWith("/marks")) return Response.json({ pending: [...marked] });
+      if (url.endsWith("/explanation")) return Response.json({ content: null, messages: [], aiRemaining: 100 });
       if (url.endsWith("/timeline")) {
         return Response.json({
           sentenceStartsMs: ALL.map((s) => s.startMs),
@@ -197,6 +198,27 @@ describe("marking while listening (PRD 4.4.2)", () => {
     expect(screen.queryByRole("status", { name: "标记提示" })).toBeNull();
   });
 
+  it("marks and unmarks the selected Sentence with the leaf of 句子精读, in step with the underline (AC-PANEL-13)", async () => {
+    await openAt(0);
+    fireEvent.click(screen.getByText("However little known."));
+    const panel = screen.getByRole("complementary", { name: "句子精读" });
+
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "标记" }));
+    });
+    expect(writes).toEqual(["PUT s2"]);
+    expect(underlined()).toEqual(["s2", "t2"]);
+    const leaf = within(panel).getByRole("button", { name: "取消标记" });
+    expect(leaf.getAttribute("aria-pressed")).toBe("true");
+
+    await act(async () => {
+      fireEvent.click(leaf);
+    });
+    expect(writes).toEqual(["PUT s2", "DELETE s2"]);
+    expect(underlined()).toEqual(["t2"]);
+    expect(within(panel).getByRole("button", { name: "标记" }).getAttribute("aria-pressed")).toBe("false");
+  });
+
   it("keeps a Mark made offline on the device and sends it once the network is back", async () => {
     await openAt(7);
     online = false;
@@ -243,7 +265,7 @@ describe("marking while listening (PRD 4.4.2)", () => {
 });
 
 describe("opened by 定位原文 (F10)", () => {
-  it("shows the Sentence without following playback, paused, and forgets the parameters", async () => {
+  it("shows and selects the Sentence without following playback, paused, and forgets the parameters", async () => {
     window.history.pushState(null, "", "/books/b1/listen?locate=t2&locateChapter=c2");
     render(
       <PlayGuideProvider seen>
@@ -253,10 +275,17 @@ describe("opened by 定位原文 (F10)", () => {
       </PlayGuideProvider>,
     );
 
-    expect(await screen.findByText("He had always intended.")).toBeTruthy();
+    // In the text and, once selected, in 句子精读 too.
+    expect((await screen.findAllByText("He had always intended.")).length).toBeGreaterThan(0);
     expect(Element.prototype.scrollTo).toHaveBeenCalled();
     expect(await screen.findByRole("button", { name: "回到播放处" })).toBeTruthy();
     expect(window.location.search).toBe("");
     expect(media.play).not.toHaveBeenCalled();
+    // Selected, with 句子精读 open on it (F10 定位原文).
+    await vi.waitFor(() =>
+      expect(document.querySelector(".sentence.is-selected")?.getAttribute("data-sentence-id")).toBe("t2"),
+    );
+    const panel = screen.getByRole("complementary", { name: "句子精读" });
+    expect(panel.querySelector(".panel-sentence-text")?.textContent).toBe("He had always intended.");
   });
 });

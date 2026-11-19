@@ -55,6 +55,12 @@ services:
       # Login code email (ADR 0003). Mailpit catches everything locally; its inbox is http://localhost:8025.
       SMTP_URL: ${SMTP_URL:-smtp://mailpit:1025}
       MAIL_FROM: "${MAIL_FROM:-拾页 <login@vocaleaf.local>}"
+      # 句子精读's AI (PRD 4.7.2). Without a key a deterministic fake answers, so the stack needs no secret.
+      # Set ANTHROPIC_API_KEY (and optionally AI_MODEL, default claude-sonnet-5-5) in the shell or .env to use Claude.
+      AI_PROVIDER: ${AI_PROVIDER:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_FAKE_DELAY_MS: ${AI_FAKE_DELAY_MS:-40}
     depends_on:
       postgres: { condition: service_healthy }
       storage: { condition: service_started }

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookDetail, Sentence } from "../api";
 import { PlayGuideProvider } from "../guide/PlayGuide";
 import { ListeningProvider } from "../player/session";
+import { resetSentenceChats } from "../reading/chatStore";
 import { audio, audioWithGenerated, grow, hlsInstances, stubMediaPlayback, timeUpdate } from "../test-media";
 import { ListenPage } from "./ListenPage";
 
@@ -21,6 +22,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  resetSentenceChats();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   vi.useRealTimers();
@@ -74,14 +76,14 @@ const secondPlayable: BookDetail = {
   chapters: [generating.chapters[0]!, { ...generating.chapters[1]!, startMs: 600_000, waitSeconds: null }, generating.chapters[2]!],
 };
 
-const sentence = (id: string, paragraphIndex: number, text: string, startMs: number | null): Sentence => ({
+const sentence = (id: string, paragraphIndex: number, text: string, startMs: number | null, endMs: number | null = null): Sentence => ({
   id,
   index: 0,
   paragraphIndex,
   text,
   spokenText: text,
   startMs,
-  endMs: null,
+  endMs,
   wordTimings: null,
 });
 
@@ -105,6 +107,7 @@ function serve(books: BookDetail[], sentences: Record<string, Sentence[]> = {}) 
     if (chapterId) return Response.json(sentences[chapterId] ?? []);
     if (url.endsWith("/timeline")) return Response.json(timelineOf(sentences));
     if (url.endsWith("/marks")) return Response.json({ pending: [] });
+    if (url.endsWith("/explanation")) return Response.json({ content: null, messages: [], aiRemaining: 100 });
     return Response.json(queue.length > 1 ? queue.shift() : queue[0]);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -450,9 +453,9 @@ describe("ListenPage reading view (F7, F9)", () => {
   };
   const sentences = {
     c1: [
-      sentence("s1", 0, "It is a truth universally acknowledged.", 0),
-      sentence("s2", 0, "However little known the feelings may be.", 4_000),
-      sentence("s3", 1, "My dear Mr. Bennet, said his lady.", 7_000),
+      sentence("s1", 0, "It is a truth universally acknowledged.", 0, 3_700),
+      sentence("s2", 0, "However little known the feelings may be.", 4_000, 6_700),
+      sentence("s3", 1, "My dear Mr. Bennet, said his lady.", 7_000, 9_700),
     ],
     imprint: [sentence("i1", 0, "Printed in London.", null)],
     c2: [sentence("t1", 0, "Mr. Bennet was among the earliest.", 10_000), sentence("t2", 0, "He had always intended.", 15_000)],
@@ -560,6 +563,108 @@ describe("ListenPage reading view (F7, F9)", () => {
     expect(column()).toBe("620px");
     fireEvent.click(screen.getByRole("button", { name: "收起句子精读" }));
     expect(column()).toBe("720px");
+  });
+
+  describe("selecting a Sentence (句子精读)", () => {
+    const panel = () => screen.getByRole("complementary", { name: "句子精读" });
+    const selectedText = () => document.querySelector(".sentence.is-selected")?.textContent ?? null;
+    const SECOND = "However little known the feelings may be.";
+
+    async function selectSecond() {
+      await act(async () => fireEvent.click(screen.getByText(SECOND)));
+    }
+
+    it("selects a Sentence without a Card and opens 句子精读 on it (AC-READ-15)", async () => {
+      await openFinished();
+
+      await selectSecond();
+
+      expect(selectedText()).toBe(SECOND);
+      expect(within(panel()).getByText(SECOND)).toBeTruthy();
+      expect(within(panel()).getByRole("button", { name: "AI 解析" })).toBeTruthy();
+      expect(column()).toBe("620px");
+      // Only a look: playback is untouched (PRD 4.4.5 点击规则 #4).
+      expect(media.play).not.toHaveBeenCalled();
+    });
+
+    it("deselects on blank text and with Esc, keeping the panel open", async () => {
+      await openFinished();
+      await selectSecond();
+
+      fireEvent.click(document.querySelector(".reading-content")!);
+      expect(selectedText()).toBeNull();
+      expect(within(panel()).getByText("选择一句正文")).toBeTruthy();
+
+      await selectSecond();
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(selectedText()).toBeNull();
+    });
+
+    it("keeps the selection when the panel is collapsed and opened again", async () => {
+      await openFinished();
+      await selectSecond();
+
+      fireEvent.click(screen.getByRole("button", { name: "收起句子精读" }));
+      expect(selectedText()).toBe(SECOND);
+      fireEvent.click(screen.getByRole("button", { name: "展开句子精读" }));
+      expect(within(panel()).getByText(SECOND)).toBeTruthy();
+    });
+
+    it("plays from the selected Sentence's start with 【从这里播放】 beside it (AC-PLAY-15)", async () => {
+      await openFinished();
+      const { seeks } = audioWithGenerated(20);
+      expect(screen.queryByRole("button", { name: "从这里播放" })).toBeNull();
+      await selectSecond();
+
+      fireEvent.click(screen.getByRole("button", { name: "从这里播放" }));
+
+      expect(seeks).toEqual([4]);
+      expect(media.play).toHaveBeenCalledTimes(1);
+    });
+
+    it("scrolls the text back to the Sentence with 【定位原文】, playback untouched (AC-PANEL-12)", async () => {
+      await openFinished();
+      const { seeks } = audioWithGenerated(20);
+      seeks.push(1);
+      await selectSecond();
+      fireEvent.wheel(document.querySelector(".reading-scroll")!);
+      scrollTo.mockClear();
+
+      fireEvent.click(within(panel()).getByRole("button", { name: "定位原文" }));
+
+      expect(scrollTo).toHaveBeenCalled();
+      expect(seeks.at(-1)).toBe(1);
+      expect(media.play).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "回到播放处" })).toBeTruthy();
+    });
+
+    it("plays only the selected Sentence with 【试听本句】, interrupting playback (AC-PLAY-12)", async () => {
+      await openFinished();
+      audioWithGenerated(20);
+      fireEvent.click(screen.getByRole("button", { name: "播放" }));
+      await selectSecond();
+
+      fireEvent.click(within(panel()).getByRole("button", { name: "试听本句" }));
+
+      expect(audio().paused).toBe(true);
+      const audition = hlsInstances.at(-1)!;
+      expect(audition.media).toBe(document.querySelectorAll("audio")[1]);
+      expect(audition.config).toMatchObject({ startPosition: 4 });
+      expect(within(panel()).getByRole("button", { name: "试听本句" }).getAttribute("aria-busy")).toBe("true");
+    });
+
+    it("stops a 试听 when another Sentence is selected", async () => {
+      await openFinished();
+      audioWithGenerated(20);
+      await selectSecond();
+      fireEvent.click(within(panel()).getByRole("button", { name: "试听本句" }));
+      const audition = hlsInstances.at(-1)!;
+
+      await act(async () => fireEvent.click(screen.getByText("My dear Mr. Bennet, said his lady.")));
+
+      expect(audition.destroyed).toBe(true);
+      expect(within(panel()).getByRole("button", { name: "试听本句" }).getAttribute("aria-busy")).toBe("false");
+    });
   });
 
   it("loads only the Chapters near the reading position of a long Book (AC-READ-05)", async () => {

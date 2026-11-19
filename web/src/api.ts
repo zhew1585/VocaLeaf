@@ -7,6 +7,9 @@ import type {
   BookMarks,
   BookTimeline,
   CodeSent,
+  ExplainEvent,
+  ExplainRequest,
+  Explanation,
   Gleaning,
   GleaningCount,
   LibraryBook,
@@ -23,7 +26,11 @@ export type {
   BookStatus,
   BookTimeline,
   ChapterSummary,
+  ChatMessage,
   Difficulty,
+  ExplainEvent,
+  ExplainRequest,
+  Explanation,
   Gleaning,
   LibraryBook,
   Listening,
@@ -249,4 +256,32 @@ export function getGleanings(): Promise<Gleaning[]> {
 /** How many Sentences wait in Gleanings. */
 export function getGleaningCount(): Promise<GleaningCount> {
   return request<GleaningCount>("/gleanings/count");
+}
+
+/** The user's Explanation of a Sentence with its follow-up questions, and today's AI calls left. */
+export function getExplanation(sentenceId: string): Promise<Explanation> {
+  return request<Explanation>(`/sentences/${sentenceId}/explanation`);
+}
+
+/**
+ * Asks the AI about a Sentence (AI 解析, regenerate, or a follow-up question) and hands each streamed event to
+ * `onEvent` as it arrives. Resolves when the stream ends; rejects with the API's message when the call is refused
+ * (no calls left: status 429), and with an AbortError once `signal` stops it.
+ */
+export async function streamExplanation(
+  sentenceId: string,
+  body: ExplainRequest,
+  { signal, onEvent }: { signal: AbortSignal; onEvent(event: ExplainEvent): void },
+): Promise<void> {
+  const res = await send(`/sentences/${sentenceId}/explanation`, { ...postJson(body), signal });
+  const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
+  let buffered = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffered += value;
+    const lines = buffered.split("\n");
+    buffered = lines.pop()!;
+    for (const line of lines) if (line.trim()) onEvent(JSON.parse(line) as ExplainEvent);
+  }
 }

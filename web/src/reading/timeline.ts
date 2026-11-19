@@ -8,6 +8,7 @@ export interface ReadingSentence {
   text: string;
   /** Position in the Book's audio; null until its Chapter is placed in the playlist. */
   startMs: number | null;
+  endMs: number | null;
 }
 
 /** The Chapter whose audio holds the position: the last placed one starting at or before it. */
