@@ -526,16 +526,17 @@ button.chapter-title:hover {
   align-items: center;
 }
 
+/* Both sides share what the transport leaves, so it stays centered at any width. */
 .player-side {
-  width: 140px;
-  flex: none;
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
 .player-transport {
-  flex: 1;
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -660,23 +661,26 @@ button.chapter-title:hover {
   border-top: 1px solid var(--line);
 }
 
-/* Phone width: the side groups shrink to their content and the transport keeps the middle. */
+/* Phone width: tighter padding and gaps. */
 @media (max-width: 520px) {
   .player {
     padding: 12px 14px;
   }
 
   .player-side {
-    width: auto;
     gap: 0;
   }
 
-  .player-side:empty {
-    display: none;
+  .player-speed {
+    padding: 0 8px;
+  }
+
+  .player-icon-button {
+    width: 32px;
   }
 
   .player-transport {
-    gap: 14px;
+    gap: 10px;
   }
 }
 
