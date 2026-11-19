@@ -182,6 +182,11 @@ export async function unmarkSentence(sentenceId: string): Promise<void> {
   }
 }
 
+/** A Card was made of the Sentence: the API processed its pending Mark (PRD 4.5.2 规则 7), so it is pending no more. */
+export function announceCardMade(sentenceId: string): void {
+  announce({ sentenceId, pending: false });
+}
+
 /** Dismisses the pending Mark of a Sentence (PRD 4.4.4); needs the network, the caller shows a failure. */
 export async function dismissFromGleanings(sentenceId: string): Promise<void> {
   await dismissMark(sentenceId);

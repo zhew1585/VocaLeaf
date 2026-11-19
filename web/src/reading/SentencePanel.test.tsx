@@ -77,7 +77,18 @@ interface Options {
 }
 
 function panel({ sentence = S1, audition = null, mark = null, onLocate = () => {} }: Options = {}) {
-  return <SentencePanel sentence={sentence} onClose={() => {}} onLocate={onLocate} audition={audition} mark={mark} />;
+  return (
+    <SentencePanel
+      sentence={sentence}
+      onClose={() => {}}
+      onLocate={onLocate}
+      audition={audition}
+      mark={mark}
+      cards={[]}
+      onOpenCards={() => {}}
+      onCardMade={() => {}}
+    />
+  );
 }
 
 async function renderPanel(options?: Options) {

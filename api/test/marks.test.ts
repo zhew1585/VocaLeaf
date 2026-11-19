@@ -74,6 +74,7 @@ describe("marking a Sentence (PRD 4.4.2)", () => {
         chapterId: book.chapters[0]!.id,
         chapterTitle: "I",
         startMs: 4000,
+        endMs: 7700,
         markedAt: "2026-11-18T00:00:00.000Z",
       },
     ]);

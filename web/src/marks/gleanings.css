@@ -155,62 +155,23 @@
   color: var(--ink-2);
 }
 
-/* The right side: 句子精读's fixed area for the picked Sentence (#14 brings the rest of the panel). */
-.gleaning-panel {
+/* The right side: 句子精读 (SentencePanel) of the picked Sentence, or the 卡片浮窗 in its place. */
+.gleaning-panel,
+.gleaning-popover-area {
   position: sticky;
   top: 0;
   height: 100vh;
-  display: flex;
-  flex-direction: column;
-  border-left: 1px solid var(--line);
-  background: var(--surface);
 }
 
-.gleaning-panel-header {
-  height: 96px;
-  display: flex;
-  align-items: flex-end;
-  padding: 0 20px 16px 28px;
+.gleaning-panel > .sentence-panel {
+  width: auto;
+  height: 100%;
 }
 
-.gleaning-panel-header h2 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 400;
-  color: var(--ink-2);
-}
-
-.gleaning-fixed {
-  padding: 0 28px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  border-bottom: 1px solid var(--line);
-  margin: 0 0 0;
-}
-
-.gleaning-fixed-text {
-  margin: 0;
-  font-family: var(--font-read);
-  font-size: 25px;
-  font-weight: 500;
-  line-height: 1.32;
-  color: var(--ink);
-}
-
-.gleaning-fixed-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.gleaning-fixed-spacer {
-  flex: 1;
-}
-
-.round-action,
+/* 【忽略这一句】 at the end of 句子精读's actions (design 05). */
 .pill-action {
   height: 40px;
+  padding: 0 12px;
   border: 0;
   border-radius: 20px;
   background: var(--paper);
@@ -220,43 +181,8 @@
   cursor: pointer;
 }
 
-.round-action {
-  width: 40px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-}
-
-.pill-action {
-  padding: 0 12px;
-}
-
-.round-action:hover,
 .pill-action:hover {
   background: var(--sunken);
-}
-
-.gleaning-panel-empty {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 24px;
-  color: var(--ink-3);
-  font-size: 13px;
-  text-align: center;
-}
-
-.gleaning-panel-empty p {
-  margin: 0;
-}
-
-.gleaning-panel-empty .gleaning-panel-empty-title {
-  margin-top: 6px;
-  color: var(--ink-2);
-  font-size: 15px;
 }
 
 /* Narrow windows: the list takes the width, the panel follows below it. */
@@ -269,10 +195,9 @@
     padding: 28px 16px 32px;
   }
 
-  .gleaning-panel {
+  .gleaning-panel,
+  .gleaning-popover-area {
     position: static;
-    height: auto;
-    border-left: 0;
-    border-top: 1px solid var(--line);
+    height: 70vh;
   }
 }

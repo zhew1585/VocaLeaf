@@ -1,17 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getGleanings, type Gleaning } from "../api";
+import { getGleanings, type Card, type Gleaning, type MadeCard } from "../api";
+import { CardPopover } from "../cards/CardPopover";
+import { useBookCards } from "../cards/useBookCards";
+import { useCardPopover } from "../cards/useCardPopover";
 import { locatePath } from "../chapters";
-import { LocateIcon, PlaySolidIcon, TextCursorInputIcon, XIcon } from "../icons";
-import { useListening } from "../player/session";
+import { PlaySolidIcon, XIcon } from "../icons";
+import type { AuditionControl } from "../reading/SentencePanel";
+import { playlistUrl, useListening } from "../player/session";
+import { SentencePanel } from "../reading/SentencePanel";
 import { navigate } from "../router";
 import { ConfirmDismiss } from "./ConfirmDismiss";
-import type { MarksChange } from "./marks";
+import { markSentence, unmarkSentence, type MarksChange } from "./marks";
 import { useMarksChanged } from "./useMarks";
 import "./gleanings.css";
 
 const EMPTY = "都拾起来了。听书时点标记，句子会出现在这里";
 
-/** Gleanings from the API, loaded again whenever Marks may have changed wholesale (the outbox was sent). */
+/**
+ * Gleanings from the API. A Sentence whose Mark stops being pending (Dismissed, unmarked, made into a Card) leaves
+ * at once; they are loaded again when one becomes pending or Marks may have changed wholesale (the outbox was sent).
+ */
 function useGleanings() {
   const [items, setItems] = useState<Gleaning[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -26,10 +34,15 @@ function useGleanings() {
       active = false;
     };
   }, [reloads]);
-  useMarksChanged(useCallback((change: MarksChange) => change === null && setReloads((n) => n + 1), []));
   const remove = useCallback((sentenceId: string) => {
     setItems((prev) => prev && prev.filter((g) => g.sentenceId !== sentenceId));
   }, []);
+  useMarksChanged(
+    useCallback(
+      (change: MarksChange) => (change === null || change.pending ? setReloads((n) => n + 1) : remove(change.sentenceId)),
+      [remove],
+    ),
+  );
   return { items, error, remove };
 }
 
@@ -43,8 +56,10 @@ function booksOf(items: Gleaning[]): { id: string; title: string }[] {
 /**
  * 拾起 (design 05, F10, PRD 4.4.4): one list of the user's pending Marks across Books, newest first, filtered by
  * Book; × Dismisses after a confirmation. Picking an item shows its Sentence on the right and offers
- * 【从这里播放】, which plays it in the listening session without leaving the page. Once an item is Dismissed (or,
- * with #15, made into a Card) it leaves the list while the right side keeps showing it.
+ * 【从这里播放】, which plays it in the listening session without leaving the page. The right side is 句子精读 of the
+ * picked Sentence with 【忽略这一句】 (F11), where words can be made into a Card (F12), and the 卡片浮窗 in its place
+ * once one is made or its green underline clicked (F16). Once an item is Dismissed or made into a Card it leaves the
+ * list while the right side keeps showing it (PRD 4.4.4).
  */
 export function GleaningsPage() {
   const { items, error, remove } = useGleanings();
@@ -53,6 +68,18 @@ export function GleaningsPage() {
   const [asking, setAsking] = useState<Gleaning | null>(null);
   const listening = useListening();
   const plays = useRef(0);
+  const cards = useBookCards(selected?.bookId ?? null);
+  const popover = useCardPopover<null>(cards);
+  const { close: closePopover } = popover;
+  const popoverOpen = popover.open !== null;
+
+  // Esc closes the popover (F16 关闭); this page has no other Esc.
+  useEffect(() => {
+    if (!popoverOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && closePopover();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [popoverOpen, closePopover]);
 
   if (error && !items) {
     return (
@@ -68,6 +95,17 @@ export function GleaningsPage() {
   const filter = books.some((b) => b.id === bookFilter) ? bookFilter : null;
   const shown = filter === null ? items : items.filter((g) => g.bookId === filter);
   const pending = (g: Gleaning | null) => g !== null && items.some((i) => i.sentenceId === g.sentenceId);
+
+  /** 【试听本句】 (PRD 4.4.1 试听): the Sentence alone, from its own Book's audio, whichever Book the session holds. */
+  const audition = (g: Gleaning): AuditionControl | null => {
+    const { startMs, endMs } = g;
+    if (startMs === null || endMs === null) return null;
+    const state = listening.audition?.id !== g.sentenceId ? "idle" : listening.audition.loading ? "loading" : "playing";
+    return {
+      state,
+      play: () => listening.startAudition({ id: g.sentenceId, startMs, endMs, playlist: playlistUrl(g.bookId) }),
+    };
+  };
 
   /** 从这里播放 (PRD 4.4.1): the session switches to the Sentence's Book if needed and plays from its start. */
   const playFrom = (g: Gleaning) => {
@@ -93,7 +131,11 @@ export function GleaningsPage() {
                   key={g.sentenceId}
                   gleaning={g}
                   selected={g.sentenceId === selected?.sentenceId}
-                  onSelect={() => setSelected(g)}
+                  onSelect={() => {
+                    // Another Sentence: its own right side, and no 试听 goes on (PRD 4.4.1 试听 #5).
+                    if (g.sentenceId !== selected?.sentenceId) closePopover();
+                    setSelected(g);
+                  }}
                   onPlay={() => playFrom(g)}
                   onDismiss={() => setAsking(g)}
                 />
@@ -102,12 +144,30 @@ export function GleaningsPage() {
           </>
         )}
       </section>
-      <GleaningPanel
-        gleaning={selected}
-        pending={pending(selected)}
-        onLocate={(g) => navigate(locatePath(g.bookId, g.chapterId, g.sentenceId))}
-        onDismiss={setAsking}
-      />
+      {popover.open ? (
+        <div className="card-popover-area gleaning-popover-area">
+          <CardPopover
+            key={popover.open.cards.map((c) => c.id).join()}
+            cards={popover.open.cards}
+            onClose={closePopover}
+            onStudySentence={closePopover}
+            onCardChanged={popover.changed}
+            audio={popover.audio}
+          />
+        </div>
+      ) : (
+        <GleaningPanel
+          gleaning={selected}
+          pending={pending(selected)}
+          cards={selected ? cards.of(selected.sentenceId) : []}
+          audition={selected && audition(selected)}
+          onLocate={(g) => navigate(locatePath(g.bookId, g.chapterId, g.sentenceId))}
+          onDismiss={setAsking}
+          onOpenCards={(shown) => popover.show(shown, null)}
+          // A new Card took the item out of Gleanings (PRD 4.4.4); the right side keeps the Sentence.
+          onCardMade={(made) => popover.made(made, null)}
+        />
+      )}
       {asking && (
         <ConfirmDismiss
           sentenceId={asking.sentenceId}
@@ -192,51 +252,47 @@ function GleaningItem({ gleaning: g, selected, onSelect, onPlay, onDismiss }: It
 
 interface PanelProps {
   gleaning: Gleaning | null;
-  /** Whether the Sentence is still in Gleanings (not yet Dismissed). */
+  /** Whether the Sentence is still in Gleanings (not Dismissed, unmarked or made into a Card yet). */
   pending: boolean;
+  cards: Card[];
+  /** 【试听本句】; null while the Sentence has no audio. */
+  audition: AuditionControl | null;
   onLocate(g: Gleaning): void;
   onDismiss(g: Gleaning): void;
+  onOpenCards(cards: Card[]): void;
+  onCardMade(made: MadeCard): void;
 }
 
 /**
- * The right side: the picked Sentence's 句子精读 fixed area with 定位原文 and 【忽略这一句】 (design 05). The panel
- * itself (试听本句, the leaf, AI 解析 and the chat) is #14's SentencePanel, which takes over this frame; 忽略这一句 and
- * 定位原文 go into its fixed area. 制卡 (#15) processes the Mark (api markProcessed) and the item leaves the list.
+ * The right side: 句子精读 (F11) of the picked Sentence, with 【忽略这一句】 while it is in Gleanings (design 05). The
+ * leaf takes the Mark back (the item leaves) or marks it again.
  */
-function GleaningPanel({ gleaning, pending, onLocate, onDismiss }: PanelProps) {
+function GleaningPanel({ gleaning, pending, cards, audition, onLocate, onDismiss, onOpenCards, onCardMade }: PanelProps) {
+  const sentence = gleaning && { id: gleaning.sentenceId, text: gleaning.text };
   return (
-    <aside className="gleaning-panel" aria-label="句子精读">
-      <header className="gleaning-panel-header">
-        <h2>句子精读</h2>
-      </header>
-      {gleaning ? (
-        <div className="gleaning-fixed">
-          <p className="gleaning-fixed-text">{gleaning.text}</p>
-          <div className="gleaning-fixed-actions">
-            <button
-              type="button"
-              className="round-action"
-              aria-label="定位原文"
-              title="定位原文"
-              onClick={() => onLocate(gleaning)}
-            >
-              <LocateIcon />
+    <div className="gleaning-panel">
+      <SentencePanel
+        sentence={sentence}
+        onLocate={() => gleaning && onLocate(gleaning)}
+        audition={audition}
+        mark={
+          gleaning && {
+            marked: pending,
+            toggle: () => void (pending ? unmarkSentence(gleaning.sentenceId) : markSentence(gleaning.sentenceId)),
+          }
+        }
+        cards={cards}
+        onOpenCards={onOpenCards}
+        onCardMade={onCardMade}
+        extraAction={
+          gleaning &&
+          pending && (
+            <button type="button" className="pill-action" onClick={() => onDismiss(gleaning)}>
+              忽略这一句
             </button>
-            <span className="gleaning-fixed-spacer" />
-            {pending && (
-              <button type="button" className="pill-action" onClick={() => onDismiss(gleaning)}>
-                忽略这一句
-              </button>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="gleaning-panel-empty">
-          <TextCursorInputIcon />
-          <p className="gleaning-panel-empty-title">选择一条句子</p>
-          <p>在左侧选中一句，在这里定位原文或忽略</p>
-        </div>
-      )}
-    </aside>
+          )
+        }
+      />
+    </div>
   );
 }

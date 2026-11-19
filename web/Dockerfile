@@ -6,6 +6,8 @@ COPY api/package.json api/
 COPY web/package.json web/
 RUN npm ci -w web
 COPY web web
+# The one API module the web imports at runtime (dependency-free; web/src/cards/MakeCard.tsx).
+COPY api/src/cards/target.ts api/src/cards/target.ts
 RUN npm run build -w web
 
 FROM public.ecr.aws/docker/library/nginx:1.27-alpine

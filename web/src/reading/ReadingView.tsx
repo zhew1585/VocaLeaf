@@ -11,7 +11,9 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
-import type { BookDetail, ChapterSummary } from "../api";
+import type { BookDetail, Card, ChapterSummary } from "../api";
+import { cardsHit } from "../cards/cards";
+import { CardText, hitCardIds } from "../cards/CardText";
 import { PlaySolidIcon } from "../icons";
 import { currentSentenceId, paragraphs, type ReadingSentence } from "./timeline";
 import { useChapterSentences } from "./useChapterSentences";
@@ -62,9 +64,14 @@ interface Props {
   dock: ReactNode;
   /** Sentences with a pending Mark, underlined in amber dashes (PRD 4.4.5, AC-READ-04). */
   markedIds: ReadonlySet<string>;
+  /** Each Sentence's Cards, their Targets underlined in solid green (PRD 4.4.5 有 Card). */
+  cardsBySentence: ReadonlyMap<string, Card[]>;
   selected: SelectedSentence | null;
-  /** A click on a Sentence (PRD 4.4.5 点击规则). */
-  onSelect(sentence: ReadingSentence, chapterId: string): void;
+  /**
+   * A click on a Sentence (PRD 4.4.5 点击规则), with the Cards it hit: those of the green underline clicked, or all
+   * of the Sentence's elsewhere; none for a Sentence without Cards and for 【定位原文】's selection.
+   */
+  onSelect(sentence: ReadingSentence, chapterId: string, cards: Card[]): void;
   /** A click on the text's blank space. */
   onDeselect(): void;
   /** 【从这里播放】 beside the selected Sentence; null when it cannot play from here. */
@@ -130,6 +137,7 @@ export function ReadingView({
   onToggleDirectory,
   dock,
   markedIds,
+  cardsBySentence,
   selected,
   onSelect,
   onDeselect,
@@ -226,7 +234,7 @@ export function ReadingView({
   latestSentences.current = sentences;
   const selectLoaded = (chapterId: string, sentenceId: string) => {
     const sentence = latestSentences.current.get(chapterId)?.find((s) => s.id === sentenceId);
-    if (sentence) latestOnSelect.current(sentence, chapterId);
+    if (sentence) latestOnSelect.current(sentence, chapterId, []);
   };
   const showChapter = (chapterId: string) => {
     setFollowing(false);
@@ -280,7 +288,8 @@ export function ReadingView({
     if (!span) return onDeselect();
     const chapterId = span.closest<HTMLElement>("[data-chapter-id]")!.dataset.chapterId!;
     const sentence = sentences.get(chapterId)?.find((s) => s.id === span.dataset.sentenceId);
-    if (sentence) onSelect(sentence, chapterId);
+    const cards = sentence ? (cardsBySentence.get(sentence.id) ?? []) : [];
+    if (sentence) onSelect(sentence, chapterId, cardsHit(cards, hitCardIds(target)));
   };
 
   return (
@@ -308,6 +317,7 @@ export function ReadingView({
               placeholderHeight={placeholderHeight(c)}
               currentSentenceId={c.id === playingChapterId ? current : null}
               markedIds={markedIds}
+              cardsBySentence={cardsBySentence}
               selectedSentenceId={c.id === selected?.chapterId ? selected.id : null}
               onPlayFrom={c.id === selected?.chapterId ? onPlayFrom : null}
               faded={i === readingIndex && intoChapter}
@@ -336,6 +346,7 @@ interface SectionProps {
   placeholderHeight: number;
   currentSentenceId: string | null;
   markedIds: ReadonlySet<string>;
+  cardsBySentence: ReadonlyMap<string, Card[]>;
   selectedSentenceId: string | null;
   onPlayFrom: ((sentence: ReadingSentence) => void) | null;
   /** The text under the sticky title fades out once the Chapter is scrolled into (not at its start). */
@@ -351,6 +362,7 @@ const ChapterSection = memo(function ChapterSection({
   placeholderHeight,
   currentSentenceId,
   markedIds,
+  cardsBySentence,
   selectedSentenceId,
   onPlayFrom,
   faded,
@@ -395,7 +407,7 @@ const ChapterSection = memo(function ChapterSection({
                   )}
                   aria-current={s.id === currentSentenceId ? "true" : undefined}
                 >
-                  {s.text}
+                  <CardText text={s.text} cards={cardsBySentence.get(s.id) ?? []} />
                 </span>
               </Fragment>
             ))}
