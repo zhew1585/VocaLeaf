@@ -3,8 +3,18 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Book, UploadPolicy } from "../api";
+import { ListeningProvider } from "../player/session";
 import { stubMediaPlayback } from "../test-media";
-import { ShelfPage } from "./ShelfPage";
+import { ShelfPage as Page } from "./ShelfPage";
+
+vi.mock("hls.js", async () => ({ default: (await import("../test-media")).FakeHls }));
+
+/** The Shelf inside the app's listening session, as App renders it. */
+const ShelfPage = () => (
+  <ListeningProvider>
+    <Page />
+  </ListeningProvider>
+);
 
 const MB = 1024 * 1024;
 
@@ -148,7 +158,7 @@ describe("the Shelf (F3)", () => {
     expect(card.querySelector("img")!.getAttribute("src")).toBe("/api/books/p/cover");
   });
 
-  it("lists the other Books in Shelf order with their progress or processing state (AC-SHELF-01, AC-SHELF-02)", async () => {
+  it("lists every Book in Shelf order, the one in 【继续收听】 too, with its progress or processing state (AC-SHELF-01, AC-SHELF-02)", async () => {
     serve([shelf]);
     render(<ShelfPage />);
 
@@ -156,6 +166,7 @@ describe("the Shelf (F3)", () => {
     const tiles = within(grid).getAllByRole("link");
     // Text of each tile: a default cover's title, 生成中's n/N on the cover, then title and state.
     expect(tiles.map((t) => t.textContent)).toEqual([
+      "Pride and Prejudice34%",
       "The Great GatsbyThe Great Gatsby62%",
       "AliceAlice未开始",
       "A Room of One's Own3 / 6A Room of One's Own生成中",
@@ -163,7 +174,7 @@ describe("the Shelf (F3)", () => {
       "atomic-habits解析失败文件无法读取",
     ]);
     // Without a cover image, the cover carries the title.
-    expect(tiles[1]!.querySelector(".book-cover-title")!.textContent).toBe("Alice");
+    expect(tiles[2]!.querySelector(".book-cover-title")!.textContent).toBe("Alice");
   });
 
   it("opens a playable Book in the 专注页 to play on, and any other in its detail (AC-SHELF-03, AC-SHELF-04)", async () => {
@@ -176,9 +187,43 @@ describe("the Shelf (F3)", () => {
 
     fireEvent.click(within(grid).getByRole("link", { name: /Meditations/ }));
     expect(window.location.pathname + window.location.search).toBe("/books/m");
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: "继续收听 Pride and Prejudice" }));
-    expect(window.location.pathname + window.location.search).toBe("/books/p/listen?autoplay");
+  it("opens the 专注页 from anywhere on 【继续收听】, playback as it was, like the sidebar's 当前收听", async () => {
+    serve([shelf]);
+    render(<ShelfPage />);
+    const card = await screen.findByRole("region", { name: "继续收听" });
+
+    fireEvent.click(within(card).getByRole("link", { name: /Pride and Prejudice/ }));
+    expect(window.location.pathname + window.location.search).toBe("/books/p/listen");
+
+    // The darkened cover around 详情 too.
+    window.history.pushState(null, "", "/");
+    fireEvent.click(card.querySelector(".cover-actions")!);
+    expect(window.location.pathname + window.location.search).toBe("/books/p/listen");
+  });
+
+  it("opens a Book's detail from 详情 on its cover, in 【继续收听】 and in the grid", async () => {
+    serve([shelf]);
+    render(<ShelfPage />);
+    const card = await screen.findByRole("region", { name: "继续收听" });
+
+    fireEvent.click(within(card).getByRole("button", { name: "Pride and Prejudice 详情" }));
+    expect(window.location.pathname).toBe("/books/p");
+
+    const grid = screen.getByRole("list", { name: "书架上的书" });
+    fireEvent.click(within(grid).getByRole("button", { name: "The Great Gatsby 详情" }));
+    expect(window.location.pathname).toBe("/books/g");
+  });
+
+  it("offers 播放 on a playable Book's cover only; every Book has 详情", async () => {
+    serve([shelf]);
+    render(<ShelfPage />);
+    const grid = await screen.findByRole("list", { name: "书架上的书" });
+
+    const play = within(grid).getAllByRole("button", { name: /^播放 / }).map((b) => b.getAttribute("aria-label"));
+    expect(play).toEqual(["播放 Pride and Prejudice", "播放 The Great Gatsby", "播放 Alice", "播放 A Room of One's Own"]);
+    expect(within(grid).getAllByRole("button", { name: / 详情$/ })).toHaveLength(6);
   });
 
   it("has no 【继续收听】 before anything was listened to", async () => {
