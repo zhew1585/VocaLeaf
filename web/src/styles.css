@@ -15,6 +15,8 @@
   --amber-ink: #8a5514;
   /* A Card's Target underline (design: leaf at half strength), opaque so it hides a Mark's dashes under it. */
   --card-line: #92a697;
+  /* A cover darkened under the pointer, to show its actions (Shelf covers, the sidebar's 当前收听). */
+  --cover-dim: rgb(23 38 30 / 0.55);
   --font-ui: "Noto Sans SC", system-ui, sans-serif;
   --font-title: "Noto Serif SC", serif;
   --font-read: "Newsreader", Georgia, serif;
@@ -265,7 +267,7 @@ html:has(.shell) {
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgb(23 38 30 / 80%);
+  background: var(--cover-dim);
   color: var(--surface);
   opacity: 0;
 }
@@ -458,16 +460,35 @@ html:has(.shell) {
 }
 
 /* 04-2 book detail */
+/*
+ * The Book detail fills the window: the left column stays put and only the Chapter list scrolls. It lays out its
+ * own edges, so the page itself never scrolls.
+ */
+.shell-main:has(> .book-layout) {
+  padding: 0;
+  container-type: inline-size;
+}
+
+/* The Chapter list's scrollbar is the window's right edge, so no page gutter is kept beside it. */
+html:has(.book-layout) {
+  scrollbar-gutter: auto;
+}
+
 .book-layout {
-  max-width: 1200px;
-  margin: 0 auto;
+  /* The content's sides: 56 px, or more to centre it at 1200 px in a wide window. */
+  --book-side: max(56px, calc((100cqw - 1200px) / 2));
+  height: 100vh;
+  padding: 36px 0 0 var(--book-side);
   display: grid;
-  grid-template-columns: 300px 1fr;
+  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 72px;
-  align-items: start;
 }
 
 .book-column {
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 36px;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -646,9 +667,16 @@ html:has(.shell) {
 }
 
 .chapters {
+  min-height: 0;
+  overflow-y: auto;
   list-style: none;
+  /* It reaches the window's right edge, where its scrollbar is; the rows keep the content's right side. */
   margin: 0;
-  padding: 44px 0 0;
+  padding: 44px calc(var(--book-side) - var(--scrollbar-size)) 64px 0;
+  scrollbar-gutter: stable;
+  /* Rows fade out under the top edge rather than being cut there. */
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 24px);
+  mask-image: linear-gradient(to bottom, transparent, #000 24px);
 }
 
 .chapter-row {
@@ -1163,13 +1191,33 @@ button.chapter-title:hover {
     padding: 20px 16px 48px;
   }
 
+  /* A phone scrolls the whole page, the column above the Chapters. */
+  .shell-main:has(> .book-layout) {
+    padding: 20px 16px 48px;
+  }
+
   .book-layout {
+    height: auto;
+    padding: 0;
     grid-template-columns: 1fr;
+    grid-template-rows: none;
     gap: 8px;
   }
 
+  .book-column,
   .chapters {
-    padding-top: 16px;
+    overflow: visible;
+  }
+
+  .book-column {
+    padding-bottom: 0;
+  }
+
+  .chapters {
+    margin: 0;
+    padding: 16px 0 0;
+    -webkit-mask-image: none;
+    mask-image: none;
   }
 }
 
