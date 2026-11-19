@@ -7,7 +7,7 @@ import type { Listening } from "../contract.js";
 import type { Db } from "../db/client.js";
 import { books, chapters, sentences, shelfEntries } from "../db/schema.js";
 import type { Tx } from "../jobs/lifecycle.js";
-import { loadTimeline, type Timeline } from "./timeline.js";
+import { estimateDurationMs, loadTimeline, type Timeline } from "./timeline.js";
 
 /** Puts a Book on the user's Shelf. */
 export async function addToShelf(tx: Tx, userId: string, bookId: string, now: Date): Promise<void> {
@@ -39,8 +39,8 @@ export async function onShelf(db: Db, userId: string, bookId: string): Promise<b
 
 /**
  * Where the user is in each of the Books they listened to. `timelines` (of the same Books) place the Sentence in
- * the Book's audio. The share counts the narrated text before that Sentence, by spoken characters: close to the
- * share of the audio, and known before the audio is.
+ * the Book's audio. The share is of the Book's audio up to that Sentence, as the 专注页 shows how much was listened
+ * to; while the Sentence has no audio in the playlist, it is the share of the narrated text before it.
  */
 export async function loadListening(
   db: Db,
@@ -74,20 +74,42 @@ export async function loadListening(
     )
     .groupBy(shelfEntries.bookId, shelfEntries.lastListenedAt, at.id, atChapter.id);
 
+  const durations = await loadDurations(db, rows.map((r) => r.bookId));
   return new Map(
     rows.map((r) => {
       const entry = timelines.get(r.bookId)?.entries.find((e) => e.chapterId === r.chapterId && e.segments.length > 0);
       const startMs = entry && r.sentenceStartMs !== null ? entry.offsetMs + r.sentenceStartMs : null;
+      const durationMs = durations.get(r.bookId) ?? null;
+      const share =
+        startMs !== null && durationMs ? startMs / durationMs : r.totalChars > 0 ? r.charsBefore / r.totalChars : 0;
       const listening: Listening = {
         sentenceId: r.sentenceId,
         chapterTitle: r.chapterTitle,
-        share: r.totalChars > 0 ? Math.min(r.charsBefore / r.totalChars, 1) : 0,
+        share: Math.min(share, 1),
         startMs,
         listenedAt: r.listenedAt!.toISOString(),
       };
       return [r.bookId, listening];
     }),
   );
+}
+
+/** Length of each Book's whole audio, estimated while it generates (as the 专注页's total, books/timeline.ts). */
+async function loadDurations(db: Db, bookIds: string[]): Promise<Map<string, number | null>> {
+  if (bookIds.length === 0) return new Map();
+  const rows = await db
+    .select({
+      bookId: chapters.bookId,
+      skipped: chapters.skipped,
+      audioStatus: chapters.audioStatus,
+      durationMs: chapters.durationMs,
+      spokenChars: sql<number>`coalesce(sum(length(${sentences.spokenText})), 0)`.mapWith(Number),
+    })
+    .from(chapters)
+    .leftJoin(sentences, eq(sentences.chapterId, chapters.id))
+    .where(inArray(chapters.bookId, bookIds))
+    .groupBy(chapters.id);
+  return new Map([...Map.groupBy(rows, (r) => r.bookId)].map(([id, rs]) => [id, estimateDurationMs(rs)]));
 }
 
 /**

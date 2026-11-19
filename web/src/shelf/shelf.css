@@ -134,7 +134,7 @@
   display: flex;
   align-items: center;
   gap: 28px;
-  padding: 24px 36px 24px 24px;
+  padding: 24px 64px 24px 24px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 26px;
@@ -222,8 +222,10 @@
   margin: 0;
   padding: 0 0 64px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 40px 38px;
+  /* 150 px covers spread across the row, as many as fit (six at the design's 1088 px). */
+  grid-template-columns: repeat(auto-fill, 150px);
+  justify-content: space-between;
+  gap: 40px 32px;
 }
 
 .shelf-book {
@@ -277,8 +279,9 @@
 }
 
 /* 03-1 empty Shelf */
+/* Fills the window under the page title (36 px padding, 46 px title, 36 px gap), content centred. */
 .empty-shelf {
-  min-height: 640px;
+  min-height: max(560px, calc(100vh - 118px));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -476,6 +479,7 @@
 
   .shelf-grid {
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    justify-content: stretch;
     gap: 28px 16px;
   }
 

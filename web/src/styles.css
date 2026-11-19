@@ -36,7 +36,8 @@ button {
 .shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 240px 1fr;
+  /* minmax(0, …): a long email in the sidebar must not widen the page. */
+  grid-template-columns: 240px minmax(0, 1fr);
 }
 
 .sidebar {
@@ -508,12 +509,13 @@ button.chapter-title:hover {
 
 @media (max-width: 760px) {
   .shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto 1fr;
   }
 
   .sidebar {
     position: static;
+    min-width: 0;
     height: auto;
     flex-direction: row;
     align-items: center;
@@ -525,8 +527,20 @@ button.chapter-title:hover {
   }
 
   .sidebar-brand {
+    flex: none;
     padding: 0;
     font-size: 18px;
+    white-space: nowrap;
+  }
+
+  .account {
+    flex: 1;
+    justify-content: flex-end;
+    padding: 0;
+  }
+
+  .account-email {
+    flex: 0 1 auto;
   }
 
   .sidebar-brand img {

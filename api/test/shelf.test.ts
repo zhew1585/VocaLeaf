@@ -12,7 +12,7 @@ import {
   withCookie,
   type TestApp,
 } from "./helpers.js";
-import { allowlist } from "../src/db/schema.js";
+import { allowlist, shelfEntries } from "../src/db/schema.js";
 
 type T = Awaited<ReturnType<typeof testApp>>;
 const sentence = (text: string, paragraphIndex = 0) => ({ paragraphIndex, text, spokenText: text });
@@ -27,6 +27,7 @@ const CHAPTERS: ParseResult["chapters"] = [
   },
 ];
 const NARRATED_CHARS = [CHAPTERS[0]!, CHAPTERS[2]!].flatMap((c) => c.sentences).reduce((n, s) => n + s.spokenText.length, 0);
+const charsOf = (sentences: { spokenText: string }[]) => sentences.reduce((n, s) => n + s.spokenText.length, 0);
 
 async function shelf(app: TestApp) {
   const res = await app.request("/api/books");
@@ -94,11 +95,11 @@ describe("where the user is in a Book (AC-SHELF-04)", () => {
     // 13 s is 5 s into II: inside its second Sentence (4 to 8 s of the Chapter).
     expect((await listen(t.app, book.id, 13_000)).status).toBe(204);
 
-    const before = CHAPTERS[0]!.sentences.reduce((n, s) => n + s.spokenText.length, 0) + CHAPTERS[2]!.sentences[0]!.spokenText.length;
+    // The share is of the Book's audio (20 s), as the 专注页 shows it: 12 s in.
     const listening = {
       sentenceId: second,
       chapterTitle: "II",
-      share: before / NARRATED_CHARS,
+      share: 12_000 / 20_000,
       startMs: 12_000,
       listenedAt: t.clock.now().toISOString(),
     };
@@ -107,7 +108,7 @@ describe("where the user is in a Book (AC-SHELF-04)", () => {
 
     // The first Sentence of II starts where the Chapter does.
     await listen(t.app, book.id, 8_000);
-    expect((await detail(t.app, book.id)).listening).toMatchObject({ sentenceId: first, startMs: 8_000 });
+    expect((await detail(t.app, book.id)).listening).toMatchObject({ sentenceId: first, startMs: 8_000, share: 0.4 });
   });
 
   it("takes the very start as the first Sentence, with nothing listened before it", async () => {
@@ -137,6 +138,20 @@ describe("where the user is in a Book (AC-SHELF-04)", () => {
     expect((await listen(other, book.id, 0)).status).toBe(404);
     expect((await listen(t.app, crypto.randomUUID(), 0)).status).toBe(404);
     expect((await detail(t.app, book.id)).listening).toBeNull();
+  });
+
+  it("counts the share by text while the Sentence has no audio in the Book's playlist", async () => {
+    const t = await testApp();
+    const book = await uploadBook(t.app);
+    const parse = (await claimJob(t.app))!;
+    await reportParse(t.app, parse, { parserVersion: "t", title: "T", author: null, chapters: CHAPTERS });
+    const chapterTwo = (await detail(t.app, book.id)).chapters[2]!;
+    const [, second] = await sentenceIds(t.app, chapterTwo.id);
+    // As if it was listened to before its Chapter dropped out of the playlist (a retried Chapter).
+    await t.db.update(shelfEntries).set({ sentenceId: second, lastListenedAt: t.clock.now() });
+
+    const before = charsOf(CHAPTERS[0]!.sentences) + charsOf(CHAPTERS[2]!.sentences.slice(0, 1));
+    expect((await detail(t.app, book.id)).listening).toMatchObject({ startMs: null, share: before / NARRATED_CHARS });
   });
 
   it("refuses a negative position", async () => {

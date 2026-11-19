@@ -89,7 +89,10 @@ export const ListeningSchema = z
     sentenceId: z.uuid(),
     /** Title of that Sentence's Chapter (【继续收听】: Chapter 1 · 34%). */
     chapterTitle: z.string(),
-    /** Share of the Book's narrated text before that Sentence, 0 to 1. */
+    /**
+     * How much of the Book was listened to, 0 to 1: its audio up to that Sentence out of the whole (as the 专注页
+     * counts it), or its narrated text before that Sentence while the Sentence has no audio in the playlist.
+     */
     share: z.number().min(0).max(1),
     /** Where that Sentence starts in the Book's audio, in milliseconds; null while its Chapter has no audio there. */
     startMs: z.int().min(0).nullable(),
