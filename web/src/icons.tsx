@@ -324,6 +324,22 @@ export const BookOpenIcon = ({ size = 15 }) => (
   </Icon>
 );
 
+/** The 卡片 navigation (design 07): Lucide layers. */
+export const LayersIcon = ({ size = 20 }) => (
+  <Icon size={size}>
+    <path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z" />
+    <path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12" />
+    <path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17" />
+  </Icon>
+);
+
+export const SearchIcon = ({ size = 17 }) => (
+  <Icon size={size}>
+    <circle cx="11" cy="11" r="8" />
+    <path d="m21 21-4.3-4.3" />
+  </Icon>
+);
+
 export const ChevronRightIcon = ({ size = 18 }) => (
   <Icon size={size}>
     <path d="m9 18 6-6-6-6" />

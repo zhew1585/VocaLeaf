@@ -383,6 +383,30 @@ button {
   cursor: pointer;
 }
 
+/* A filter chip (拾起, 卡片): 全部 and one per Book, the chosen one in ink. */
+.filter-chip {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.filter-chip.book-chip {
+  font-family: var(--font-read);
+  font-size: 14px;
+}
+
+.filter-chip[aria-pressed="true"] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--surface);
+}
+
 /* The confirmation follows the design's dialog (master file 桌面 · 书籍详情 · 删除确认). */
 .confirm-backdrop {
   position: fixed;

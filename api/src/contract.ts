@@ -452,6 +452,12 @@ export const CardSchema = z
   .openapi("Card");
 
 /**
+ * A Card in the Card list (F14), with the Book it came from while that Book is on the user's Shelf. Null once the Book
+ * was deleted or taken off the Shelf: the list says 【来源：《书名》（已删除）】 (AC-CLIST-03).
+ */
+export const CardListItemSchema = CardSchema.extend({ bookId: z.uuid().nullable() }).openapi("CardListItem");
+
+/**
  * Makes a Card of characters [start, end) of a Sentence's text (PRD 4.5.2); the API widens them to whole words.
  * `allowDuplicate` confirms 【仍要创建】 after the API said the user has a Card of the same Target elsewhere.
  */
@@ -625,5 +631,6 @@ export type ExplainRequest = z.input<typeof ExplainRequestSchema>;
 export type ExplainEvent = z.infer<typeof ExplainEventSchema>;
 export type CardBack = z.infer<typeof CardBackSchema>;
 export type Card = z.infer<typeof CardSchema>;
+export type CardListItem = z.infer<typeof CardListItemSchema>;
 export type CreateCard = z.input<typeof CreateCardSchema>;
 export type { TargetKind } from "./cards/target.js";

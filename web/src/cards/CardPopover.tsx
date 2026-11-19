@@ -110,8 +110,8 @@ function CardList({ cards, onOpen, onStudySentence }: { cards: Card[]; onOpen(id
   );
 }
 
-/** The Sentence with the Target highlighted. */
-function HighlightedSentence({ card }: { card: Card }) {
+/** The Sentence with the Target highlighted (also the Card list's detail). */
+export function HighlightedSentence({ card }: { card: Card }) {
   const text = card.sentenceText;
   return (
     <p className="card-sentence">
