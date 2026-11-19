@@ -3,7 +3,7 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { AudioStatus } from "../contract.js";
 import type { Db } from "../db/client.js";
-import { audioSegments, chapters, jobs } from "../db/schema.js";
+import { audioSegments, books, chapters, jobs } from "../db/schema.js";
 
 export interface TimelineChapterInput {
   id: string;
@@ -109,7 +109,10 @@ export function hasAudio(timeline: Timeline): boolean {
   return timeline.entries.some((e) => e.segments.length > 0);
 }
 
-/** Loads the timelines of several Books in three queries. */
+/**
+ * Loads the timelines of several Books in three queries. Only segments in each Book's Voice count: a Voice
+ * change's segments wait unplayed until it completes (jobs/voice-change.ts).
+ */
 export async function loadTimelines(db: Db, bookIds: string[]): Promise<Map<string, Timeline>> {
   if (bookIds.length === 0) return new Map();
   const chapterRows = await db
@@ -121,6 +124,7 @@ export async function loadTimelines(db: Db, bookIds: string[]): Promise<Map<stri
     .select({ id: audioSegments.id, chapterId: audioSegments.chapterId, durationMs: audioSegments.durationMs })
     .from(audioSegments)
     .innerJoin(chapters, eq(chapters.id, audioSegments.chapterId))
+    .innerJoin(books, and(eq(books.id, chapters.bookId), eq(books.voice, audioSegments.voice)))
     .where(inArray(chapters.bookId, bookIds))
     .orderBy(asc(audioSegments.chapterId), asc(audioSegments.index));
 

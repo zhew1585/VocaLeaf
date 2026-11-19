@@ -29,6 +29,12 @@ describe("nextPollMs", () => {
     expect(nextPollMs(book("ready", true, ["generated", "generating"]))).toBe(5000);
   });
 
+  it("keeps checking a 已就绪 Book while its Voice changes, and stops once the change ended", () => {
+    const ready = book("ready", true, ["generated"]);
+    expect(nextPollMs({ ...ready, voiceChange: { to: "uk_male", status: "running" } })).toBe(5000);
+    expect(nextPollMs({ ...ready, voiceChange: { to: "uk_male", status: "failed" } })).toBeNull();
+  });
+
   it("stops once nothing about the Book changes any more, with or without audio", () => {
     expect(nextPollMs(book("ready", true, ["generated", "failed"]))).toBeNull();
     expect(nextPollMs(book("ready", false))).toBeNull();

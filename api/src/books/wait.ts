@@ -2,7 +2,8 @@
 // 【该章节生成中，预计约 N 秒】. Estimated from the work queued ahead of it and the workers' recent pace.
 import { and, desc, eq, inArray, isNotNull, sql, sum } from "drizzle-orm";
 import type { Db } from "../db/client.js";
-import { jobs, sentences } from "../db/schema.js";
+import { jobs, sentences, stagedSentenceTimings } from "../db/schema.js";
+import { RENDER_JOB_TYPES } from "../jobs/lifecycle.js";
 
 /**
  * Rendering pace before any Chapter was generated to measure it: Kokoro on CPU runs about 3.5 times
@@ -70,7 +71,7 @@ async function loadPace(db: Db): Promise<number> {
   const recent = await db
     .select({ chapterId: jobs.chapterId, startedAt: jobs.startedAt, finishedAt: jobs.updatedAt })
     .from(jobs)
-    .where(and(eq(jobs.type, "render_chapter"), eq(jobs.status, "succeeded"), isNotNull(jobs.startedAt)))
+    .where(and(inArray(jobs.type, RENDER_JOB_TYPES), eq(jobs.status, "succeeded"), isNotNull(jobs.startedAt)))
     .orderBy(desc(jobs.updatedAt))
     .limit(PACE_SAMPLE_JOBS);
   const chars = await charsOf(db, recent.map((j) => j.chapterId!));
@@ -81,7 +82,8 @@ async function loadPace(db: Db): Promise<number> {
 
 /**
  * Seconds until each Chapter with an open render job (of any Book: they share the workers) plays.
- * A running job has left only the Sentences it has not timed yet; a queued one all of them.
+ * A running job has left only the Sentences it has not timed yet (a Voice change times them aside); a queued
+ * one all of them. A Voice change's Chapters play already, so only their place in the queue matters.
  */
 export async function loadChapterWaits(db: Db): Promise<Map<string, number>> {
   const open = await db
@@ -91,11 +93,12 @@ export async function loadChapterWaits(db: Db): Promise<Map<string, number>> {
       status: jobs.status,
       position: jobs.position,
       createdAt: jobs.createdAt,
-      remainingChars: sql<number>`coalesce(sum(length(${sentences.spokenText})) filter (where ${jobs.status} = 'queued' or ${sentences.startMs} is null), 0)`.mapWith(Number),
+      remainingChars: sql<number>`coalesce(sum(length(${sentences.spokenText})) filter (where ${jobs.status} = 'queued' or (case when ${jobs.type} = 'render_voice_change' then ${stagedSentenceTimings.sentenceId} is null else ${sentences.startMs} is null end)), 0)`.mapWith(Number),
     })
     .from(jobs)
     .innerJoin(sentences, eq(sentences.chapterId, jobs.chapterId))
-    .where(and(eq(jobs.type, "render_chapter"), inArray(jobs.status, ["queued", "running"])))
+    .leftJoin(stagedSentenceTimings, eq(stagedSentenceTimings.sentenceId, sentences.id))
+    .where(and(inArray(jobs.type, RENDER_JOB_TYPES), inArray(jobs.status, ["queued", "running"])))
     .groupBy(jobs.id);
   if (open.length === 0) return new Map();
   return queueWaits(

@@ -3,6 +3,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Book, UploadPolicy } from "../api";
+import { stubMediaPlayback } from "../test-media";
 import { ShelfPage } from "./ShelfPage";
 
 const MB = 1024 * 1024;
@@ -105,6 +106,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
   window.history.pushState(null, "", "/");
@@ -263,6 +265,7 @@ describe("the upload dialog (F4)", () => {
     expect([xhr.method, xhr.url]).toEqual(["POST", "/api/books"]);
     expect((xhr.body!.get("file") as File).name).toBe("walden.epub");
     expect(xhr.body!.get("declarationVersion")).toBe("1");
+    expect(xhr.body!.get("voice")).toBe("us_female");
 
     xhr.progress(450, 1000);
     expect(screen.getByRole("progressbar", { name: "上传进度" }).getAttribute("aria-valuenow")).toBe("45");
@@ -273,6 +276,56 @@ describe("the upload dialog (F4)", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     const grid = await screen.findByRole("list", { name: "书架上的书" });
     expect(await within(grid).findByRole("link", { name: /walden解析中/ })).toBeTruthy();
+  });
+
+  describe("音色 (design 04-1, PRD 4.2.4)", () => {
+    const voices = () =>
+      within(screen.getByRole("group", { name: "音色" }))
+        .getAllByRole("radio")
+        .map((r) => [r.parentElement!.textContent, (r as HTMLInputElement).checked]);
+
+    it("offers the four Voices with 美音女声 chosen, and uploads with the one the user picks", async () => {
+      await openDialog(policy({ declaration: { ...policy().declaration, accepted: true } }));
+      expect(voices()).toEqual([
+        ["美音女声", true],
+        ["美音男声", false],
+        ["英音女声", false],
+        ["英音男声", false],
+      ]);
+
+      fireEvent.click(screen.getByRole("radio", { name: "英音男声" }));
+      chooseFile(epub());
+      fireEvent.click(uploadButton());
+
+      expect(voices().find(([, checked]) => checked)![0]).toBe("英音男声");
+      expect(FakeXhr.last!.body!.get("voice")).toBe("uk_male");
+    });
+
+    it("plays a Voice's 5-second preview, one at a time, and stops it on a second press or when it ends", async () => {
+      const media = stubMediaPlayback();
+      await openDialog();
+
+      fireEvent.click(screen.getByRole("button", { name: "试听英音女声" }));
+      expect(media.play).toHaveBeenCalledTimes(1);
+      const first = media.play.mock.contexts[0] as HTMLAudioElement;
+      expect(first.src).toMatch(/\/voices\/uk_female\.m4a$/);
+      expect(screen.getByRole("button", { name: "停止试听英音女声" }).getAttribute("aria-pressed")).toBe("true");
+      // Previewing is not choosing: the Voice stays 美音女声.
+      expect(screen.getByRole("radio", { name: "美音女声" })).toHaveProperty("checked", true);
+
+      fireEvent.click(screen.getByRole("button", { name: "试听美音男声" }));
+      expect(media.pause.mock.contexts).toContain(first);
+      const second = media.play.mock.contexts[1] as HTMLAudioElement;
+      expect(second.src).toMatch(/\/voices\/us_male\.m4a$/);
+      expect(screen.getByRole("button", { name: "试听英音女声" })).toBeTruthy();
+
+      act(() => second.dispatchEvent(new Event("ended")));
+      expect(screen.getByRole("button", { name: "试听美音男声" }).getAttribute("aria-pressed")).toBe("false");
+
+      fireEvent.click(screen.getByRole("button", { name: "试听美音男声" }));
+      fireEvent.click(screen.getByRole("button", { name: "停止试听美音男声" }));
+      expect(screen.getByRole("button", { name: "试听美音男声" })).toBeTruthy();
+    });
   });
 
   it("does not send the declaration when it was confirmed before", async () => {

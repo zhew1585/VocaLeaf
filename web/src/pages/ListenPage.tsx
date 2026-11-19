@@ -97,7 +97,11 @@ export function ListenPage({ id }: { id: string }) {
   // Playback waits for audio still to generate: it caught up with it, or the bar was dragged past it.
   const waitingForAudio = here && (listening.waitingForAudio || listening.seekPending);
   const { book, error } = useBook(id, { eager: chapterPick.picked !== null || waitingForAudio });
-  const playlist = usePlaylist(book, here ? { seconds: listening.position, playing: listening.playing } : { seconds: 0, playing: false });
+  const playlist = usePlaylist(
+    book,
+    here ? { seconds: listening.position, playing: listening.playing } : { seconds: 0, playing: false },
+    here ? { voice: listening.voice, timeline: listening.timeline } : null,
+  );
   const [directoryOpen, setDirectoryOpen] = useState(wideWindow);
   const [panelOpen, setPanelOpen] = useState(false);
   const reading = useRef<ReadingViewHandle>(null);
@@ -106,13 +110,17 @@ export function ListenPage({ id }: { id: string }) {
   const toggleDirectory = useCallback(() => setDirectoryOpen((o) => !o), []);
 
   const playable = book?.playable ?? false;
+  const voice = book?.voice;
   const { open, reload, requestStart } = listening;
   useEffect(() => {
-    if (playable) open(id);
+    if (playable) open(id, voice);
+    // The Voice only matters when the Book is opened; a later change reloads (below).
   }, [playable, id, open]);
-  // A retried Chapter came in before the playlist's end: load it again (it resumes at playlist.resume).
+  // A retried Chapter came in before the playlist's end, or the Voice changed: load it again (it resumes at
+  // playlist.resume).
   useEffect(() => {
-    if (playlist.revision > 0) reload();
+    if (playlist.revision > 0) reload(playlist.voice);
+    // A new revision is what asks for a reload; its Voice comes with it.
   }, [playlist.revision, reload]);
 
   const found = chapterPick.find(book);

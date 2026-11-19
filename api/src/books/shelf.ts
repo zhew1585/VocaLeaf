@@ -3,7 +3,7 @@
 // change); the player reports a position in the Book's audio and the API turns it into the Sentence there.
 import { and, asc, desc, eq, inArray, isNotNull, lte, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import type { Listening } from "../contract.js";
+import type { Listening, Voice } from "../contract.js";
 import type { Db } from "../db/client.js";
 import { books, chapters, sentences, shelfEntries } from "../db/schema.js";
 import type { Tx } from "../jobs/lifecycle.js";
@@ -115,11 +115,21 @@ async function loadDurations(db: Db, bookIds: string[]): Promise<Map<string, num
 /**
  * Records that the user listened to the Book up to `positionMs` of its audio: the Sentence playing there (the last
  * one starting at or before it, so the pause after a Sentence still belongs to it) becomes where they resume, and
- * the Book moves to the front of the Shelf. Returns false when the Book is not on the user's Shelf.
+ * the Book moves to the front of the Shelf. A position in audio of a `voice` the Book no longer has is not placed
+ * (its times are the old Voice's); the resume Sentence stays. Returns false when the Book is not on the user's Shelf.
  */
-export async function recordListening(db: Db, userId: string, bookId: string, positionMs: number, now: Date) {
+export async function recordListening(
+  db: Db,
+  userId: string,
+  bookId: string,
+  positionMs: number,
+  now: Date,
+  voice?: Voice,
+) {
   if (!(await onShelf(db, userId, bookId))) return false;
-  const sentenceId = await sentenceAt(db, await loadTimeline(db, bookId), positionMs);
+  const [book] = await db.select({ voice: books.voice }).from(books).where(eq(books.id, bookId));
+  const placeable = voice === undefined || voice === book!.voice;
+  const sentenceId = placeable ? await sentenceAt(db, await loadTimeline(db, bookId), positionMs) : null;
   await db
     .update(shelfEntries)
     .set({ lastListenedAt: now, ...(sentenceId ? { sentenceId } : {}) })

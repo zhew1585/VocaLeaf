@@ -1,8 +1,9 @@
 // A Book as the user sees it (contract.ts BookSchema), shared by the Shelf, the Book detail and the upload.
 import { inArray } from "drizzle-orm";
-import type { AudioStatus, Book, Listening } from "../contract.js";
+import type { AudioStatus, Book, BookDetail, Listening } from "../contract.js";
 import type { Db } from "../db/client.js";
 import { books, chapters } from "../db/schema.js";
+import { isVoiceChanging } from "../jobs/voice-change.js";
 import { hasAudio, type Timeline } from "./timeline.js";
 
 type BookRow = typeof books.$inferSelect;
@@ -23,6 +24,16 @@ export async function loadProgress(db: Db, bookIds: string[]): Promise<Map<strin
     .from(chapters)
     .where(inArray(chapters.bookId, bookIds));
   return new Map([...Map.groupBy(rows, (r) => r.bookId)].map(([id, rs]) => [id, progressOf(rs)]));
+}
+
+/** The Book's Voice and its Voice change, as the Book detail shows them (PRD 4.2.4). */
+export function voiceOf(row: BookRow): Pick<BookDetail, "voice" | "voiceChange" | "voiceChangeable"> {
+  return {
+    voice: row.voice,
+    voiceChange: row.voiceChangeTo ? { to: row.voiceChangeTo, status: isVoiceChanging(row) ? "running" : "failed" } : null,
+    // A Library Book (#12) is shared by every reader and keeps its Voice (PRD 4.2.2).
+    voiceChangeable: row.source === "upload",
+  };
 }
 
 /** The cover route of a Book whose EPUB had a cover (books/shelf-routes.ts). */

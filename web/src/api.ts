@@ -1,6 +1,16 @@
 // Typed calls to the VocaLeaf API. Types come straight from the API's zod contract (ADR 0002).
 // The session is an HttpOnly cookie the browser sends by itself (same origin), so no call handles a token.
-import type { ApiError, Book, BookDetail, BookTimeline, CodeSent, Sentence, UploadPolicy, User } from "@vocaleaf/api/contract";
+import type {
+  ApiError,
+  Book,
+  BookDetail,
+  BookTimeline,
+  CodeSent,
+  Sentence,
+  UploadPolicy,
+  User,
+  Voice,
+} from "@vocaleaf/api/contract";
 
 export type {
   Book,
@@ -12,6 +22,8 @@ export type {
   Sentence,
   UploadPolicy,
   User,
+  Voice,
+  VoiceChange,
 } from "@vocaleaf/api/contract";
 
 /** Fired on window whenever the API answers 401: the session ended, so the app shows the login page. */
@@ -93,6 +105,8 @@ export function getUploadPolicy(): Promise<UploadPolicy> {
 }
 
 export interface UploadOptions {
+  /** The Voice to narrate the Book with; the API's default Voice when left out. */
+  voice?: Voice;
   /** The declaration version the user just confirmed, when they had to. */
   declarationVersion?: string;
   /** Share of the file sent so far, 0 to 1. */
@@ -105,9 +119,10 @@ export interface UploadOptions {
  * Uploads an EPUB. Uses XMLHttpRequest rather than fetch because only it reports upload progress (the dialog's
  * progress bar); rejects with the API's message when the upload is refused.
  */
-export function uploadBook(file: File, { declarationVersion, onProgress, signal }: UploadOptions = {}): Promise<Book> {
+export function uploadBook(file: File, { voice, declarationVersion, onProgress, signal }: UploadOptions = {}): Promise<Book> {
   const form = new FormData();
   form.append("file", file);
+  if (voice) form.append("voice", voice);
   if (declarationVersion) form.append("declarationVersion", declarationVersion);
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -131,11 +146,12 @@ export function uploadBook(file: File, { declarationVersion, onProgress, signal 
 }
 
 /** Tells the API where playback is in the Book's audio; it keeps the Sentence there as the place to resume. */
-export async function saveListening(bookId: string, positionMs: number): Promise<void> {
+export async function saveListening(bookId: string, positionMs: number, voice?: Voice): Promise<void> {
   await send(`/books/${bookId}/listening`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ positionMs: Math.max(0, Math.floor(positionMs)) }),
+    // The Voice of the audio the position is in, so a position in audio from before a Voice change is not misplaced.
+    body: JSON.stringify({ positionMs: Math.max(0, Math.floor(positionMs)), voice }),
   });
 }
 
@@ -156,6 +172,14 @@ export function getChapterSentences(chapterId: string): Promise<Sentence[]> {
 /** Generates a 生成失败 Chapter again; it goes back to 待生成. */
 export async function retryChapter(chapterId: string): Promise<void> {
   await send(`/chapters/${chapterId}/retry`, { method: "POST" });
+}
+
+/**
+ * Starts generating the Book's audio again in `voice` (PRD 4.2.4); the old audio plays until the new one is
+ * complete. Rejects with the API's message when refused (a change already running, the Book not 已就绪 yet).
+ */
+export async function changeVoice(bookId: string, voice: Voice): Promise<void> {
+  await send(`/books/${bookId}/voice`, postJson({ voice }));
 }
 
 /**

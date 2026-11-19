@@ -104,7 +104,7 @@ export function uploadRoutes({ db, storage, now = () => new Date() }: AppDeps) {
   }
 
   app.openapi(uploadRoute, async (c) => {
-    const { file, declarationVersion } = c.req.valid("form");
+    const { file, declarationVersion, voice } = c.req.valid("form");
     const userId = c.get("userId");
     if (!/\.epub$/i.test(file.name)) return c.json(unsupportedFormat, 400);
     if (file.size > MAX_UPLOAD_BYTES) return c.json(fileTooLarge, 413);
@@ -133,7 +133,7 @@ export function uploadRoutes({ db, storage, now = () => new Date() }: AppDeps) {
       }
       const [book] = await tx
         .insert(books)
-        .values({ id, ownerId: userId, title: titleFromFileName(file.name), fileSize: file.size })
+        .values({ id, ownerId: userId, title: titleFromFileName(file.name), fileSize: file.size, voice })
         .returning();
       await tx.insert(jobs).values({ bookId: id, type: "parse" });
       await addToShelf(tx, userId, id, now());

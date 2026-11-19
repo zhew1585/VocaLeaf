@@ -31,6 +31,9 @@ const book: BookDetail = {
   failureReason: null,
   coverUrl: null,
   listening: null,
+  voice: "us_female",
+  voiceChange: null,
+  voiceChangeable: true,
   progress: { generated: 0, narrated: 2 },
   createdAt: "2026-11-18T00:00:00.000Z",
   chapters: [chapter("c0", 0, "Titlepage", { sentenceCount: 3 }), chapter("c1", 1, "I", { sentenceCount: 42 })],
@@ -258,6 +261,99 @@ describe("BookPage", () => {
       expect(within(dialog).getByRole("button", { name: "删除" })).toBeEnabled();
       expect(window.location.pathname).toBe("/books/b1");
       window.history.pushState(null, "", "/");
+    });
+  });
+
+  describe("the Book's Voice (design 04-2, PRD 4.2.4, F5 更换音色)", () => {
+    const finished: BookDetail = {
+      ...generating,
+      status: "ready",
+      progress: { generated: 3, narrated: 3 },
+      chapters: [chapter("c1", 0, "Chapter One", { audioStatus: "generated", durationMs: 600_000, startMs: 0 })],
+    };
+    const changing: BookDetail = { ...finished, voiceChange: { to: "uk_female", status: "running" } };
+    const voiceButton = () => screen.getByRole("button", { name: /^音色：/ });
+
+    it("changes the Voice from its menu, then says the old one plays until the new audio is complete", async () => {
+      const calls: { url: string; body: unknown }[] = [];
+      const queue = [finished, changing];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init?: RequestInit) => {
+          if (init?.method === "POST") {
+            calls.push({ url, body: JSON.parse(init.body as string) });
+            return new Response(null, { status: 202 });
+          }
+          return Response.json(queue.length > 1 ? queue.shift() : queue[0]);
+        }),
+      );
+      render(<BookPage id="b1" />);
+
+      fireEvent.click(await screen.findByRole("button", { name: "音色：美音女声" }));
+      const menu = screen.getByRole("menu", { name: "更换音色" });
+      expect(within(menu).getAllByRole("menuitemradio").map((o) => [o.textContent, o.getAttribute("aria-checked")])).toEqual([
+        ["美音女声", "true"],
+        ["美音男声", "false"],
+        ["英音女声", "false"],
+        ["英音男声", "false"],
+      ]);
+      fireEvent.click(within(menu).getByRole("menuitemradio", { name: "英音女声" }));
+
+      expect((await screen.findByRole("status")).textContent).toBe("正在更换为 英音女声，完成前仍使用原音色");
+      expect(calls).toEqual([{ url: "/api/books/b1/voice", body: { voice: "uk_female" } }]);
+      // Still the old Voice, and no second change until this one is done.
+      expect(voiceButton().textContent).toBe("美音女声");
+      expect(voiceButton()).toBeDisabled();
+      expect(screen.queryByRole("menu")).toBeNull();
+    });
+
+    it("shows the new Voice once the change is complete, checking while it runs", async () => {
+      stubApi([changing, { ...finished, voice: "uk_female" }]);
+      render(<BookPage id="b1" />);
+
+      expect((await screen.findByRole("status")).textContent).toBe("正在更换为 英音女声，完成前仍使用原音色");
+      await vi.waitFor(() => expect(voiceButton().textContent).toBe("英音女声"), { timeout: 7000 });
+      expect(screen.queryByRole("status")).toBeNull();
+      expect(voiceButton()).toBeEnabled();
+    }, 10_000);
+
+    it("says the old Voice was kept when the change failed (PRD 4.3.5 #11)", async () => {
+      stubApi([{ ...finished, voiceChange: { to: "uk_female", status: "failed" } }]);
+      render(<BookPage id="b1" />);
+
+      expect(await screen.findByText("音色更换失败，已保留原音色")).toBeTruthy();
+      expect(voiceButton().textContent).toBe("美音女声");
+      expect(voiceButton()).toBeEnabled();
+    });
+
+    it("says why a change was refused", async () => {
+      stubApi([finished], () => Response.json({ error: { code: "voice_change_running", message: "正在更换音色，完成前不能再次更换" } }, { status: 409 }));
+      render(<BookPage id="b1" />);
+
+      fireEvent.click(await screen.findByRole("button", { name: "音色：美音女声" }));
+      fireEvent.click(screen.getByRole("menuitemradio", { name: "美音男声" }));
+      expect((await screen.findByRole("alert")).textContent).toBe("正在更换音色，完成前不能再次更换");
+    });
+
+    it("cannot be changed before the Book is 已就绪, and is not offered for a Library Book", async () => {
+      stubApi([generating]);
+      const { unmount } = render(<BookPage id="b1" />);
+      expect((await screen.findByRole("button", { name: "音色：美音女声" })).getAttribute("title")).toBe(
+        "这本书生成完成后才能更换音色",
+      );
+      expect(voiceButton()).toBeDisabled();
+      unmount();
+
+      // A 已就绪 Book with a retried Chapter still generating.
+      stubApi([{ ...finished, chapters: [{ ...finished.chapters[0]!, audioStatus: "pending" }] }]);
+      const retrying = render(<BookPage id="b1" />);
+      expect(await screen.findByRole("button", { name: "音色：美音女声" })).toBeDisabled();
+      retrying.unmount();
+
+      stubApi([{ ...finished, voiceChangeable: false }]);
+      render(<BookPage id="b1" />);
+      await screen.findByRole("button", { name: /开始收听/ });
+      expect(screen.queryByRole("button", { name: /^音色：/ })).toBeNull();
     });
   });
 });

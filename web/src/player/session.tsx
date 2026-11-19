@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { BOOK_DELETED_EVENT, saveListening } from "../api";
+import { BOOK_DELETED_EVENT, saveListening, type BookTimeline, type Voice } from "../api";
 import { useHls } from "./hls";
 import { playableLength, useStartRequest, useWaitingForAudio, type StartRequest } from "./playback";
 import { useSleepTimer, type SleepChoice, type SleepTimer } from "./sleep";
@@ -19,6 +19,13 @@ import { useSentenceJumps } from "./useSentenceJumps";
 export interface Listening {
   /** The Book whose audio is loaded, or null before any 专注页 opened one. */
   bookId: string | null;
+  /** Where that Book's Sentences sit in the loaded playlist; null until loaded, and again while a reload loads it. */
+  timeline: BookTimeline | null;
+  /**
+   * The Voice of the loaded audio, as the 专注页 said when it opened or reloaded it; null when not said. After the
+   * Book's Voice changed, the 专注页 sees it differ and reloads (pages/usePlaylist.ts).
+   */
+  voice: Voice | null;
   playing: boolean;
   /** Seconds into the Book's audio. */
   position: number;
@@ -37,10 +44,13 @@ export interface Listening {
   sleep: SleepTimer | null;
   /** Listening time left on the sleep timer, in milliseconds; null with none or while unknown. */
   sleepRemaining(): number | null;
-  /** Loads the Book's audio, paused at its start; does nothing when it is already the session's Book. */
-  open(bookId: string): void;
-  /** Loads the playlist again on a fresh audio element (a retried Chapter came in before its end). */
-  reload(): void;
+  /** Loads the Book's audio (in `voice`), paused at its start; does nothing when it is already the session's Book. */
+  open(bookId: string, voice?: Voice): void;
+  /**
+   * Loads the playlist again on a fresh audio element: a retried Chapter came in before its end, or the Book's
+   * audio is now in `voice`.
+   */
+  reload(voice?: Voice): void;
   toggle(): void;
   /** 重听 (PRD 4.4.3): back to the start of the Sentence the user wants to hear again. */
   replay(): void;
@@ -152,8 +162,16 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
   // From switching Books until the new playlist's metadata loads, the element still holds the old Book's audio
   // (its stream going away may fire a pause there); positions are not reported meanwhile.
   const switching = useRef(false);
-  const open = useCallback((id: string) => {
+  // A ref too, for reports from event handlers of the first render's copy.
+  const voiceRef = useRef<Voice | null>(null);
+  const [voice, setVoice] = useState<Voice | null>(null);
+  const holdVoice = (v: Voice | null) => {
+    voiceRef.current = v;
+    setVoice(v);
+  };
+  const open = useCallback((id: string, v?: Voice) => {
     if (openBookId.current === id) return;
+    holdVoice(v ?? null);
     switching.current = openBookId.current !== null;
     openBookId.current = id;
     setBookId(id);
@@ -168,6 +186,7 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     const onDeleted = (e: Event) => {
       if ((e as CustomEvent<string>).detail !== openBookId.current) return;
       openBookId.current = null;
+      holdVoice(null);
       setBookId(null);
       setStart({ request: null });
       setPosition(0);
@@ -178,7 +197,8 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(BOOK_DELETED_EVENT, onDeleted);
   }, []);
 
-  const reload = useCallback(() => {
+  const reload = useCallback((v?: Voice) => {
+    if (v) holdVoice(v);
     setReloads((n) => n + 1);
     fresh();
   }, []);
@@ -191,7 +211,7 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
   const reportPosition = () => {
     const id = openBookId.current;
     if (id === null || switching.current) return;
-    saveListening(id, audio.current!.currentTime * 1000).catch((err: unknown) => {
+    saveListening(id, audio.current!.currentTime * 1000, voiceRef.current ?? undefined).catch((err: unknown) => {
       // Losing one report only loses a little progress; the next play or pause reports again.
       console.warn("saving listening progress failed", err);
     });
@@ -229,6 +249,8 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
 
   const value: Listening = {
     bookId,
+    timeline: timeline.timeline,
+    voice,
     playing,
     position,
     playable,

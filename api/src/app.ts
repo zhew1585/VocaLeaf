@@ -9,6 +9,7 @@ import { bookRoutes } from "./books/routes.js";
 import { bookTimelineRoutes } from "./books/timeline-routes.js";
 import { shelfRoutes } from "./books/shelf-routes.js";
 import { uploadRoutes } from "./books/upload-routes.js";
+import { voiceRoutes } from "./books/voice-routes.js";
 import type { Db } from "./db/client.js";
 import { jobRoutes } from "./jobs/routes.js";
 import type { ObjectStorage } from "./storage.js";
@@ -43,6 +44,7 @@ export function createApp(deps: AppDeps) {
   app.route("/", bookRoutes(deps));
   app.route("/", bookTimelineRoutes(deps));
   app.route("/", deleteBookRoutes(deps));
+  app.route("/", voiceRoutes(deps));
   app.route("/", audioRoutes(deps));
   app.route("/", jobRoutes(deps));
   app.doc31("/openapi.json", { openapi: "3.1.0", info: { title: "VocaLeaf API", version: "0.1.0" } });

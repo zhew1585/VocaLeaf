@@ -213,3 +213,27 @@ export const MoonIcon = ({ size = 18 }) => (
     <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
   </Icon>
 );
+
+export const MicVocalIcon = ({ size = 18 }) => (
+  <Icon size={size}>
+    <path d="m11 7.601-5.994 8.19a1 1 0 0 0 .1 1.298l.817.818a1 1 0 0 0 1.314.087L15.09 12" />
+    <path d="M16.5 21.174C15.5 20.5 14.372 20 13 20c-2.058 0-3.928 2.356-6 2-2.072-.356-2.775-3.369-1.5-4.5" />
+    <circle cx="16" cy="7" r="5" />
+  </Icon>
+);
+
+export const ChevronDownIcon = ({ size = 16 }) => (
+  <Icon size={size}>
+    <path d="m6 9 6 6 6-6" />
+  </Icon>
+);
+
+export const Volume2Icon = ({ size = 13 }) => (
+  <Icon size={size}>
+    <path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z" />
+    <path d="M16 9a5 5 0 0 1 0 6" />
+    <path d="M19.364 18.364a9 9 0 0 0 0-12.728" />
+  </Icon>
+);
+
+export const SquareSolidIcon = ({ size = 10 }) => <SolidIcon size={size} d="M5 5h14v14H5z" />;

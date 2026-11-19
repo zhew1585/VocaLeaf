@@ -71,8 +71,9 @@ function claimKey(jobId: string, attempt: number) {
 }
 
 /**
- * Called when a render report was refused. If the job no longer exists, its Book was deleted while the worker was
- * rendering, so the segments it reports were written after the Book's objects were deleted: delete them too.
+ * Called when a render report was refused. If the job no longer exists, it was cancelled while the worker was
+ * rendering: its Book was deleted (after the Book's objects were), or its Voice change was dropped
+ * (jobs/voice-change.ts failVoiceChange). Nothing will ever play the segments it reports: delete them too.
  * A job that still exists (finished, or claimed again) keeps its objects; published segments may be in use.
  */
 export async function discardDeletedJobSegments(
