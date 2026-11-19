@@ -990,7 +990,9 @@ button.chapter-title:hover {
     white-space: nowrap;
   }
 
-  .account {
+  /* .sidebar: outranks the desktop rule below. */
+  .sidebar .account {
+    height: auto;
     flex: 1;
     justify-content: flex-end;
     padding: 0;
@@ -1030,14 +1032,27 @@ button.chapter-title:hover {
   }
 }
 
-/* Sidebar account entry; 退出登录 moves to the settings page (F15) once it exists. */
+/* Sidebar account entry (design 08-1): opens 设置, where 退出登录 is (F15). */
 .account {
+  height: 52px;
   display: flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
   padding: 0 8px;
+  border-radius: 12px;
   font-size: 13px;
+  color: var(--ink-3);
+  text-decoration: none;
+}
+
+.account:hover {
+  background: var(--sunken);
+}
+
+/* On 设置 the gear turns green; the design gives the entry no fill there. */
+.account[aria-current="page"] {
+  color: var(--leaf);
 }
 
 .account-email {

@@ -42,24 +42,8 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "发送验证码" })).toBeTruthy();
   });
 
-  it("logs this device out and returns to the login page at / (AC-SET-02)", async () => {
-    window.history.pushState(null, "", "/books/b1");
-    const fetchMock = vi.fn(async (url: string) => {
-      if (url === "/api/me") return Response.json(me);
-      if (url === "/api/auth/logout") return new Response(null, { status: 204 });
-      return new Promise<Response>(() => {}); // the Book page's load never answers here
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    render(<App />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "退出登录" }));
-
-    expect(await screen.findByRole("button", { name: "发送验证码" })).toBeTruthy();
-    expect(fetchMock).toHaveBeenCalledWith("/api/auth/logout", { method: "POST" });
-    expect(window.location.pathname).toBe("/");
-  });
-
-  it("keeps playing when the user goes back to the shelf from the 专注页, and stops on logging out", async () => {
+  // Logging out ends it: SettingsPage.test.tsx.
+  it("keeps playing when the user goes back to the shelf from the 专注页", async () => {
     const media = stubMediaPlayback();
     hlsInstances.length = 0;
     const book: BookDetail = {
@@ -86,7 +70,6 @@ describe("App", () => {
       vi.fn(async (url: string) => {
         if (url === "/api/me") return Response.json(me);
         if (url === "/api/books/b1") return Response.json(book);
-        if (url === "/api/auth/logout") return new Response(null, { status: 204 });
         if (url.endsWith("/timeline")) return Response.json({ sentenceStartsMs: [], chapters: [], complete: true });
         return Response.json([]);
       }),
@@ -100,10 +83,6 @@ describe("App", () => {
     expect(await screen.findByText("书架还空着")).toBeTruthy();
     expect(media.pause).not.toHaveBeenCalled();
     expect(hlsInstances.map((h) => h.destroyed)).toEqual([false]);
-
-    fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
-    await screen.findByRole("button", { name: "发送验证码" });
-    expect(hlsInstances.map((h) => h.destroyed)).toEqual([true]);
   });
 
   describe("deleting a Book from its detail (#8)", () => {

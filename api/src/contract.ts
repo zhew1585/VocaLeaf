@@ -327,6 +327,20 @@ export const ExplainEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("error"), message: z.string() }),
 ]);
 
+// ---- 设置页 (PRD F15) ----
+
+/** What the settings page shows of the user's limits (PRD 4.7.2), counted as each limit is enforced. */
+export const UsageSchema = z
+  .object({
+    /** AI calls the user has left today (Beijing time). */
+    aiRemaining: z.int().min(0),
+    aiDailyLimit: z.int().positive(),
+    /** Uploaded Books the user holds now; Library Books on the Shelf do not count. */
+    uploadedBooks: z.int().min(0),
+    maxUploadedBooks: z.int().positive(),
+  })
+  .openapi("Usage");
+
 export const UploadBookSchema = z.object({
   file: z.instanceof(File).openapi({ type: "string", format: "binary" }),
   /** The Voice to narrate the Book with (PRD 4.2.4); the default Voice when left out. */
@@ -515,6 +529,7 @@ export type ParseFailureReason = (typeof PARSE_FAILURE_REASONS)[number];
 export type ParseResult = z.input<typeof ParseResultSchema>;
 export type User = z.infer<typeof UserSchema>;
 export type UploadPolicy = z.infer<typeof UploadPolicySchema>;
+export type Usage = z.infer<typeof UsageSchema>;
 export type Listening = z.infer<typeof ListeningSchema>;
 export type CodeSent = z.infer<typeof CodeSentSchema>;
 export type ApiError = z.infer<typeof ErrorSchema>;
