@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BookDetail, Sentence } from "../api";
 import { PlayGuideProvider } from "../guide/PlayGuide";
 import { startOutbox, stopOutbox } from "../marks/marks";
+import { layoutOf } from "../player/layout";
 import { ListeningProvider } from "../player/session";
 import { audioWithGenerated, hlsInstances, stubMediaPlayback } from "../test-media";
 import { ListenPage } from "./ListenPage";
@@ -97,8 +98,10 @@ beforeEach(() => {
         return Response.json({
           sentenceStartsMs: ALL.map((s) => s.startMs),
           sentenceIds: ALL.map((s) => s.id),
-          chapters: [],
+          // The Book's own layout, settled: nothing for the session to follow.
+          chapters: layoutOf(book),
           complete: true,
+          settled: true,
         });
       }
       if (url === "/api/books/b1") return Response.json(book);

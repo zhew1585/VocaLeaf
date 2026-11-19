@@ -1,6 +1,6 @@
 // Database schema. The API is the only component that reads or writes it (ADR 0002).
-// Field names follow PRD 4.2 and 4.3.1. Fields that only later tickets read or write
-// (Skipped reason) are added by those tickets.
+// Field names follow PRD 4.2 and 4.3.1. Fields that only later tickets read or write are added by those tickets;
+// nothing reads a Skipped reason (PRD 4.2.5 skip_reason) yet.
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -133,6 +133,10 @@ export const chapters = pgTable(
     index: integer("index").notNull(),
     title: text("title").notNull(),
     skipped: boolean("skipped").notNull().default(false),
+    // The user turned the Chapter's narration on (PRD 4.2.5 用户调整) after generation had gone past it. Its audio
+    // is then generated out of Chapter order, behind where playback may already be, so the timeline leaves it out
+    // until it is generated (books/timeline.ts). Stays set once the Chapter is generated; that no longer matters then.
+    narratedByUser: boolean("narrated_by_user").notNull().default(false),
     audioStatus: audioStatus("audio_status").notNull().default("pending"),
     // Sum of the Chapter's segment durations, set when it is generated.
     durationMs: integer("duration_ms"),

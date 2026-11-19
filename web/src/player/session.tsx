@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { BOOK_DELETED_EVENT } from "../api";
+import { BOOK_DELETED_EVENT, type BookDetail } from "../api";
 import { useAudition, type AuditionSentence, type AuditionState } from "./audition";
 import { useHls } from "./hls";
+import { layoutOf, mapPosition, onlyAppends, type Layout } from "./layout";
 import { playableLength, useStartRequest, useWaitingForAudio, type StartRequest } from "./playback";
 import { useProgressSync } from "./progressSync";
 import { rememberBook, useRestoredSession } from "./rememberedBook";
@@ -51,8 +52,16 @@ export interface Listening {
   open(bookId: string): void;
   /** Ends the session on logging out (PRD G16): syncs where playback is and forgets the Book on this device. */
   end(): void;
-  /** Loads the playlist again on a fresh audio element (a retried Chapter came in before its end). */
+  /** Loads the playlist again on a fresh audio element. */
   reload(): void;
+  /**
+   * Tells the session the Book as a page just loaded it. The session follows its Book's playlist by itself (its
+   * timeline, loaded again while a Chapter may still come in): when a Chapter came in before the end or left
+   * (retried, narrated or set Skipped, PRD 4.2.5), it loads the playlist again and resumes at the same place in the
+   * same Chapter, or at the start of the next narrated one when the playing Chapter left (AC-BOOK-02), playing on
+   * if it was. A page that loads the session's Book follows a change at once, before it asks for a position.
+   */
+  follow(book: BookDetail): void;
   toggle(): void;
   /** 重听 (PRD 4.4.3): back to the start of the Sentence the user wants to hear again. */
   replay(): void;
@@ -193,7 +202,7 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     sleep.jumped(0);
   };
 
-  // open and reload stay the same functions (the 专注页 calls them from effects); `fresh` only sets state and
+  // open, reload and follow stay the same functions (pages call them from effects); `fresh` only sets state and
   // resets refs, and `progress` is memoized on refs, so the first render's copies will do.
   const open = useCallback((id: string) => {
     if (openBookId.current === id) return;
@@ -203,6 +212,7 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     // A fresh Book starts at 0, which is not progress to sync.
     progress.adopt(id, 0);
     rememberBook(id);
+    held.current = null;
     setBookId(id);
     setStart({ request: null });
     setPosition(0);
@@ -239,6 +249,45 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     setReloads((n) => n + 1);
     fresh();
   }, []);
+
+  // The layout of the playlist the audio element holds: the first one seen after a Book was opened, then each one
+  // after while it only grows, or the one it was reloaded for. Null until then.
+  const held = useRef<Layout | null>(null);
+  const relayouts = useRef(0);
+  /**
+   * Takes `next` as the playlist's layout. When a Chapter came in before its end or left it (retried, narrated, set
+   * Skipped), loads the playlist again and resumes at the same place in the same Chapter, or at the next narrated
+   * one when the playing Chapter left. Stable: reads only refs and stable setters.
+   */
+  const relayout = useCallback((next: Layout) => {
+    const prev = held.current;
+    held.current = next;
+    if (prev === null || onlyAppends(prev, next)) return;
+    const el = audio.current!;
+    const request = {
+      id: `relayout#${++relayouts.current}`,
+      seconds: mapPosition(el.currentTime, prev, next),
+      autoplay: !el.paused,
+    };
+    // Like reload: the old playlist's positions are not reported while the new one loads.
+    switching.current = true;
+    setReloads((n) => n + 1);
+    fresh();
+    setStart({ request });
+  }, []);
+
+  // In the background the session follows its own timeline, loaded again while a Chapter may still come in.
+  useEffect(() => {
+    if (timeline.timeline !== null) relayout(timeline.timeline.chapters);
+  }, [timeline.timeline, relayout]);
+
+  // A page's fresher Book is followed at once, before the page asks for a position in the new layout.
+  const follow = useCallback(
+    (book: BookDetail) => {
+      if (book.id === openBookId.current) relayout(layoutOf(book));
+    },
+    [relayout],
+  );
 
   const requestStart = useCallback((request: StartRequest | null, onSettled?: () => void) => {
     setStart({ request, onSettled });
@@ -302,6 +351,7 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     open,
     end,
     reload,
+    follow,
     toggle,
     replay: () => {
       audition.stop();

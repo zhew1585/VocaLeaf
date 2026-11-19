@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import type { Book } from "../api";
 import { AudioLinesIcon, ChevronLeftIcon, PlaySolidIcon } from "../icons";
+import { useListening } from "../player/session";
 import { followLink, navigate } from "../router";
 import { StatusBadge } from "../StatusBadge";
 import { useBook } from "../useBook";
@@ -29,13 +31,18 @@ function GenerationProgress({ progress }: { progress: Book["progress"] }) {
 
 /**
  * Book detail, design 04-2: the Book's status or generation progress, 开始收听 once it is playable, and its
- * Chapters with their state; a 生成失败 one can be retried. Kept current while the worker parses and generates.
+ * Chapters with their state; a 生成失败 one can be retried, and an uploaded Book's Chapters set Skipped or narrated
+ * (PRD 4.2.5). Kept current while the worker parses and generates.
  * 删除这本书 is there in every state, 解析中 and 生成中 included (PRD 4.3.6); a Library Book has 移出书架 instead.
- * A Library Book never offers Voice changes or Skipped toggles (AC-LIB-03): those controls (#19, #20) show only
- * for `source === "upload"`.
+ * A Library Book never offers Voice changes, Skipped toggles or 重试 (AC-LIB-03): its audio is everyone's.
  */
 export function BookPage({ id }: { id: string }) {
   const { book, error, reload } = useBook(id);
+  // A Chapter set Skipped or narrated here changes the playlist the session may be playing.
+  const { follow } = useListening();
+  useEffect(() => {
+    if (book) follow(book);
+  }, [book, follow]);
 
   return (
     <div className="book-layout">
@@ -89,7 +96,8 @@ export function BookPage({ id }: { id: string }) {
           bookId={id}
           chapters={book.chapters}
           // A Library Book's generation is the operators' job (PRD 6.2).
-          onRetried={book.source === "upload" ? reload : undefined}
+          editable={book.source === "upload"}
+          onChanged={reload}
         />
       )}
     </div>

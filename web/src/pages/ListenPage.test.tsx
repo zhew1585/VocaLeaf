@@ -1,7 +1,8 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BookDetail, Sentence } from "../api";
+import type { BookDetail, BookTimeline, Sentence } from "../api";
 import { PlayGuideProvider } from "../guide/PlayGuide";
+import { layoutOf } from "../player/layout";
 import { ListeningProvider } from "../player/session";
 import { resetSentenceChats } from "../reading/chatStore";
 import { audio, audioWithGenerated, grow, hlsInstances, stubMediaPlayback, timeUpdate } from "../test-media";
@@ -31,9 +32,9 @@ afterEach(() => {
 
 const book: BookDetail = {
   id: "b1",
+  source: "upload",
   title: "Pride and Prejudice",
   author: "Jane Austen",
-  source: "upload",
   status: "generating",
   playable: true,
   failureReason: null,
@@ -87,13 +88,20 @@ const sentence = (id: string, paragraphIndex: number, text: string, startMs: num
   wordTimings: null,
 });
 
-/** The Book timeline the served Sentences make (GET /api/books/b1/timeline). */
-function timelineOf(sentences: Record<string, Sentence[]>) {
+/** The Book timeline the served Sentences and the Book as last served make (GET /api/books/b1/timeline). */
+function timelineOf(sentences: Record<string, Sentence[]>, book: BookDetail): BookTimeline {
   const timed = Object.values(sentences)
     .flat()
     .filter((s) => s.startMs !== null)
     .sort((a, b) => a.startMs! - b.startMs!);
-  return { sentenceStartsMs: timed.map((s) => s.startMs!), sentenceIds: timed.map((s) => s.id), chapters: [], complete: true };
+  // Settled, so the session does not poll it; the page's own polls tell it of a new layout.
+  return {
+    sentenceStartsMs: timed.map((s) => s.startMs!),
+    sentenceIds: timed.map((s) => s.id),
+    chapters: layoutOf(book),
+    complete: true,
+    settled: true,
+  };
 }
 
 /**
@@ -102,13 +110,15 @@ function timelineOf(sentences: Record<string, Sentence[]>) {
  */
 function serve(books: BookDetail[], sentences: Record<string, Sentence[]> = {}) {
   const queue = [...books];
+  let last = queue[0]!;
   const fetchMock = vi.fn(async (url: string) => {
     const chapterId = /^\/api\/chapters\/([^/]+)\/sentences$/.exec(url)?.[1];
     if (chapterId) return Response.json(sentences[chapterId] ?? []);
-    if (url.endsWith("/timeline")) return Response.json(timelineOf(sentences));
+    if (url.endsWith("/timeline")) return Response.json(timelineOf(sentences, last));
     if (url.endsWith("/marks")) return Response.json({ pending: [] });
     if (url.endsWith("/explanation")) return Response.json({ content: null, messages: [], aiRemaining: 100 });
-    return Response.json(queue.length > 1 ? queue.shift() : queue[0]);
+    last = (queue.length > 1 ? queue.shift() : queue[0])!;
+    return Response.json(last);
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;

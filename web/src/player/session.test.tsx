@@ -1,7 +1,8 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BOOK_DELETED_EVENT } from "../api";
+import { BOOK_DELETED_EVENT, type BookDetail } from "../api";
 import { audio, audioWithGenerated, grow, hlsInstances, stubMediaPlayback, timeUpdate } from "../test-media";
+import { layoutOf } from "./layout";
 import { ListeningProvider, useListening, type Listening } from "./session";
 
 vi.mock("hls.js", async () => ({ default: (await import("../test-media")).FakeHls }));
@@ -161,6 +162,110 @@ describe("the listening session", () => {
       ["/api/books/b1/audio.m3u8", false],
     ]);
     expect(hlsInstances[1]!.media).toBe(audio());
+  });
+
+  describe("following the Book's playlist (a Chapter set Skipped, narrated or retried)", () => {
+    type Chapter = BookDetail["chapters"][number];
+    const chapter = (id: string, index: number, startMs: number | null, rest: Partial<Chapter> = {}): Chapter => ({
+      id,
+      index,
+      title: id,
+      skipped: startMs === null,
+      audioStatus: "generated",
+      sentenceCount: 3,
+      durationMs: 300_000,
+      startMs,
+      waitSeconds: null,
+      ...rest,
+    });
+    const detail = (chapters: Chapter[]): BookDetail => ({
+      id: "b1",
+      source: "upload",
+      title: "Pride and Prejudice",
+      author: null,
+      status: "ready",
+      playable: true,
+      failureReason: null,
+      coverUrl: null,
+      listening: null,
+      progress: { generated: 3, narrated: 3 },
+      createdAt: "2026-11-18T00:00:00.000Z",
+      chapters,
+      durationMs: 900_000,
+    });
+    // Three 5-minute Chapters.
+    const three = detail([chapter("I", 0, 0), chapter("II", 1, 300_000), chapter("III", 2, 600_000)]);
+    const twoSkipped = detail([chapter("I", 0, 0), chapter("II", 1, null), chapter("III", 2, 300_000)]);
+
+    /** The session holding b1, playing at `seconds` of the playlist laid out as `book`. */
+    function playingAt(book: BookDetail, seconds: number) {
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
+      const s = session();
+      act(() => s().open("b1"));
+      act(() => s().follow(book));
+      audioWithGenerated(900).seeks.push(seconds);
+      act(() => s().toggle());
+      return s;
+    }
+
+    it("plays on undisturbed while the playlist only grows", () => {
+      const s = playingAt(detail([chapter("I", 0, 0), chapter("II", 1, null, { skipped: false, audioStatus: "generating" })]), 100);
+      act(() => s().follow(three));
+      expect(hlsInstances).toHaveLength(1);
+    });
+
+    it("moves to the start of the next narrated Chapter when the playing one is set Skipped, still playing (AC-BOOK-02)", () => {
+      const s = playingAt(three, 400);
+      act(() => s().follow(twoSkipped));
+
+      expect(hlsInstances).toHaveLength(2);
+      const reloaded = audioWithGenerated(600);
+      expect(reloaded.seeks).toEqual([300]);
+      expect(media.play).toHaveBeenCalledTimes(2);
+      expect(s().playing).toBe(true);
+    });
+
+    it("keeps the place in the playing Chapter when a Chapter before it leaves or comes back, paused if it was", () => {
+      const s = playingAt(three, 700);
+      act(() => s().toggle());
+      act(() => s().follow(twoSkipped));
+      const shorter = audioWithGenerated(600);
+      expect(shorter.seeks).toEqual([400]);
+
+      act(() => s().follow(three));
+      expect(audioWithGenerated(900).seeks).toEqual([700]);
+      expect(media.play).toHaveBeenCalledTimes(1);
+      expect(s().playing).toBe(false);
+    });
+
+    it("follows its own timeline when no page shows the Book: the playing Chapter set Skipped elsewhere", async () => {
+      let served = three;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) =>
+          url.endsWith("/timeline")
+            ? Response.json({ sentenceStartsMs: [], chapters: layoutOf(served), complete: true, settled: false })
+            : new Response(null, { status: 204 }),
+        ),
+      );
+      const s = session();
+      act(() => s().open("b1"));
+      await vi.waitFor(() => expect(s().bookId).toBe("b1"));
+      audioWithGenerated(900).seeks.push(400);
+      act(() => s().toggle());
+
+      served = twoSkipped;
+      // Not settled, so loaded again every 10 seconds.
+      await vi.waitFor(() => expect(hlsInstances).toHaveLength(2), { timeout: 12_000 });
+      expect(audioWithGenerated(600).seeks).toEqual([300]);
+      expect(media.play).toHaveBeenCalledTimes(2);
+    }, 15_000);
+
+    it("ignores another Book's playlist", () => {
+      const s = playingAt(three, 400);
+      act(() => s().follow({ ...twoSkipped, id: "b2" }));
+      expect(hlsInstances).toHaveLength(1);
+    });
   });
 
   it("ends when its Book is deleted, and only then (#8)", () => {

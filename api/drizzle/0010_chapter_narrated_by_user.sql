@@ -1,0 +1,1 @@
+ALTER TABLE "chapters" ADD COLUMN "narrated_by_user" boolean DEFAULT false NOT NULL;

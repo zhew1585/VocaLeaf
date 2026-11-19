@@ -59,13 +59,26 @@ export async function failAttempt(tx: Tx, job: Job, error: string, now: Date, re
   else await failJob(tx, job, error, now, job.type === "parse" ? PARSE_FAILURE_MESSAGES.unreadable : null);
 }
 
-/** Puts a job back in the queue for its next attempt; a Chapter goes back to 待生成. */
+/**
+ * Puts a job back in the queue for its next attempt; a Chapter goes back to 待生成. A Chapter set Skipped while
+ * it was being generated is not queued again (PRD 4.3.3): its job goes, and narrating it again queues a new one.
+ */
 async function requeue(tx: Tx, job: Job, error: string, now: Date) {
+  if (job.chapterId) await tx.update(chapters).set({ audioStatus: "pending" }).where(eq(chapters.id, job.chapterId));
+  const [skipped] = job.chapterId
+    ? await tx
+        .select({ id: chapters.id })
+        .from(chapters)
+        .where(and(eq(chapters.id, job.chapterId), eq(chapters.skipped, true)))
+    : [];
+  if (skipped) {
+    await tx.delete(jobs).where(eq(jobs.id, job.id));
+    return;
+  }
   await tx
     .update(jobs)
     .set({ status: "queued", error, leaseExpiresAt: null, updatedAt: now })
     .where(eq(jobs.id, job.id));
-  if (job.chapterId) await tx.update(chapters).set({ audioStatus: "pending" }).where(eq(chapters.id, job.chapterId));
 }
 
 /**
