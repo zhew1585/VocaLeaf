@@ -1,8 +1,8 @@
 // End-to-end: 句子精读's AI (#14) on the running compose stack. Without ANTHROPIC_API_KEY the API answers with its
 // deterministic fake (ADR 0003), which this test relies on. Needs `npm run e2e:up`.
 import { beforeEach, describe, expect, it } from "vitest";
-import type { ExplainEvent, Explanation, Sentence } from "../api/src/contract.js";
-import { BASE, endOpenJobs, newUser, sessionCookie, SHORT_WALK, sql, waitWhileParsing } from "./support.js";
+import type { BookDetail, ExplainEvent, Explanation, Sentence } from "../api/src/contract.js";
+import { BASE, endOpenJobs, newUser, sessionCookie, SHORT_WALK, sql } from "./support.js";
 
 beforeEach(() => endOpenJobs());
 
@@ -11,7 +11,12 @@ async function userWithSentence(label: string) {
   const user = await newUser(label);
   const created = await user.upload("short-walk.epub", SHORT_WALK);
   expect(created.status).toBe(201);
-  const book = await waitWhileParsing(created.body.id);
+  // Polled as its uploader: the Book is private to them.
+  let book = (await user.api<BookDetail>(`/books/${created.body.id}`)).body;
+  for (const deadline = Date.now() + 60_000; book.status === "parsing" && Date.now() < deadline; ) {
+    await new Promise((r) => setTimeout(r, 500));
+    book = (await user.api<BookDetail>(`/books/${created.body.id}`)).body;
+  }
   const chapter = book.chapters.find((c) => !c.skipped)!;
   const [sentence] = (await user.api<Sentence[]>(`/chapters/${chapter.id}/sentences`)).body;
   return { ...user, sentence: sentence! };
