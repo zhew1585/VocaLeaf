@@ -1,14 +1,20 @@
-import Hls from "hls.js";
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { BOOK_DELETED_EVENT, saveListening } from "../api";
+import { useHls } from "./hls";
 import { playableLength, useStartRequest, useWaitingForAudio, type StartRequest } from "./playback";
+import { useSleepTimer, type SleepChoice, type SleepTimer } from "./sleep";
+import { useSpeed, type Speed } from "./speed";
+import { useBookTimeline } from "./useBookTimeline";
+import { useOfflinePause } from "./useOfflinePause";
+import { useSentenceJumps } from "./useSentenceJumps";
 
 /**
  * The one listening session (PRD 4.4.1): one Book's continuous audio, played by one audio element that lives
  * above the pages, so leaving the 专注页 (【返回书架】) does not stop it. The 专注页 opens its Book here; the
  * player and the reading view read and steer it. Where playback is goes to the API when it starts and pauses, so
  * the Shelf can order Books and resume them (#7); the other sync moments and the sidebar entry come with #10.
- * It ends when its Book is deleted (#8).
+ * It ends when its Book is deleted (#8). The speed and the sleep timer belong to the session, not the Book, so
+ * they hold across Books (PRD 4.4.1, G9).
  */
 export interface Listening {
   /** The Book whose audio is loaded, or null before any 专注页 opened one. */
@@ -23,11 +29,27 @@ export interface Listening {
   needsTap: boolean;
   /** Playback reached the end of the audio generated so far and waits for more. */
   waitingForAudio: boolean;
+  /** The progress bar was dragged past the generated audio; playback goes there once it is generated. */
+  seekPending: boolean;
+  /** The network is down; playback paused and goes on once it is back. */
+  offline: boolean;
+  speed: Speed;
+  sleep: SleepTimer | null;
+  /** Listening time left on the sleep timer, in milliseconds; null with none or while unknown. */
+  sleepRemaining(): number | null;
   /** Loads the Book's audio, paused at its start; does nothing when it is already the session's Book. */
   open(bookId: string): void;
   /** Loads the playlist again on a fresh audio element (a retried Chapter came in before its end). */
   reload(): void;
   toggle(): void;
+  /** 重听 (PRD 4.4.3): back to the start of the Sentence the user wants to hear again. */
+  replay(): void;
+  /** 下一句: to the start of the next Sentence. */
+  next(): void;
+  /** Moves to a dragged position (PRD 4.4.1 进度拖动), not snapped to a Sentence start, keeping play or pause. */
+  seek(seconds: number): void;
+  setSpeed(speed: Speed): void;
+  setSleep(choice: SleepChoice | null): void;
   /**
    * Moves to the request's position once the playlist reaches it (a picked Chapter, a resume after a reload),
    * then calls `onSettled`; also when the user plays or pauses by hand meanwhile, which drops it. Replaces a
@@ -45,6 +67,8 @@ export function useListening(): Listening {
 }
 
 const PLAYBACK_FAILED = "播放失败，请刷新页面重试";
+/** A drag lands this close to the end of the generated audio or beyond: it waits for more to be generated. */
+const GENERATED_EDGE_SECONDS = 0.5;
 
 function playlistUrl(bookId: string): string {
   return `/api/books/${bookId}/audio.m3u8`;
@@ -52,35 +76,6 @@ function playlistUrl(bookId: string): string {
 
 function isPlayError(err: unknown, name: "AbortError" | "NotAllowedError"): boolean {
   return err instanceof DOMException && err.name === name;
-}
-
-/**
- * Attaches the Book's HLS playlist to the audio element: hls.js where Media Source is available, the browser's
- * own HLS (Safari on iOS) otherwise. The playlist is an EVENT playlist while the Book is generating, which
- * hls.js would otherwise start at the live edge; listening always starts at the Book's beginning. A new
- * `reloads` loads it again.
- */
-function useHls(audio: RefObject<HTMLAudioElement | null>, src: string | null, reloads: number, onFatal: () => void) {
-  useEffect(() => {
-    const el = audio.current!;
-    if (src === null) return;
-    if (!Hls.isSupported()) {
-      el.src = src;
-      return () => {
-        el.removeAttribute("src");
-        el.load();
-      };
-    }
-    const hls = new Hls({ startPosition: 0 });
-    // hls.js retries network and media errors itself; a fatal one means playback cannot go on.
-    hls.on(Hls.Events.ERROR, (_event, data) => {
-      if (data.fatal) onFatal();
-    });
-    hls.loadSource(src);
-    hls.attachMedia(el);
-    return () => hls.destroy();
-    // onFatal only reports; a new function each render must not reload the stream.
-  }, [audio, src, reloads]);
 }
 
 /** Holds the session's audio element; mounted once for the logged-in app. */
@@ -95,8 +90,15 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [needsTap, setNeedsTap] = useState(false);
   const [waitingForAudio, setWaitingForAudio] = useState(false);
+  const [seekPending, setSeekPending] = useState(false);
   const [start, setStart] = useState<{ request: StartRequest | null; onSettled?: () => void }>({ request: null });
-  useHls(audio, bookId === null ? null : playlistUrl(bookId), reloads, () => setError(PLAYBACK_FAILED));
+  const hls = useHls(audio, bookId === null ? null : playlistUrl(bookId), reloads, () => {
+    // Offline, hls.js gives up on the stream; it loads again once the network is back.
+    if (navigator.onLine) setError(PLAYBACK_FAILED);
+  });
+  const timeline = useBookTimeline(bookId, reloads);
+  const sleep = useSleepTimer(audio, timeline.timeline?.chapters ?? []);
+  const { speed, setSpeed } = useSpeed(audio, `${bookId}#${reloads}`);
 
   /** `onItsOwn`: started by a start request rather than the play button, so the browser may refuse it. */
   const play = (el: HTMLAudioElement, onItsOwn = false) => {
@@ -108,7 +110,20 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
       else if (!isPlayError(err, "AbortError")) setError(PLAYBACK_FAILED);
     });
   };
-  const starter = useStartRequest(audio, start.request, start.onSettled, (el) => play(el, true));
+  const offline = useOfflinePause(audio, { restart: hls.restart, play });
+  const jumps = useSentenceJumps(audio, {
+    covering: timeline.covering,
+    jumping: (ms) => {
+      starter.drop();
+      sleep.jumped(ms);
+    },
+  });
+  /** The session moved playback to `seconds` (a drag, a picked Chapter, a resume). */
+  const landed = (seconds: number) => {
+    jumps.landed(seconds * 1000);
+    sleep.jumped(seconds * 1000);
+  };
+  const starter = useStartRequest(audio, start.request, start.onSettled, (el) => play(el, true), landed);
   const waiting = useWaitingForAudio(audio, setWaitingForAudio);
 
   const sync = () => {
@@ -123,11 +138,16 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     setPlaying(false);
     setNeedsTap(false);
     setError(null);
+    setSeekPending(false);
     waiting.onPause();
+    jumps.forget();
+    offline.forget();
+    // A fresh element starts at 0; 【本章结束】 follows to its first Chapter.
+    sleep.jumped(0);
   };
 
-  // open and reload stay the same functions (the 专注页 calls them from effects); `fresh` only sets state
-  // and resets the waiting flag through refs, so the first render's copy will do.
+  // open and reload stay the same functions (the 专注页 calls them from effects); `fresh` only sets state and
+  // resets refs, so the first render's copy will do.
   const openBookId = useRef<string | null>(null);
   // From switching Books until the new playlist's metadata loads, the element still holds the old Book's audio
   // (its stream going away may fire a pause there); positions are not reported meanwhile.
@@ -180,8 +200,31 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
   const toggle = () => {
     const el = audio.current!;
     starter.drop();
+    offline.forget();
     if (el.paused) play(el);
     else el.pause();
+  };
+
+  const seeks = useRef(0);
+  const seek = (seconds: number) => {
+    const el = audio.current;
+    if (!el || openBookId.current === null) return;
+    starter.drop();
+    if (seconds < playableLength(el) - GENERATED_EDGE_SECONDS) {
+      el.currentTime = seconds;
+      landed(seconds);
+      // Show the new place at once rather than the old one until the next time update.
+      setPosition(seconds);
+      return;
+    }
+    // Not generated yet: wait there (PRD 4.3.4), playing on once it is if it was playing.
+    const wasPlaying = !el.paused;
+    setSeekPending(true);
+    setStart({
+      request: { id: `seek#${++seeks.current}`, seconds, autoplay: wasPlaying },
+      onSettled: () => setSeekPending(false),
+    });
+    if (wasPlaying) el.pause();
   };
 
   const value: Listening = {
@@ -192,9 +235,19 @@ export function ListeningProvider({ children }: { children: ReactNode }) {
     error,
     needsTap,
     waitingForAudio,
+    seekPending,
+    offline: offline.offline,
+    speed,
+    sleep: sleep.timer,
+    sleepRemaining: sleep.remaining,
     open,
     reload,
     toggle,
+    replay: jumps.replay,
+    next: jumps.next,
+    seek,
+    setSpeed,
+    setSleep: sleep.set,
     requestStart,
   };
 

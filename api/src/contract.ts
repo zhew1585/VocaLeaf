@@ -165,6 +165,21 @@ export const BookDetailSchema = BookSchema.extend({
   durationMs: z.int().nullable(),
 }).openapi("BookDetail");
 
+/**
+ * Where a Book's Sentences and narrated Chapters sit in its continuous audio, in milliseconds from the playlist's
+ * start: what the player steers by (重听, 下一句, 本章结束, PRD 4.4.1 and 4.4.3). Holds only what the playlist holds.
+ */
+export const BookTimelineSchema = z
+  .object({
+    /** Start of every Sentence in the playlist, ascending. */
+    sentenceStartsMs: z.array(z.int().min(0)),
+    /** The narrated Chapters in the playlist, in order; a Chapter still generating has no end yet. */
+    chapters: z.array(z.object({ id: z.uuid(), startMs: z.int().min(0), endMs: z.int().min(0).nullable() })),
+    /** No more audio will be appended: every narrated Chapter is in the playlist or failed. */
+    complete: z.boolean(),
+  })
+  .openapi("BookTimeline");
+
 /** When one word is spoken, in milliseconds from the start of its own Sentence's audio. */
 export const WordTimingSchema = z
   .object({ word: z.string(), startMs: z.int().min(0), endMs: z.int().min(0) })
@@ -317,6 +332,7 @@ export type AudioStatus = z.infer<typeof AudioStatusSchema>;
 export type Book = z.infer<typeof BookSchema>;
 export type ChapterSummary = z.infer<typeof ChapterSummarySchema>;
 export type BookDetail = z.infer<typeof BookDetailSchema>;
+export type BookTimeline = z.infer<typeof BookTimelineSchema>;
 export type Sentence = z.infer<typeof SentenceSchema>;
 export type Voice = z.infer<typeof VoiceSchema>;
 export type WordTiming = z.infer<typeof WordTimingSchema>;

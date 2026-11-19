@@ -1,11 +1,12 @@
 // Typed calls to the VocaLeaf API. Types come straight from the API's zod contract (ADR 0002).
 // The session is an HttpOnly cookie the browser sends by itself (same origin), so no call handles a token.
-import type { ApiError, Book, BookDetail, CodeSent, Sentence, UploadPolicy, User } from "@vocaleaf/api/contract";
+import type { ApiError, Book, BookDetail, BookTimeline, CodeSent, Sentence, UploadPolicy, User } from "@vocaleaf/api/contract";
 
 export type {
   Book,
   BookDetail,
   BookStatus,
+  BookTimeline,
   ChapterSummary,
   Listening,
   Sentence,
@@ -140,6 +141,11 @@ export async function saveListening(bookId: string, positionMs: number): Promise
 
 export function getBook(id: string): Promise<BookDetail> {
   return request<BookDetail>(`/books/${id}`);
+}
+
+/** Where the Book's Sentences and narrated Chapters sit in its audio, for the player's controls. */
+export function getBookTimeline(id: string): Promise<BookTimeline> {
+  return request<BookTimeline>(`/books/${id}/timeline`);
 }
 
 /** A Chapter's Sentences in reading order, with their times in the Book's audio once the Chapter is placed. */

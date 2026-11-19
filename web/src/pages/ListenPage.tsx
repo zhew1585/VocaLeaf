@@ -4,6 +4,7 @@ import { isPlayableChapter, waitMessage } from "../chapters";
 import type { StartRequest } from "../player/playback";
 import { Player } from "../player/Player";
 import { useListening } from "../player/session";
+import { useShortcuts } from "../player/shortcuts";
 import { BackToShelf, ChapterDirectory } from "../reading/ChapterDirectory";
 import { ReadingView, type ReadingViewHandle } from "../reading/ReadingView";
 import { SentencePanel, SentencePanelToggle } from "../reading/SentencePanel";
@@ -93,12 +94,14 @@ export function ListenPage({ id }: { id: string }) {
   const here = listening.bookId === id;
   const chapterPick = usePickedChapter();
   const resume = useResume(here);
-  const waitingForAudio = here && listening.waitingForAudio;
+  // Playback waits for audio still to generate: it caught up with it, or the bar was dragged past it.
+  const waitingForAudio = here && (listening.waitingForAudio || listening.seekPending);
   const { book, error } = useBook(id, { eager: chapterPick.picked !== null || waitingForAudio });
   const playlist = usePlaylist(book, here ? { seconds: listening.position, playing: listening.playing } : { seconds: 0, playing: false });
   const [directoryOpen, setDirectoryOpen] = useState(wideWindow);
   const [panelOpen, setPanelOpen] = useState(false);
   const reading = useRef<ReadingViewHandle>(null);
+  useShortcuts(here ? { toggle: listening.toggle, replay: listening.replay, next: listening.next } : null);
   // Stable, so the reading view's memoized Chapters do not render again on every time update.
   const toggleDirectory = useCallback(() => setDirectoryOpen((o) => !o), []);
 

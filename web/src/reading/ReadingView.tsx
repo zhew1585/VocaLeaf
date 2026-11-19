@@ -197,7 +197,8 @@ export function ReadingView({ book, positionMs, playingChapterId, columnWidth, d
         onScroll={onScroll}
         onWheel={stopFollowing}
         onTouchMove={stopFollowing}
-        onKeyDown={(e) => SCROLL_KEYS.has(e.key) && stopFollowing()}
+        // A key the player shortcuts took (Space plays or pauses) does not scroll.
+        onKeyDown={(e) => SCROLL_KEYS.has(e.key) && !e.nativeEvent.defaultPrevented && stopFollowing()}
         onMouseDown={(e) => {
           // A press on the scrollbar itself (outside the content box) is a manual scroll.
           if (e.target === e.currentTarget && e.nativeEvent.offsetX >= e.currentTarget.clientWidth) stopFollowing();

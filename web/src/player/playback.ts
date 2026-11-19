@@ -26,20 +26,21 @@ export function playableLength(audio: HTMLAudioElement): number {
 }
 
 /**
- * Carries out `startAt` on the audio element once the playlist has audio at its position, then calls
- * `onSettled`. The Player calls `tryStart` on media events (the playlist grew) and `drop` when the user plays
- * or pauses by hand, which drops a start still waiting.
+ * Carries out `startAt` on the audio element once the playlist has audio at its position, tells `landed` where
+ * it moved playback, then calls `onSettled`. The Player calls `tryStart` on media events (the playlist grew) and
+ * `drop` when the user plays or pauses by hand, which drops a start still waiting.
  */
 export function useStartRequest(
   audio: RefObject<HTMLAudioElement | null>,
   startAt: StartRequest | null,
   onSettled: (() => void) | undefined,
   play: (el: HTMLAudioElement) => void,
+  landed: (seconds: number) => void,
 ) {
   const pending = useRef<StartRequest | null>(null);
   // As of the latest render; read from media events.
-  const latest = useRef({ onSettled, play });
-  latest.current = { onSettled, play };
+  const latest = useRef({ onSettled, play, landed });
+  latest.current = { onSettled, play, landed };
 
   const settle = () => {
     pending.current = null;
@@ -52,6 +53,7 @@ export function useStartRequest(
     if (!el || request?.seconds == null || el.readyState < HTMLMediaElement.HAVE_METADATA) return;
     if (playableLength(el) <= request.seconds) return;
     el.currentTime = request.seconds;
+    latest.current.landed(request.seconds);
     if (request.autoplay) latest.current.play(el);
     settle();
   };

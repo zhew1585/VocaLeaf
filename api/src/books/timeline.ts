@@ -50,8 +50,9 @@ export function buildTimeline(chaptersInOrder: TimelineChapterInput[]): Timeline
   const entries: TimelineEntry[] = [];
   let offsetMs = 0;
   const place = (ch: TimelineChapterInput) => {
-    entries.push({ chapterId: ch.id, offsetMs, segments: ch.segments });
-    offsetMs += ch.segments.reduce((sum, s) => sum + s.durationMs, 0);
+    const entry = { chapterId: ch.id, offsetMs, segments: ch.segments };
+    entries.push(entry);
+    offsetMs = entryEndMs(entry);
   };
   for (const ch of chaptersInOrder) {
     if (ch.skipped) continue;
@@ -66,6 +67,11 @@ export function buildTimeline(chaptersInOrder: TimelineChapterInput[]): Timeline
     if (ch.audioStatus !== "generated") return { entries, complete: false };
   }
   return { entries, complete: true };
+}
+
+/** Where a Chapter's audio ends in the Book's audio. */
+export function entryEndMs(entry: TimelineEntry): number {
+  return entry.offsetMs + entry.segments.reduce((sum, s) => sum + s.durationMs, 0);
 }
 
 export interface DurationChapterInput {
